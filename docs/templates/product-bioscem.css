@@ -25,6 +25,17 @@
   --bs-max:1320px;
 }
 
+/* Platforma imbraca template-ul intr-un .panel propriu; il facem
+   transparent ca sectiunile noastre sa fie singurele casete vizibile. */
+.panel.product-template-render{
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+
 /* Limitat la pagina de produs, ca sa nu afecteze header/footer. */
 .bs-product-page,
 .bs-product-page *{
@@ -567,16 +578,32 @@
 }
 
 
-/* DESCRIERE PRODUS (HTML importat din site-ul vechi) */
+/* =========================================================
+   DESCRIERE PRODUS (sectiune proprie, cu titlu)
+   ========================================================= */
 
-.bs-description:empty{
+.bs-panel{
+  margin-top:54px;
+  padding:28px 31px;
+  border:1px solid var(--bs-line);
+  border-radius:var(--bs-radius-lg);
+  background:#fff;
+  box-shadow:0 12px 30px rgba(11,70,72,.04);
+}
+
+.bs-panel-title{
+  margin:0 0 18px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--bs-line);
+  font-size:24px;
+}
+
+/* Ascunsa din JS cand produsul nu are descriere. */
+.bs-description-block.is-empty{
   display:none;
 }
 
 .bs-description{
-  margin-bottom:26px;
-  padding-bottom:26px;
-  border-bottom:1px solid var(--bs-line);
   color:#4b6064;
   font-size:14px;
   line-height:1.8;
@@ -732,6 +759,37 @@
 
 .bs-related{
   margin-top:54px;
+}
+
+/* Colturi rotunjite si pentru elementele generate de platforma. */
+.bs-related-content .similar-product-card{
+  overflow:hidden;
+  border-radius:var(--bs-radius) !important;
+}
+
+.bs-related-content .similar-product-card__image-link,
+.bs-related-content .similar-product-card img{
+  border-radius:var(--bs-radius-sm);
+}
+
+.bs-related-content .similar-products__nav{
+  border-radius:50% !important;
+}
+
+.bs-gallery-inner .product-carousel__slide,
+.bs-gallery-inner .product-carousel__slide img{
+  border-radius:var(--bs-radius);
+}
+
+.bs-gallery-inner .product-carousel__thumb{
+  overflow:hidden;
+  border-radius:var(--bs-radius-sm) !important;
+}
+
+.bs-tabs-content .product-tabs__pane,
+.bs-tabs-content .product-review-item,
+.bs-tabs-content .product-reviews-head{
+  border-radius:var(--bs-radius-sm);
 }
 
 .bs-related-content{

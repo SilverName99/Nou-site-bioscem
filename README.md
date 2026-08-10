@@ -219,6 +219,36 @@ tab-uri diferite, fără configurare manuală.
 php scripts/apply-product-sections.php --restore=storage/backups/product-descriptions-<data>.json
 ```
 
+## Produse similare (carusel) alocate automat
+
+`scripts/set-similar-products.php` alocă fiecărui produs un set de produse
+similare, preferând aceeași categorie și completând din restul catalogului.
+
+```bash
+php scripts/set-similar-products.php --dry-run
+php scripts/set-similar-products.php                  # implicit intre 5 si 8
+php scripts/set-similar-products.php --min=4 --max=6
+```
+
+Opțiuni: `--only-missing` (doar produsele fără selecție), `--any-category`
+(ignoră categoria), `--seed=N` (rezultat reproductibil), `--clear` (șterge
+toate selecțiile).
+
+## Curățarea denumirilor de produs
+
+Unele denumiri importate din WooCommerce conțin HTML (`QUINTON IZOTONIC
+<br>fiole`), care apare vizibil în pagină pentru că titlurile sunt afișate ca
+text simplu.
+
+```bash
+php scripts/clean-product-names.php --dry-run
+php scripts/clean-product-names.php
+php scripts/clean-product-names.php --with-pages    # si titlurile paginilor
+```
+
+Importatorul curăță acum denumirile la sursă, deci importurile viitoare nu mai
+au nevoie de acest pas.
+
 ## Atribuirea unui template tuturor produselor
 
 `scripts/set-product-template.php` aplică un template de produs în masă, ca să

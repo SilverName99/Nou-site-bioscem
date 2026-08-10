@@ -155,7 +155,15 @@ function cleanText(string $html, int $maxLength = 0): string
 
 function decodeTitle(string $value, int $maxLength = 190): string
 {
-    return mb_substr(trim(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8')), 0, $maxLength);
+    // Unele denumiri din WooCommerce conțin HTML (ex. „QUINTON IZOTONIC <br>fiole”).
+    // Titlurile sunt afișate ca text simplu, deci markup-ul trebuie eliminat.
+    $value = (string) preg_replace('#<br\s*/?>|</p>|</div>#i', ' ', $value);
+    $value = strip_tags($value);
+    $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $value = str_replace("\xC2\xA0", ' ', $value);
+    $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+
+    return mb_substr($value, 0, $maxLength);
 }
 
 function slugify(string $value): string

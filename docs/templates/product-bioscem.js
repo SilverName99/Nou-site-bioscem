@@ -24,6 +24,16 @@
       }
     }
 
+    /* --- Descriere: ascunde toata sectiunea (inclusiv titlul)
+           daca produsul nu are descriere --- */
+    var description = page.querySelector(".bs-description");
+    if (description && description.textContent.trim() === "" && !description.querySelector("img")) {
+      var descriptionBlock = description.closest(".bs-description-block");
+      if (descriptionBlock) {
+        descriptionBlock.classList.add("is-empty");
+      }
+    }
+
     /* --- Stoc: platforma inlocuieste butonul cu eticheta
            "Stoc epuizat", deci deducem starea din DOM --- */
     var outOfStock = page.querySelector(".product-out-of-stock-label");
