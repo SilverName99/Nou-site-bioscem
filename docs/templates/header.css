@@ -1,0 +1,403 @@
+/* =========================================================
+   BIOSCEM - HEADER
+   ========================================================= */
+
+.bs-header{
+  --bs-teal:#075d61;
+  --bs-teal-dark:#0b3f52;
+  --bs-teal-soft:#eaf6f5;
+  --bs-text:#18353a;
+  --bs-muted:#6b7d80;
+  --bs-line:#e3ecec;
+
+  position:relative;
+  z-index:40;
+  background:#fff;
+  font-family:Inter, Arial, sans-serif;
+  border-bottom:1px solid var(--bs-line);
+}
+
+.bs-header,
+.bs-header *{
+  box-sizing:border-box;
+}
+
+.bs-header a{
+  color:inherit;
+  text-decoration:none;
+}
+
+
+/* ---------------- BARA DE ANUNTURI ---------------- */
+
+.bs-topbar{
+  background:var(--bs-teal-dark);
+  color:#dff0f1;
+}
+
+.bs-topbar__inner{
+  max-width:1320px;
+  margin:0 auto;
+  padding:8px 28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  flex-wrap:wrap;
+  font-size:12px;
+  letter-spacing:.2px;
+}
+
+.bs-topbar__item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.bs-topbar__item svg{
+  width:13px;
+  height:13px;
+  fill:currentColor;
+}
+
+.bs-topbar__dot{
+  width:4px;
+  height:4px;
+  border-radius:50%;
+  background:currentColor;
+  opacity:.55;
+}
+
+
+/* ---------------- RAND PRINCIPAL ---------------- */
+
+.bs-header__main{
+  border-bottom:1px solid var(--bs-line);
+}
+
+.bs-header__inner{
+  max-width:1320px;
+  margin:0 auto;
+  padding:14px 28px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:26px;
+}
+
+.bs-header__logo img{
+  display:block;
+  width:auto;
+  height:52px;
+  object-fit:contain;
+}
+
+
+/* ---------------- CAUTARE ---------------- */
+
+.bs-search{
+  position:relative;
+  justify-self:center;
+  width:100%;
+  max-width:430px;
+}
+
+.bs-search__form{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  height:44px;
+  padding:0 16px;
+  border:1px solid var(--bs-line);
+  border-radius:8px !important;
+  background:#f6f9f9;
+  transition:.15s ease;
+}
+
+.bs-search__form:focus-within{
+  border-color:#b9d9d7;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(7,93,97,.08);
+}
+
+.bs-search__icon{
+  flex:0 0 17px;
+  width:17px;
+  height:17px;
+  fill:none;
+  stroke:var(--bs-muted);
+  stroke-width:1.8;
+  stroke-linecap:round;
+}
+
+.bs-search__input{
+  width:100%;
+  border:0;
+  background:transparent;
+  color:var(--bs-text);
+  font-family:inherit;
+  font-size:14px;
+  outline:none;
+}
+
+.bs-search__input::-webkit-search-cancel-button{
+  cursor:pointer;
+}
+
+.bs-search__panel{
+  position:absolute;
+  top:calc(100% + 8px);
+  left:0;
+  right:0;
+  max-height:60vh;
+  overflow-y:auto;
+  padding:6px;
+  border:1px solid var(--bs-line);
+  border-radius:12px !important;
+  background:#fff;
+  box-shadow:0 18px 40px rgba(11,70,72,.14);
+}
+
+.bs-search__panel[hidden]{
+  display:none;
+}
+
+.bs-search__result{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:9px 10px;
+  border-radius:9px;
+  transition:background .12s ease;
+}
+
+.bs-search__result:hover,
+.bs-search__result.is-active{
+  background:var(--bs-teal-soft);
+}
+
+.bs-search__result img{
+  flex:0 0 42px;
+  width:42px;
+  height:42px;
+  object-fit:contain;
+  border-radius:7px;
+  background:#f6f9f9;
+}
+
+.bs-search__result-name{
+  color:var(--bs-text);
+  font-size:13px;
+  line-height:1.35;
+}
+
+.bs-search__empty{
+  padding:14px 12px;
+  color:var(--bs-muted);
+  font-size:13px;
+  text-align:center;
+}
+
+
+/* ---------------- ACTIUNI ---------------- */
+
+.bs-header__actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.bs-header__icon{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:38px;
+  height:38px;
+  border-radius:50% !important;
+  color:var(--bs-teal-dark);
+  transition:.15s ease;
+}
+
+.bs-header__icon:hover{
+  background:var(--bs-teal-soft);
+  color:var(--bs-teal);
+}
+
+.bs-header__icon svg{
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.6;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+/* Iconitele de brand sunt pline, nu conturate. */
+.bs-header__social svg{
+  width:18px;
+  height:18px;
+  fill:currentColor;
+  stroke:none;
+}
+
+.bs-header__sep{
+  width:1px;
+  height:22px;
+  margin:0 6px;
+  background:var(--bs-line);
+}
+
+.bs-header__cart-count{
+  position:absolute;
+  top:2px;
+  right:0;
+  min-width:17px;
+  height:17px;
+  padding:0 4px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:100px !important;
+  background:var(--bs-teal);
+  color:#fff;
+  font-size:10px;
+  font-weight:700;
+  line-height:1;
+}
+
+
+/* ---------------- MENIU CATEGORII ---------------- */
+
+.bs-header__nav{
+  background:#fff;
+}
+
+.bs-header__nav-inner{
+  max-width:1320px;
+  margin:0 auto;
+  padding:12px 28px 14px;
+}
+
+.bs-header__nav-inner ul{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.bs-header__nav-inner a{
+  display:inline-block;
+  padding:6px 2px;
+  border-bottom:2px solid transparent;
+  color:#7c8a8c;
+  font-size:12.5px;
+  font-weight:700;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  line-height:1.25;
+  transition:.15s ease;
+}
+
+.bs-header__nav-inner a:hover{
+  color:var(--bs-teal-dark);
+  border-bottom-color:#9ecdcb;
+}
+
+.bs-header__nav-inner a.is-active,
+.bs-header__nav-inner a[aria-current="page"]{
+  color:var(--bs-text);
+  border-bottom-color:var(--bs-teal);
+}
+
+
+/* ---------------- MENIU MOBIL ---------------- */
+
+.bs-header .bv-mobile-menu-token{
+  display:none;
+}
+
+
+/* ---------------- RESPONSIVE ---------------- */
+
+@media(max-width:1100px){
+
+  .bs-header__nav-inner ul{
+    justify-content:flex-start;
+    gap:8px 18px;
+  }
+
+  .bs-header__nav-inner a{
+    font-size:12px;
+  }
+
+}
+
+@media(max-width:900px){
+
+  .bs-header__inner{
+    grid-template-columns:auto 1fr auto;
+    gap:14px;
+    padding:12px 16px;
+  }
+
+  .bs-topbar__inner{
+    padding:8px 16px;
+    font-size:11px;
+    gap:10px;
+  }
+
+  .bs-header__logo img{
+    height:40px;
+  }
+
+  .bs-search{
+    order:3;
+    grid-column:1 / -1;
+    max-width:none;
+  }
+
+  .bs-header__social,
+  .bs-header__sep{
+    display:none;
+  }
+
+  .bs-header .bv-mobile-menu-token{
+    display:inline-flex;
+  }
+
+  /* Burger-ul mereu ultimul, lipit de marginea din dreapta. */
+  .bs-header .bv-mobile-menu-token{
+    order:99;
+    margin-left:2px;
+  }
+
+  /* Sertarul se deschide tot din dreapta.
+     Stilurile aplicatiei sunt injectate dupa acest CSS, de aceea
+     regulile sunt prefixate cu .bs-header (specificitate mai mare). */
+  .bs-header .bv-mobile-menu-token__drawer{
+    left:auto;
+    right:0;
+    transform:translateX(104%);
+    box-shadow:-16px 0 30px rgba(2,6,23,.15);
+  }
+
+  .bs-header__nav{
+    display:none;
+  }
+
+}
+
+@media(max-width:560px){
+
+  .bs-topbar__inner .bs-topbar__item:nth-child(5),
+  .bs-topbar__inner .bs-topbar__dot:nth-child(4){
+    display:none;
+  }
+
+}
