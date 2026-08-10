@@ -1,0 +1,238 @@
+<main class="bs-product-page">
+
+  <!-- BREADCRUMB -->
+  <nav class="bs-breadcrumb" aria-label="Breadcrumb">
+    <a href="/">Acasa</a>
+    <span>/</span>
+    <a href="{{product_category_url}}">{{product_category}}</a>
+    <span>/</span>
+    <span class="bs-breadcrumb-current">{{product_name}}</span>
+  </nav>
+
+
+  <!-- =====================================================
+       PRODUS PRINCIPAL
+       ===================================================== -->
+
+  <section class="bs-product-hero">
+
+    <!-- GALERIE -->
+    <div class="bs-gallery">
+      <div class="bs-gallery-inner">
+        {{product_image_carousel}}
+      </div>
+    </div>
+
+
+    <!-- INFORMATII PRODUS -->
+    <article class="bs-product-info">
+
+      <a href="{{product_category_url}}" class="bs-product-category">
+        {{product_category}}
+      </a>
+
+      <h1 class="bs-product-title">
+        {{product_name}}
+      </h1>
+
+      <div class="bs-product-short">
+        {{product_short_description}}
+      </div>
+
+      <div class="bs-product-meta">
+
+        <span class="bs-stock">
+          <span class="bs-stock-dot"></span>
+          <span class="bs-stock-text">Disponibil</span>
+        </span>
+
+        <span class="bs-sku">Cod produs: <span data-bs-sku>{{product_sku}}</span></span>
+
+      </div>
+
+      <div class="bs-product-price">
+        <span class="bs-price-old">{{product_old_price_display}}</span>
+        <span class="bs-price-current">{{product_price_display}}</span>
+      </div>
+
+      <div class="bs-vat">
+        TVA inclus. Costul livrarii este calculat la finalizarea comenzii.
+      </div>
+
+
+      <!-- ZONA DE CUMPARARE -->
+
+      <div class="bs-buy-area">
+
+        <div class="bs-bbd">{{product_bbd_selector}}</div>
+
+        <span class="bs-buy-label">Cantitate</span>
+
+        <div class="bs-buy-row">
+
+          <div class="bs-quantity">{{product_quantity_input}}</div>
+
+          <div class="bs-cart">
+            {{product_add_to_cart_button}}
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- GARANTII -->
+
+      <div class="bs-trust-row">
+
+        <div class="bs-trust-item">
+          <div class="bs-trust-icon">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 7h11v9H3z"/>
+              <path d="M14 10h4l3 3v3h-7z"/>
+              <circle cx="7" cy="18" r="2"/>
+              <circle cx="18" cy="18" r="2"/>
+            </svg>
+          </div>
+          <span>Livrare rapida<br>oriunde in Romania</span>
+        </div>
+
+        <div class="bs-trust-item">
+          <div class="bs-trust-icon">
+            <svg viewBox="0 0 24 24">
+              <rect x="5" y="10" width="14" height="10" rx="2"/>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+            </svg>
+          </div>
+          <span>Plata sigura<br>si date protejate</span>
+        </div>
+
+        <div class="bs-trust-item">
+          <div class="bs-trust-icon">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M5 21c.5-4 3-6 7-6s6.5 2 7 6"/>
+            </svg>
+          </div>
+          <span>Consultanta<br>de specialitate</span>
+        </div>
+
+      </div>
+
+
+      <!-- PUNCTE FORTE -->
+
+      <div class="bs-highlights">{{product_highlights}}</div>
+
+    </article>
+
+  </section>
+
+
+  <!-- =====================================================
+       BENEFICII
+       ===================================================== -->
+
+  <section class="bs-section">
+
+    <h2 class="bs-section-title">Beneficii cheie</h2>
+
+    <div class="bs-benefits-grid">
+
+      <article class="bs-benefit">
+        <div class="bs-benefit-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2l6 5-2 9-4 6-4-6-2-9z"/>
+            <path d="M12 2v20"/>
+            <path d="M6 7h12"/>
+          </svg>
+        </div>
+        <div>
+          <h3>Calitate</h3>
+          <p>Produse atent selectate din game specializate.</p>
+        </div>
+      </article>
+
+      <article class="bs-benefit">
+        <div class="bs-benefit-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C8 7 5 11 5 15a7 7 0 0 0 14 0c0-4-3-8-7-13z"/>
+          </svg>
+        </div>
+        <div>
+          <h3>Echilibru</h3>
+          <p>Formule concepute pentru sustinerea starii de bine.</p>
+        </div>
+      </article>
+
+      <article class="bs-benefit">
+        <div class="bs-benefit-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M13 2L4 14h7l-1 8 10-13h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <h3>Vitalitate</h3>
+          <p>Solutii pentru un stil de viata activ si echilibrat.</p>
+        </div>
+      </article>
+
+      <article class="bs-benefit">
+        <div class="bs-benefit-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 21s8-4.5 8-11a4.5 4.5 0 0 0-8-3 4.5 4.5 0 0 0-8 3c0 6.5 8 11 8 11z"/>
+          </svg>
+        </div>
+        <div>
+          <h3>Grija</h3>
+          <p>Selectie realizata cu atentie pentru nevoile tale.</p>
+        </div>
+      </article>
+
+    </div>
+
+  </section>
+
+
+  <!-- =====================================================
+       DETALII PRODUS / TAB-URI
+       ===================================================== -->
+
+  <section class="bs-tabs-shell">
+    <div class="bs-tabs-content">
+      {{product_tabs_section}}
+    </div>
+  </section>
+
+
+  <!-- =====================================================
+       PRODUSE SIMILARE
+       ===================================================== -->
+
+  <section class="bs-related">
+    <div class="bs-related-content">{{product_similar_products_section}}</div>
+  </section>
+
+
+  <!-- =====================================================
+       SUPORT
+       ===================================================== -->
+
+  <section class="bs-help">
+
+    <div class="bs-help-content">
+      <h2>Ai nevoie de ajutor in alegerea produsului?</h2>
+      <p>
+        Echipa BIOSCEM iti sta la dispozitie pentru informatii
+        despre produse si comenzi.
+      </p>
+    </div>
+
+    <a href="/contact" class="bs-help-btn">
+      Contacteaza-ne
+      <span>&rarr;</span>
+    </a>
+
+  </section>
+
+</main>
