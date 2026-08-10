@@ -36,6 +36,18 @@ if (!empty($socialAuthConfig['google_enabled'])) {
 }
 $pageHtml = str_replace('{{mannequin_section}}', $mannequinSectionHtml, $pageHtml);
 $pageHtml = str_replace('{{shop_catalog}}', $shopCatalogHtml, $pageHtml);
+// Titlul categoriei curente din magazin ({{shop_category}} este gol cand
+// nu exista filtru, ca elementul care il contine sa se poata ascunde din CSS).
+$shopCategoryLabel = trim((string) ($shopCategoryLabel ?? ''));
+$shopPageTitle = trim((string) ($shopPageTitle ?? 'Magazin')) ?: 'Magazin';
+$pageHtml = str_replace(
+    ['{{shop_category}}', '{{shop_title}}'],
+    [
+        htmlspecialchars($shopCategoryLabel, ENT_QUOTES),
+        htmlspecialchars($shopCategoryLabel !== '' ? $shopCategoryLabel : $shopPageTitle, ENT_QUOTES),
+    ],
+    $pageHtml
+);
 $pageHtml = str_replace('{{blog_posts}}', $blogPostsHtml, $pageHtml);
 $pageHtml = str_replace('{{cart_form}}', $cartFormHtml, $pageHtml);
 $pageHtml = str_replace('{{checkout_form}}', $checkoutFormHtml, $pageHtml);

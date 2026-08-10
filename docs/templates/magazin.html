@@ -1,11 +1,21 @@
 <div class="bs-shop">
 
   <header class="bs-shop__head">
-    <h1 class="bs-shop__title">Magazin</h1>
+
+    <nav class="bs-shop__crumbs" aria-label="Breadcrumb">
+      <a href="/">Acasa</a>
+      <span class="bs-shop__crumb-sep" aria-hidden="true">/</span>
+      <a href="/magazin">Magazin</a>
+      <span class="bs-shop__crumb-cat">{{shop_category}}</span>
+    </nav>
+
+    <h1 class="bs-shop__title">{{shop_title}}</h1>
+
     <p class="bs-shop__subtitle">
       Suplimente si produse naturale, selectate de la branduri internationale.
       Filtreaza dupa categorie sau ordoneaza dupa pret.
     </p>
+
   </header>
 
   {{shop_catalog}}

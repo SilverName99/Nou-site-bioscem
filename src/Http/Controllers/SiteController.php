@@ -75,11 +75,22 @@ final class SiteController
         if (is_array($shopPage)) {
             $db = $this->db();
             $settings = $this->cachedSettings($db);
+            // Categoria validată (goală dacă filtrul din URL nu există),
+            // ca pagina să poată afișa titlul categoriei curente.
+            $shopCategoryLabel = $this->normalizeShopCategoryFilter(
+                $categoryFilter,
+                $this->loadShopCatalogCategories($db instanceof PDO ? $db : null)
+            );
+            $pageTitle = $shopCategoryLabel !== ''
+                ? $shopCategoryLabel
+                : (string) ($shopPage['title'] ?? 'Magazin');
             View::render('site/custom-page', array_merge([
-                'title' => (string) ($shopPage['title'] ?? 'Magazin'),
+                'title' => $pageTitle,
                 'page' => $shopPage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
                 'shopCatalogHtml' => $this->renderShopCatalogSection($db, $categoryFilter),
+                'shopCategoryLabel' => $shopCategoryLabel,
+                'shopPageTitle' => (string) ($shopPage['title'] ?? 'Magazin'),
             ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $shopPage)));
             return;
         }
