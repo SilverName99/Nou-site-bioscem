@@ -68,6 +68,80 @@ final class SiteController
         ]);
     }
 
+    /**
+     * Păstrează structura de URL din site-ul vechi: /categorie/<slug>.
+     * Slug-ul este rezolvat la numele categoriei, apoi se afișează magazinul filtrat.
+     */
+    public function shopCategory(array $params = []): void
+    {
+        $slug = trim((string) ($params['slug'] ?? ''), '/');
+        $categoryName = $this->resolveCategoryNameBySlug($slug);
+
+        if ($categoryName === '') {
+            http_response_code(404);
+        }
+
+        // shop() citește filtrul din query string.
+        $_GET['categorie'] = $categoryName;
+        $this->shop();
+    }
+
+    /**
+     * Caută numele categoriei după slug: întâi în product_categories
+     * (unde importul a păstrat slug-urile din WooCommerce), apoi prin
+     * comparație pe slug generat din numele categoriilor existente.
+     */
+    private function resolveCategoryNameBySlug(string $slug): string
+    {
+        $slug = mb_strtolower(trim($slug));
+        if ($slug === '') {
+            return '';
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            return '';
+        }
+
+        try {
+            $stmt = $db->prepare('SELECT name FROM product_categories WHERE LOWER(slug) = :slug LIMIT 1');
+            $stmt->execute(['slug' => $slug]);
+            $name = $stmt->fetchColumn();
+            if (is_string($name) && trim($name) !== '') {
+                return trim($name);
+            }
+        } catch (Throwable) {
+            // Continuăm cu potrivirea pe slug generat.
+        }
+
+        foreach ($this->loadShopCatalogCategories($db) as $category) {
+            if (!is_array($category)) {
+                continue;
+            }
+            $value = trim((string) ($category['value'] ?? ''));
+            if ($value !== '' && $this->slugifyCategoryName($value) === $slug) {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function slugifyCategoryName(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = strtr($value, [
+            'ă' => 'a', 'â' => 'a', 'î' => 'i', 'ș' => 's', 'ş' => 's', 'ț' => 't', 'ţ' => 't',
+        ]);
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($ascii) && $ascii !== '') {
+            $value = $ascii;
+        }
+        $value = (string) preg_replace('/[^a-z0-9]+/', '-', $value);
+
+        return trim($value, '-');
+    }
+
     public function shop(): void
     {
         $shopPage = $this->findPublishedPageBySlug('magazin');
@@ -7481,7 +7555,10 @@ CSS;
         $productSlug = (string) ($product['slug'] ?? '');
         $productImages = $this->extractProductImageUrls($product, true);
         $mainImage = $productImages[0] ?? '/assets/img/product-placeholder.svg';
-        $carouselImages = $this->extractProductImageUrls($product, false);
+        // Caruselul este singura galerie din pagina produsului, deci trebuie
+        // să înceapă cu imaginea principală (cea din listări). Duplicatele
+        // sunt eliminate, dacă imaginea principală apare și în galerie.
+        $carouselImages = $this->extractProductImageUrls($product, true);
         $galleryHtml = $this->buildProductImageGalleryHtml($productImages, $productName);
         $badges = $this->buildProductBadgeList($product);
         $badgesHtml = $this->buildProductBadgesHtml($badges);
@@ -7657,10 +7734,12 @@ CSS;
             return '<input id="quantity" name="quantity" type="number" min="1" value="1" data-product-main-quantity="1"' . $disabledAttr . ' style="width:90px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">';
         }
 
-        return '<div class="qty-stepper" style="display:inline-flex;align-items:center;justify-content:center;gap:0;flex-wrap:nowrap;border:1px solid #d1d9e3;border-radius:999px;background:#fff;padding:1px 2px;height:44px;vertical-align:middle;">'
-            . '<button type="button" class="qty-stepper__btn" data-role="qty-minus" aria-label="Scade cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:transparent;border-radius:999px;width:40px;height:40px;line-height:1;font-size:22px;color:#1e293b;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">−</button>'
-            . '<input id="quantity" name="quantity" type="number" min="1" value="1" class="qty-stepper__input" data-product-main-quantity="1"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="width:58px;border:0;background:transparent;text-align:center;font-size:16px;font-weight:700;color:#0f172a;padding:0;margin:0;outline:none;line-height:1;height:40px;display:block;-moz-appearance:textfield;">'
-            . '<button type="button" class="qty-stepper__btn" data-role="qty-plus" aria-label="Crește cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:transparent;border-radius:999px;width:40px;height:40px;line-height:1;font-size:22px;color:#1e293b;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">+</button>'
+        // Grilă fixă (buton | câmp | buton): rămâne aliniat indiferent de
+        // lățimea coloanei în care este pus și de stilurile temei.
+        return '<div class="qty-stepper" style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:0;width:100%;max-width:170px;box-sizing:border-box;border:1px solid #d1d9e3;border-radius:12px;background:#fff;padding:3px;height:48px;vertical-align:middle;">'
+            . '<button type="button" class="qty-stepper__btn" data-role="qty-minus" aria-label="Scade cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:#eef4f4;border-radius:9px;width:100%;height:100%;line-height:1;font-size:20px;color:#0f3f46;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;">−</button>'
+            . '<input id="quantity" name="quantity" type="number" min="1" value="1" class="qty-stepper__input" data-product-main-quantity="1"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="width:100%;min-width:0;border:0;background:transparent;text-align:center;font-size:16px;font-weight:700;color:#0f172a;padding:0;margin:0;outline:none;line-height:1;height:100%;display:block;box-sizing:border-box;-moz-appearance:textfield;">'
+            . '<button type="button" class="qty-stepper__btn" data-role="qty-plus" aria-label="Crește cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:#eef4f4;border-radius:9px;width:100%;height:100%;line-height:1;font-size:20px;color:#0f3f46;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;">+</button>'
             . '</div>';
     }
 

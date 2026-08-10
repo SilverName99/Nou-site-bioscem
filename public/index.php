@@ -94,6 +94,8 @@ $router->get('/health', static function (): void {
 
 $router->get('/', [SiteController::class, 'home']);
 $router->get('/magazin', [SiteController::class, 'shop']);
+// URL-urile de categorie din site-ul vechi (/categorie/probiotice) rămân valide.
+$router->get('/categorie/{slug}', [SiteController::class, 'shopCategory']);
 $router->get('/blog', [SiteController::class, 'blog']);
 $router->get('/blog/{slug}', [SiteController::class, 'blogPost']);
 $router->get('/api/blog/posts', [SiteController::class, 'blogPostsApi']);
