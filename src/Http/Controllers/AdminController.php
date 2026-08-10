@@ -6120,6 +6120,21 @@ final class AdminController
             return;
         }
 
+        if ($action === 'save_bbd_sidebar') {
+            Settings::save($db, [
+                'store_bbd_sidebar_enabled' => isset($_POST['store_bbd_sidebar_enabled']) ? '1' : '0',
+            ]);
+            $this->refreshCacheAfterPublicContentChange();
+            Flash::set(
+                'success',
+                isset($_POST['store_bbd_sidebar_enabled'])
+                    ? 'Sertarul „Oferte” este activ pe site.'
+                    : 'Sertarul „Oferte” a fost dezactivat.'
+            );
+            header('Location: /admin/settings/store?tab=quantity');
+            return;
+        }
+
         $quantityStyle = in_array((string) ($_POST['store_quantity_control_style'] ?? 'default'), ['default', 'stepper'], true)
             ? (string) ($_POST['store_quantity_control_style'] ?? 'default')
             : 'default';

@@ -139,7 +139,9 @@ $floatingCartConfig = [
         && ((string) ($designSettings['store_quantity_control_style'] ?? 'default') === 'stepper')
     ) ? 1 : 0,
 ];
-$bbdSidebarOffers = \App\Support\BbdSidebarOffers::load($db, 10);
+// Sertarul lateral „Oferte” se poate dezactiva din Admin -> Setări magazin.
+$bbdSidebarEnabled = (string) ($designSettings['store_bbd_sidebar_enabled'] ?? '1') !== '0';
+$bbdSidebarOffers = $bbdSidebarEnabled ? \App\Support\BbdSidebarOffers::load($db, 10) : [];
 $siteFaviconUrl = trim((string) ($designSettings['store_favicon_url'] ?? ''));
 if ($siteFaviconUrl === '') {
     $siteFaviconUrl = '/assets/img/product-placeholder.svg';
@@ -868,6 +870,7 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
         </header>
     <?php endif; ?>
 
+    <?php if ($bbdSidebarEnabled): ?>
     <aside class="bv-bbd-sidebar" data-bv-bbd-sidebar>
         <button
             class="bv-bbd-sidebar__handle"
@@ -927,6 +930,7 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
             </ul>
         </div>
     </aside>
+    <?php endif; ?>
 
     <main class="container site-container">
         <?php if (($message = \App\Support\Flash::get('success')) !== null): ?>

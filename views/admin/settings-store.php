@@ -20,7 +20,8 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
         $applyProductTemplate = (string) ($settings['store_quantity_apply_product_template'] ?? '0') === '1';
         $applyFloatingCart = (string) ($settings['store_quantity_apply_floating_cart'] ?? '0') === '1';
         $applyCartPage = (string) ($settings['store_quantity_apply_cart_page'] ?? '0') === '1';
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'caching'];
+        $bbdSidebarEnabled = (string) ($settings['store_bbd_sidebar_enabled'] ?? '1') !== '0';
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching'];
         $defaultStoreTab = trim((string) ($_GET['tab'] ?? 'pages'));
         if (!in_array($defaultStoreTab, $availableStoreTabs, true)) {
             $defaultStoreTab = 'pages';
@@ -60,6 +61,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'seo' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="seo">SEO Google</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'clarity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="clarity">Microsoft Clarity</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'quantity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="quantity">Control cantitate</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
         </div>
 
@@ -236,6 +238,26 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 </div>
                 <div style="margin-top:10px;">
                     <button class="btn" type="submit">Salvează control cantitate</button>
+                </div>
+            </form>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="widgets" <?= $defaultStoreTab !== 'widgets' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <h3 style="margin-top:0;">Sertar lateral „Oferte”</h3>
+            <p style="margin:0 0 10px;color:#64748b;">
+                Panoul care apare pe marginea din stânga a site-ului, cu produsele
+                aflate la preț redus. Dezactivează-l dacă nu vrei să apară deloc.
+            </p>
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_bbd_sidebar">
+                <div style="display:grid;gap:8px;">
+                    <label style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" name="store_bbd_sidebar_enabled" value="1" <?= $bbdSidebarEnabled ? 'checked' : '' ?>>
+                        Afișează sertarul „Oferte” pe site
+                    </label>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn" type="submit">Salvează</button>
                 </div>
             </form>
         </article>
