@@ -947,7 +947,15 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     </main>
 
     <?php if (trim($designFooter) !== ''): ?>
-        <?= $designFooter ?>
+        <?php
+        // Aceleasi token-uri ca in header: meniul si numarul de produse din cos.
+        $designFooterOutput = $designFooter;
+        if (trim($designMenu) !== '') {
+            $designFooterOutput = str_replace(['{{menu}}', '{{ menu }}'], $designMenu, $designFooterOutput);
+        }
+        $designFooterOutput = str_replace($cartCountTokens, (string) $headerCartCount, $designFooterOutput);
+        ?>
+        <?= $designFooterOutput ?>
     <?php endif; ?>
     <?php
     $designJs = trim(implode("\n", array_filter([
