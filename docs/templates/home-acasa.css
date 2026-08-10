@@ -1,0 +1,710 @@
+/* =========================================================
+   BIOSCEM - PAGINA DE ACASA
+   ========================================================= */
+
+.bs-home{
+  --bs-teal:#075d61;
+  --bs-teal-dark:#064b4f;
+  --bs-teal-soft:#eaf6f5;
+  --bs-ice:#f4faf9;
+  --bs-sand:#f7f2ea;
+  --bs-text:#18353a;
+  --bs-muted:#66787b;
+  --bs-line:#dbe6e5;
+
+  --bs-radius-sm:12px;
+  --bs-radius:18px;
+  --bs-radius-lg:26px;
+  --bs-shadow:0 12px 35px rgba(19,75,78,.07);
+
+  max-width:1320px;
+  margin:0 auto;
+  padding:22px 28px 70px;
+  color:var(--bs-text);
+  font-family:Inter, Arial, sans-serif;
+}
+
+.bs-home,
+.bs-home *{
+  box-sizing:border-box;
+}
+
+.bs-home h1,
+.bs-home h2,
+.bs-home h3{
+  font-family:Georgia, "Times New Roman", serif;
+  color:var(--bs-teal-dark);
+  font-weight:500;
+}
+
+.bs-home a{
+  color:inherit;
+  text-decoration:none;
+}
+
+/* app.css impune border-radius:0 !important pe sectiuni/carduri;
+   il anulam doar in pagina de acasa. */
+.bs-home .bs-hero,
+.bs-home .bs-ranges,
+.bs-home .bs-need,
+.bs-home .bs-range,
+.bs-home .bs-product-card,
+.bs-home .bs-why{
+  border-radius:var(--bs-radius) !important;
+}
+
+.bs-home .bs-hero,
+.bs-home .bs-ranges{
+  border-radius:var(--bs-radius-lg) !important;
+}
+
+
+/* ---------------- HERO ---------------- */
+
+.bs-hero{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  overflow:hidden;
+  min-height:430px;
+  border:0;
+  background:linear-gradient(105deg,#f2fafa 0%,#e6f5f6 42%,#d8eef1 100%);
+}
+
+/* Imaginea acopera dreapta si coboara pana in marginea de jos.
+   Masca o topeste in gradient, deci merge si daca fisierul contine
+   doar partea din dreapta, si daca este bannerul intreg. */
+.bs-hero__media{
+  position:absolute;
+  top:0;
+  right:0;
+  bottom:0;
+  width:62%;
+  pointer-events:none;
+}
+
+.bs-hero__media img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center right;
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 26%);
+  mask-image:linear-gradient(to right,transparent 0,#000 26%);
+}
+
+.bs-hero__content{
+  position:relative;
+  z-index:2;
+  max-width:56%;
+  padding:52px 20px 40px 48px;
+}
+
+.bs-hero__title{
+  margin:0;
+  font-size:40px;
+  line-height:1.2;
+  letter-spacing:-.4px;
+}
+
+/* Filetul auriu de sub titlu. */
+.bs-hero__rule{
+  display:block;
+  width:62px;
+  height:2px;
+  margin:22px 0;
+  border-radius:2px;
+  background:#c9ab72;
+}
+
+.bs-hero__text{
+  margin:0 0 26px;
+  color:#5c7174;
+  font-size:14px;
+  line-height:1.75;
+}
+
+.bs-hero-actions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.bs-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:14px 26px;
+  border:1px solid var(--bs-teal);
+  border-radius:100px !important;
+  background:var(--bs-teal);
+  font-size:14px;
+  font-weight:600;
+  transition:.2s ease;
+}
+
+.bs-btn:hover{
+  background:var(--bs-teal-dark);
+  border-color:var(--bs-teal-dark);
+}
+
+.bs-btn svg{
+  width:17px;
+  height:17px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.bs-btn--ghost{
+  background:rgba(255,255,255,.9);
+  border-color:#cbe0df;
+}
+
+.bs-btn--ghost:hover{
+  background:#fff;
+  border-color:#a9cecc;
+}
+
+
+/* ---------------- BARA DE AVANTAJE ---------------- */
+
+/* Alba spre stanga, transparenta spre dreapta, ca imaginea
+   sa coboare pana in coltul din dreapta-jos. */
+.bs-hero-badges{
+  position:relative;
+  z-index:2;
+  display:grid;
+  grid-template-columns:repeat(4,auto);
+  justify-content:start;
+  gap:38px;
+  padding:18px 48px;
+  background:linear-gradient(to right,rgba(255,255,255,.94) 0%,rgba(255,255,255,.9) 55%,rgba(255,255,255,0) 100%);
+}
+
+.bs-hero-badge{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  min-width:0;
+  color:#3f585b;
+  font-size:12px;
+  line-height:1.35;
+}
+
+/* Fara cerc in spate: doar conturul iconitei. */
+.bs-hero-badge svg{
+  flex:0 0 26px;
+  width:26px;
+  height:26px;
+  fill:none;
+  stroke:var(--bs-teal-dark);
+  stroke-width:1.4;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+
+/* ---------------- SECTIUNI ---------------- */
+
+.bs-section{
+  margin-top:52px;
+}
+
+.bs-section-title{
+  margin:0 0 24px;
+  text-align:center;
+  font-size:27px;
+}
+
+.bs-section-head{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:16px;
+  margin-bottom:24px;
+}
+
+.bs-section-head .bs-section-title{
+  margin:0;
+}
+
+.bs-section-head .bs-link{
+  position:absolute;
+  right:0;
+}
+
+.bs-link{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-size:13px;
+  font-weight:600;
+}
+
+.bs-link--small{
+  font-size:12px;
+}
+
+
+/* ---------------- CU CE TE PUTEM AJUTA ---------------- */
+
+.bs-needs-grid{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:14px;
+}
+
+.bs-need{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+  padding:24px 14px 18px;
+  border:1px solid var(--bs-line);
+  background:#fff;
+  text-align:center;
+  transition:.2s ease;
+}
+
+.bs-need:hover{
+  border-color:#b9d9d7;
+  box-shadow:var(--bs-shadow);
+  transform:translateY(-2px);
+}
+
+.bs-need__img{
+  width:64px;
+  height:64px;
+  object-fit:contain;
+}
+
+.bs-need__title{
+  font-family:Georgia, "Times New Roman", serif;
+  color:var(--bs-teal-dark);
+  font-size:15px;
+  line-height:1.3;
+}
+
+.bs-need__arrow{
+  color:var(--bs-teal);
+  font-size:15px;
+}
+
+
+/* ---------------- GAME EMBLEMATICE ---------------- */
+
+.bs-ranges{
+  margin-top:52px;
+  padding:34px 30px;
+  background:var(--bs-sand);
+}
+
+.bs-ranges-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:16px;
+}
+
+.bs-range{
+  position:relative;
+  display:block;
+  overflow:hidden;
+  min-height:200px;
+  background:#e9eef0;
+  box-shadow:0 10px 26px rgba(11,70,72,.08);
+  transition:.2s ease;
+}
+
+.bs-range:hover{
+  transform:translateY(-3px);
+}
+
+.bs-range__image{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.bs-range__body{
+  position:relative;
+  z-index:2;
+  display:block;
+  padding:22px 22px 60px;
+  background:linear-gradient(180deg,rgba(255,255,255,.86) 0%,rgba(255,255,255,.55) 55%,rgba(255,255,255,0) 100%);
+}
+
+.bs-range__title{
+  display:block;
+  margin-bottom:6px;
+  font-family:Georgia, "Times New Roman", serif;
+  color:var(--bs-teal-dark);
+  font-size:19px;
+}
+
+.bs-range__text{
+  display:block;
+  max-width:80%;
+  color:#3f585b;
+  font-size:12px;
+  line-height:1.5;
+}
+
+.bs-range__arrow{
+  position:absolute;
+  left:18px;
+  bottom:16px;
+  z-index:2;
+  width:34px;
+  height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:#fff;
+  color:var(--bs-teal-dark);
+  font-size:20px;
+  box-shadow:0 4px 12px rgba(11,70,72,.15);
+}
+
+
+/* ---------------- PRODUSE ---------------- */
+
+.bs-products-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:16px;
+}
+
+.bs-product-card{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border:1px solid var(--bs-line);
+  background:#fff;
+  transition:.2s ease;
+}
+
+.bs-product-card:hover{
+  box-shadow:var(--bs-shadow);
+  transform:translateY(-2px);
+}
+
+.bs-product-card__media{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:180px;
+  padding:16px;
+  background:#fff;
+}
+
+.bs-product-card__media img{
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+}
+
+.bs-product-card__body{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  padding:0 16px 16px;
+}
+
+.bs-product-card__name{
+  color:var(--bs-text);
+  font-size:14px;
+  line-height:1.4;
+}
+
+.bs-product-card__price{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  margin:0;
+  color:var(--bs-teal-dark);
+  font-family:Georgia, "Times New Roman", serif;
+  font-size:19px;
+  font-weight:600;
+}
+
+.bs-product-card__price-old{
+  color:#98a7a9;
+  font-size:14px;
+  font-weight:400;
+  text-decoration:line-through;
+}
+
+.bs-product-card__cart{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+  min-height:42px;
+  border:0;
+  border-radius:10px;
+  background:var(--bs-teal);
+  color:#fff;
+  font-family:inherit;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:.2s ease;
+}
+
+.bs-product-card__cart:hover{
+  background:var(--bs-teal-dark);
+}
+
+.bs-product-card__cart svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.bs-product-card__out{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  border-radius:10px;
+  background:#f4f6f6;
+  color:#7c8b8d;
+  font-size:13px;
+  font-weight:600;
+}
+
+
+/* ---------------- DE CE BIOSCEM ---------------- */
+
+.bs-why-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+}
+
+.bs-why{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  padding:22px 20px;
+  background:var(--bs-sand);
+}
+
+.bs-why__icon{
+  flex:0 0 42px;
+  width:42px;
+  height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:#fff;
+  color:var(--bs-teal);
+}
+
+.bs-why__icon svg{
+  width:21px;
+  height:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.bs-why h3{
+  margin:0 0 5px;
+  font-size:15px;
+}
+
+.bs-why p{
+  margin:0;
+  color:var(--bs-muted);
+  font-size:11px;
+  line-height:1.5;
+}
+
+
+/* ---------------- CULORI LINKURI ----------------
+   Regula .bs-home a{color:inherit} are specificitate mai mare
+   decat .bs-btn / .bs-link, deci culorile se reaplica aici. */
+
+.bs-home .bs-btn{
+  color:#fff;
+}
+
+.bs-home .bs-btn--ghost{
+  color:var(--bs-teal-dark);
+}
+
+.bs-home .bs-link{
+  color:var(--bs-teal);
+}
+
+.bs-home .bs-link:hover{
+  color:var(--bs-teal-dark);
+}
+
+.bs-home .bs-product-card__name:hover{
+  color:var(--bs-teal);
+}
+
+
+/* ---------------- RESPONSIVE ---------------- */
+
+@media(max-width:1050px){
+
+  .bs-hero{
+    min-height:380px;
+  }
+
+  .bs-hero__content{
+    max-width:62%;
+    padding:40px 16px 32px 32px;
+  }
+
+  .bs-hero__title{
+    font-size:32px;
+  }
+
+  .bs-hero-badges{
+    gap:24px;
+    padding:16px 32px;
+  }
+
+  .bs-needs-grid{
+    grid-template-columns:repeat(3,1fr);
+  }
+
+  .bs-ranges-grid,
+  .bs-products-grid,
+  .bs-why-grid{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+}
+
+@media(max-width:820px){
+
+  .bs-home{
+    padding:18px 16px 50px;
+  }
+
+  .bs-hero{
+    min-height:0;
+  }
+
+  .bs-hero__media{
+    position:relative;
+    order:2;
+    width:100%;
+    height:215px;
+  }
+
+  .bs-hero__media img{
+    -webkit-mask-image:none;
+    mask-image:none;
+    object-position:center;
+  }
+
+  .bs-hero__content{
+    order:1;
+    max-width:none;
+    padding:34px 24px 26px;
+  }
+
+  .bs-hero__title{
+    font-size:28px;
+  }
+
+  .bs-hero__title br,
+  .bs-hero__text br{
+    display:none;
+  }
+
+  /* Avantajele: 2x2, cu iconita deasupra textului. */
+  .bs-hero-badges{
+    order:3;
+    grid-template-columns:repeat(2,1fr);
+    gap:18px 10px;
+    padding:20px 18px;
+    background:rgba(255,255,255,.94);
+  }
+
+  .bs-hero-badge{
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    text-align:center;
+    font-size:11px;
+  }
+
+  .bs-hero-badge br{
+    display:none;
+  }
+
+  .bs-hero-badge svg{
+    flex:0 0 24px;
+    width:24px;
+    height:24px;
+  }
+
+  /* „Cu ce te putem ajuta?" devine slider orizontal, fara JavaScript. */
+  .bs-needs-grid{
+    display:flex;
+    gap:12px;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    padding-bottom:4px;
+    margin-inline:-16px;
+    padding-inline:16px;
+  }
+
+  .bs-needs-grid::-webkit-scrollbar{
+    display:none;
+  }
+
+  .bs-need{
+    flex:0 0 44%;
+    scroll-snap-align:start;
+  }
+
+  .bs-section-head{
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .bs-section-head .bs-link{
+    position:static;
+  }
+
+}
+
+@media(max-width:560px){
+
+  .bs-ranges-grid,
+  .bs-products-grid,
+  .bs-why-grid{
+    grid-template-columns:1fr;
+  }
+
+  .bs-need{
+    flex-basis:60%;
+  }
+
+}
