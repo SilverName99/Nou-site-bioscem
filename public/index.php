@@ -214,6 +214,7 @@ $router->get('/admin/coupons/unique', [AdminController::class, 'couponsUnique'])
 $router->post('/admin/coupons/unique/import', [AdminController::class, 'couponsUniqueImport']);
 $router->post('/admin/coupons/unique/action', [AdminController::class, 'couponsUniqueAction']);
 $router->get('/admin/products/trash', [AdminController::class, 'productsTrash']);
+$router->get('/admin/products/export', [AdminController::class, 'productsExport']);
 $router->get('/admin/products/new', [AdminController::class, 'createProductForm']);
 $router->post('/admin/products', [AdminController::class, 'createProduct']);
 $router->post('/admin/products/{id}/update', [AdminController::class, 'updateProduct']);

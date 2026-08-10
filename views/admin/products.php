@@ -5,6 +5,7 @@
             <p>Gestionează produsele magazinului tău.</p>
         </div>
         <div style="display:flex;gap:8px;">
+            <a class="btn btn-secondary" href="/admin/products/export" title="Descarcă lista de produse (CSV) pentru import în ERP">⭳ Export produse</a>
             <a class="btn btn-secondary" href="/admin/products/trash">Coș produse</a>
             <button class="btn" type="button" id="add-product-btn">+ Adaugă produs</button>
         </div>

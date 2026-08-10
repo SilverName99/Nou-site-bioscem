@@ -5351,6 +5351,96 @@ final class AdminController
         fclose($out);
     }
 
+    /**
+     * Export CSV cu produsele magazinului, pentru maparea pe SKU în ERP
+     * (ANDAXI — „Produse → Import din site").
+     *
+     * Antetul folosește chei ASCII stabile: importatorul din ERP se leagă de
+     * numele coloanelor, nu de poziția lor, deci ordinea poate fi schimbată
+     * fără să strice importul.
+     */
+    public function productsExport(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/products');
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+        \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
+
+        $sqlBase = 'SELECT p.id, p.sku, p.name, p.slug, p.price, %s, p.stock, p.out_of_stock,
+                           p.weight_grams, p.is_active, p.category, c.name AS category_name
+                    FROM products p
+                    LEFT JOIN product_categories c ON c.id = p.category_id
+                    WHERE p.deleted_at IS NULL
+                    ORDER BY p.name ASC';
+
+        $products = [];
+        try {
+            $rows = $db->query(sprintf($sqlBase, 'p.vat_percent, p.vat_included'))->fetchAll();
+            $products = is_array($rows) ? $rows : [];
+        } catch (Throwable) {
+            // Schema mai veche, fără coloanele de TVA pe produs.
+            try {
+                $rows = $db->query(sprintf($sqlBase, '19.00 AS vat_percent, 1 AS vat_included'))->fetchAll();
+                $products = is_array($rows) ? $rows : [];
+            } catch (Throwable) {
+                $products = [];
+            }
+        }
+
+        AdminActivityLog::log($db, 'products_export', ['count' => count($products)]);
+
+        $filename = 'produse-site-' . date('Y-m-d-His') . '.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $out = fopen('php://output', 'w');
+        // BOM UTF-8 ca Excel să afișeze corect diacriticele.
+        fwrite($out, "\xEF\xBB\xBF");
+
+        fputcsv($out, [
+            'sku', 'denumire', 'pret_fara_tva', 'pret_site', 'tva_inclus', 'cota_tva',
+            'um', 'categorie', 'stoc', 'greutate_g', 'activ', 'slug', 'id_site',
+        ], ',');
+
+        foreach ($products as $p) {
+            $vatPercent = (float) ($p['vat_percent'] ?? 19);
+            $vatIncluded = ((int) ($p['vat_included'] ?? 1)) === 1;
+            $priceSite = (float) ($p['price'] ?? 0);
+            // ERP ține prețul de nomenclator fără TVA (intră direct în „preț unitar"
+            // pe linia de factură, care se impozitează după aceea).
+            $priceNet = ($vatIncluded && $vatPercent > -100)
+                ? $priceSite / (1 + ($vatPercent / 100))
+                : $priceSite;
+
+            fputcsv($out, [
+                trim((string) ($p['sku'] ?? '')),
+                trim((string) ($p['name'] ?? '')),
+                number_format($priceNet, 4, '.', ''),
+                number_format($priceSite, 2, '.', ''),
+                $vatIncluded ? '1' : '0',
+                number_format($vatPercent, 2, '.', ''),
+                'buc',
+                trim((string) ($p['category_name'] ?: $p['category'] ?: '')),
+                (string) (int) ($p['stock'] ?? 0),
+                ($p['weight_grams'] === null || $p['weight_grams'] === '') ? '' : (string) (int) $p['weight_grams'],
+                ((int) ($p['is_active'] ?? 1)) === 1 ? '1' : '0',
+                trim((string) ($p['slug'] ?? '')),
+                (string) (int) ($p['id'] ?? 0),
+            ], ',');
+        }
+        fclose($out);
+    }
+
     private function ordersFiltersFromInput(array $input): array
     {
         $q = trim((string) ($input['q'] ?? ''));
