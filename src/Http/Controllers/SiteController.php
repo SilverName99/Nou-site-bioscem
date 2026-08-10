@@ -7452,6 +7452,10 @@ CSS;
         if ($fullDescription === '') {
             $fullDescription = $shortDescription;
         }
+        // Descrierile pot conține HTML editorial (inclusiv cele importate din
+        // WooCommerce), deci sunt curățate și randate ca markup, nu escapate.
+        $shortDescription = \App\Support\RichText::render($shortDescription);
+        $fullDescription = \App\Support\RichText::render($fullDescription);
         $productId = (int) ($product['id'] ?? 0);
         $quantityControlStyle = (string) ($settings['store_quantity_control_style'] ?? 'default');
         $applyQuantityOnProductTemplate = (string) ($settings['store_quantity_apply_product_template'] ?? '0') === '1';
@@ -7604,6 +7608,8 @@ CSS;
                 'product_icon_user',
                 'product_bbd_selector',
                 'product_highlights',
+                'product_description',
+                'product_short_description',
                 'product_quantity_input',
                 'product_add_to_cart_button',
                 'product_post_cart_note',

@@ -566,6 +566,82 @@
   color:var(--bs-teal-dark);
 }
 
+
+/* DESCRIERE PRODUS (HTML importat din site-ul vechi) */
+
+.bs-description:empty{
+  display:none;
+}
+
+.bs-description{
+  margin-bottom:26px;
+  padding-bottom:26px;
+  border-bottom:1px solid var(--bs-line);
+  color:#4b6064;
+  font-size:14px;
+  line-height:1.8;
+}
+
+.bs-description > *:first-child{
+  margin-top:0;
+}
+
+.bs-description > *:last-child{
+  margin-bottom:0;
+}
+
+.bs-description p{
+  margin:0 0 14px;
+}
+
+.bs-description strong,
+.bs-description b{
+  color:var(--bs-teal-dark);
+  font-weight:600;
+}
+
+.bs-description a{
+  color:var(--bs-teal);
+  text-decoration:underline;
+  text-underline-offset:2px;
+  overflow-wrap:anywhere;
+}
+
+.bs-description ul,
+.bs-description ol{
+  margin:0 0 14px;
+  padding-left:20px;
+}
+
+.bs-description li{
+  margin-bottom:6px;
+}
+
+.bs-description img{
+  max-width:100%;
+  height:auto;
+  border-radius:var(--bs-radius-sm);
+}
+
+.bs-description hr{
+  margin:20px 0;
+  border:0;
+  border-top:1px solid var(--bs-line);
+}
+
+.bs-description table{
+  width:100%;
+  border-collapse:collapse;
+  margin:0 0 14px;
+}
+
+.bs-description td,
+.bs-description th{
+  padding:8px 10px;
+  border:1px solid var(--bs-line);
+  text-align:left;
+}
+
 .bs-tabs-content p,
 .bs-tabs-content li{
   color:#4b6064;

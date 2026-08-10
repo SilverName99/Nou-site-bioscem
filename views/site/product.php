@@ -66,7 +66,7 @@ if ($galleryUrls === []) {
                 </div>
             <?php endif; ?>
         </div>
-        <p><?= nl2br(htmlspecialchars((string) ($product['description'] ?? $product['short_description'] ?? ''), ENT_QUOTES)) ?></p>
+        <div class="product-description"><?= \App\Support\RichText::render((string) ($product['description'] ?? $product['short_description'] ?? '')) ?></div>
         <?php if ($extraFields !== []): ?>
             <section class="panel" style="margin-top:14px;">
                 <h3>Informații suplimentare</h3>
