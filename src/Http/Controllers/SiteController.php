@@ -57,8 +57,15 @@ final class SiteController
             return;
         }
 
-        [$products] = $this->loadProducts(limit: 6);
-        View::render('site/home', ['products' => $products, 'title' => 'Acasă']);
+        $db = $this->db();
+        [$products] = $this->loadProducts(limit: 4);
+
+        View::render('site/home', [
+            'products' => $products,
+            'categories' => $this->loadShopCatalogCategories($db instanceof PDO ? $db : null),
+            'blogPosts' => $this->loadPublishedBlogPosts($db instanceof PDO ? $db : null, 3),
+            'title' => 'Acasă',
+        ]);
     }
 
     public function shop(): void

@@ -297,7 +297,7 @@
 
 .bs-buy-row{
   display:grid;
-  grid-template-columns:160px 1fr;
+  grid-template-columns:170px 1fr;
   gap:12px;
   align-items:center;
 }
@@ -315,18 +315,58 @@
   display:none;
 }
 
+/* Stepper (+/-): grila fixa, ca sa nu depinda de stilurile inline
+   generate (care lasa butoanele transparente si fara contur). */
 .bs-quantity .qty-stepper{
-  display:inline-flex !important;
+  display:grid !important;
+  grid-template-columns:44px 1fr 44px !important;
+  align-items:center !important;
+  gap:0 !important;
   width:100% !important;
   height:52px !important;
+  padding:3px !important;
+  overflow:hidden;
+  border:1px solid var(--bs-line) !important;
   border-radius:12px !important;
-  border-color:var(--bs-line) !important;
+  background:#fff !important;
+}
+
+.bs-quantity .qty-stepper__btn{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  width:100% !important;
+  height:100% !important;
+  padding:0 !important;
+  border:0 !important;
+  border-radius:9px !important;
+  background:var(--bs-teal-soft) !important;
+  color:var(--bs-teal) !important;
+  font-size:20px !important;
+  line-height:1 !important;
+  cursor:pointer;
+  transition:background .15s ease;
+}
+
+.bs-quantity .qty-stepper__btn:hover{
+  background:#d6ebe9 !important;
+}
+
+.bs-quantity .qty-stepper__btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
 }
 
 .bs-quantity .qty-stepper__input{
-  flex:1 1 auto !important;
-  width:auto !important;
-  height:48px !important;
+  width:100% !important;
+  height:100% !important;
+  min-width:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  text-align:center !important;
+  font-size:16px !important;
+  font-weight:700 !important;
   color:var(--bs-text) !important;
 }
 
