@@ -164,6 +164,54 @@ Scriptul e idempotent: rulat de mai multe ori, actualizează după `slug` în lo
 să dubleze. Paginile de sistem WooCommerce (cart, checkout, my-account etc.)
 sunt sărite automat, pentru că noua aplicație are propriile pagini.
 
+## Secțiuni din descriere → câmpuri suplimentare (tab-uri)
+
+Descrierile importate din WooCommerce conțin secțiuni („Caracteristici”,
+„Mod de utilizare”, „Ingrediente”, „Precauții” etc.), diferite de la produs la
+produs. Cele două scripturi de mai jos le detectează și le transformă automat
+în câmpuri suplimentare, ca să apară ca tab-uri pe pagina produsului.
+
+Un titlu de secțiune este recunoscut când paragraful începe cu text îngroșat
+urmat de „:” (`<p><strong>Caracteristici</strong>:`), când paragraful e format
+doar din text îngroșat, sau când e un `<h2>`/`<h3>`. Textul îngroșat folosit ca
+accent în frază (`<strong>Compensează</strong> efectele...`) nu este confundat
+cu un titlu.
+
+### 1. Analiză (nu modifică nimic)
+
+```bash
+php scripts/analyze-product-sections.php
+php scripts/analyze-product-sections.php --by-category
+php scripts/analyze-product-sections.php --product=<slug>      # detaliu pe un produs
+php scripts/analyze-product-sections.php --csv=sectiuni.csv    # export pentru Excel
+```
+
+### 2. Aplicare
+
+```bash
+php scripts/apply-product-sections.php --min=3 --dry-run
+php scripts/apply-product-sections.php --min=3
+```
+
+- `--min=N` — mută doar secțiunile prezente la minim N produse (implicit 3);
+  cele sub prag rămân în descriere. Cu `--min=1` devin câmpuri toate secțiunile.
+- `--fields=ingrediente,mod_de_utilizare` — doar cheile listate.
+- `--exclude=nota` — sare peste anumite chei.
+- `--keep-description` — nu șterge secțiunile din descriere (atenție: conținut
+  dublat între descriere și tab-uri).
+
+Câmpurile sunt create cu tipul `html`, deci păstrează formatarea. Fiecare produs
+primește doar câmpurile care există în descrierea lui, iar tab-urile se afișează
+doar pentru câmpurile cu valoare — deci produse diferite ajung automat cu
+tab-uri diferite, fără configurare manuală.
+
+Înainte de orice modificare, descrierile originale sunt salvate în
+`storage/backups/product-descriptions-<data>.json`. Revenire completă:
+
+```bash
+php scripts/apply-product-sections.php --restore=storage/backups/product-descriptions-<data>.json
+```
+
 ## Atribuirea unui template tuturor produselor
 
 `scripts/set-product-template.php` aplică un template de produs în masă, ca să
