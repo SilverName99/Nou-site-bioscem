@@ -23,6 +23,10 @@
   --bs-shadow:0 12px 35px rgba(19,75,78,.07);
 
   --bs-max:1320px;
+
+  /* Dimensiunea imaginii principale de produs.
+     75% = cu 25% mai mica decat spatiul disponibil. */
+  --bs-image-scale:75%;
 }
 
 /* Platforma imbraca template-ul intr-un .panel propriu; il facem
@@ -128,6 +132,14 @@
 
 .bs-gallery-inner > *{
   max-width:100%;
+}
+
+/* Imaginea principala, micsorata si centrata.
+   Miniaturile nu sunt afectate (alt selector). */
+.bs-gallery-inner .product-carousel__slide img{
+  max-width:var(--bs-image-scale);
+  margin-left:auto;
+  margin-right:auto;
 }
 
 
@@ -810,6 +822,54 @@
   color:var(--bs-teal-dark);
   font-size:27px;
   font-weight:500;
+}
+
+
+/* =========================================================
+   ANULAREA RESETULUI GLOBAL DE COLTURI
+
+   app.css contine (design mostenit, cu colturi drepte):
+     .site-shell .hero, .site-shell .panel, .site-shell .card,
+     .site-shell section, .site-shell article,
+     .site-shell .product-carousel__viewport,
+     .site-shell .product-carousel__slide img
+     { border-radius: 0 !important; }
+
+   Fiind !important, bate orice regula normala indiferent de
+   specificitate, deci rotunjirea trebuie reaplicata tot cu
+   !important - dar limitat la pagina de produs, ca restul
+   site-ului sa ramana neschimbat.
+   ========================================================= */
+
+.bs-product-page .bs-product-info,
+.bs-product-page .bs-panel,
+.bs-product-page .bs-tabs-shell,
+.bs-product-page .bs-help{
+  border-radius:var(--bs-radius-lg) !important;
+}
+
+.bs-product-page .bs-benefit{
+  border-radius:var(--bs-radius) !important;
+}
+
+.bs-product-page .bs-gallery-inner,
+.bs-product-page .bs-gallery-inner .product-carousel__viewport{
+  border-radius:var(--bs-radius-lg) !important;
+}
+
+.bs-product-page .bs-gallery-inner .product-carousel__slide,
+.bs-product-page .bs-gallery-inner .product-carousel__slide img{
+  border-radius:var(--bs-radius) !important;
+}
+
+.bs-product-page .bs-tabs-content .product-tabs__pane,
+.bs-product-page .bs-tabs-content .product-review-item,
+.bs-product-page .bs-tabs-content .product-reviews-head{
+  border-radius:var(--bs-radius-sm) !important;
+}
+
+.bs-product-page .bs-related-content .similar-product-card{
+  border-radius:var(--bs-radius) !important;
 }
 
 
