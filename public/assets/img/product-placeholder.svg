@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" fill="#E5E7EB"/>
+  <rect x="160" y="120" width="480" height="360" rx="24" fill="#F9FAFB" stroke="#CBD5E1" stroke-width="4"/>
+  <path d="M260 385L340 290L415 360L485 305L560 385" stroke="#94A3B8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="325" cy="220" r="42" fill="#BFDBFE"/>
+  <text x="400" y="455" text-anchor="middle" fill="#334155" font-family="Arial, sans-serif" font-size="36" font-weight="700">Bioscem</text>
+</svg>
