@@ -164,6 +164,27 @@ Scriptul e idempotent: rulat de mai multe ori, actualizează după `slug` în lo
 să dubleze. Paginile de sistem WooCommerce (cart, checkout, my-account etc.)
 sunt sărite automat, pentru că noua aplicație are propriile pagini.
 
+## Atribuirea unui template tuturor produselor
+
+`scripts/set-product-template.php` aplică un template de produs în masă, ca să
+nu fie nevoie de editare manuală produs cu produs.
+
+```bash
+# vezi ce template-uri există (id + slug)
+php scripts/set-product-template.php --list
+
+# test, fără scriere în DB
+php scripts/set-product-template.php --template=<slug> --dry-run
+
+# aplicare pe toate produsele active
+php scripts/set-product-template.php --template=<slug>
+```
+
+Opțiuni: `--category=<slug>` (doar o categorie), `--only-missing` (doar
+produsele fără template), `--include-inactive`, `--include-trashed`,
+`--template=none` (scoate template-ul). Rularea e tranzacțională și sare peste
+produsele care au deja template-ul respectiv.
+
 ## Migrare utilizatori din WordPress (fără puncte)
 
 1. Exportă din WordPress un CSV cu minim coloanele:
