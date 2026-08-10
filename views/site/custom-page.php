@@ -67,6 +67,32 @@ $pageHtml = (string) preg_replace_callback(
     },
     $pageHtml
 );
+// Secțiuni dinamice pentru pagina de acasă / pagini de prezentare.
+// Numărul de elemente este opțional: {{featured_products}} sau {{featured_products:8}}.
+$pageHtml = (string) preg_replace_callback(
+    '/\{\{\s*featured_products\s*(?::\s*(\d+)\s*)?\}\}/i',
+    static fn(array $m): string => \App\Support\HomeSections::renderFeaturedProducts(
+        $nextEventDb,
+        (int) ($m[1] ?? 4) ?: 4
+    ),
+    $pageHtml
+);
+$pageHtml = (string) preg_replace_callback(
+    '/\{\{\s*latest_posts\s*(?::\s*(\d+)\s*)?\}\}/i',
+    static fn(array $m): string => \App\Support\HomeSections::renderLatestPosts(
+        $nextEventDb,
+        (int) ($m[1] ?? 3) ?: 3
+    ),
+    $pageHtml
+);
+$pageHtml = (string) preg_replace_callback(
+    '/\{\{\s*product_categories\s*(?::\s*(\d+)\s*)?\}\}/i',
+    static fn(array $m): string => \App\Support\HomeSections::renderCategoryTiles(
+        $nextEventDb,
+        (int) ($m[1] ?? 6) ?: 6
+    ),
+    $pageHtml
+);
 $hasEventsPage = false;
 $pageHtml = (string) preg_replace_callback(
     '/\{\{\s*category_events\s*:\s*([a-z0-9\-]+)\s*\}\}/i',
