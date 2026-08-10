@@ -1,0 +1,67 @@
+<div class="bs-auth">
+
+  <div class="bs-auth__card">
+
+    <header class="bs-auth__head">
+      <h1 class="bs-auth__title">Bine ai revenit</h1>
+      <p class="bs-auth__subtitle">Autentifica-te ca sa vezi comenzile si datele contului tau.</p>
+    </header>
+
+    <form class="bs-auth__form" method="post" action="/login">
+
+      <div class="bs-field">
+        <label for="bs-login-email">Email</label>
+        <input id="bs-login-email" type="email" name="email" required autocomplete="email" placeholder="nume@exemplu.ro">
+      </div>
+
+      <div class="bs-field">
+        <div class="bs-field__label-row">
+          <label for="bs-login-password">Parola</label>
+          <a class="bs-auth__forgot" href="/contul-meu/resetare-parola">Ai uitat parola?</a>
+        </div>
+        <input id="bs-login-password" type="password" name="password" required autocomplete="current-password" placeholder="Parola ta">
+      </div>
+
+      <button class="bs-auth__submit" type="submit">Autentificare</button>
+
+    </form>
+
+    {{auth_google_button}}
+
+    <p class="bs-auth__switch">
+      Nu ai cont? <a href="/register">Creeaza unul acum</a>
+    </p>
+
+  </div>
+
+  <aside class="bs-auth__aside">
+
+    <h2 class="bs-auth__aside-title">Contul tau BIOSCEM</h2>
+
+    <ul class="bs-auth__benefits">
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+        <span>Istoricul comenzilor si starea livrarii, la un click distanta.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        <span>Adrese salvate, pentru comenzi mai rapide.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.2 6.8 19l1-5.8-4.2-4.1 5.8-.8L12 3z"/></svg>
+        <span>Puncte de fidelitate acumulate la fiecare comanda.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21c.5-4 3-6 7-6s6.5 2 7 6"/></svg>
+        <span>Consultanta de specialitate din partea echipei noastre.</span>
+      </li>
+
+    </ul>
+
+  </aside>
+
+</div>

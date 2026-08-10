@@ -1,0 +1,308 @@
+/* =========================================================
+   BIOSCEM - AUTENTIFICARE / CONT NOU
+   Acelasi CSS pentru ambele pagini (login si register).
+   ========================================================= */
+
+.bs-auth{
+  --bs-teal:#075d61;
+  --bs-teal-dark:#064b4f;
+  --bs-teal-soft:#eaf6f5;
+  --bs-sand:#f7f2ea;
+  --bs-text:#18353a;
+  --bs-muted:#66787b;
+  --bs-line:#dbe6e5;
+  --bs-radius:18px;
+  --bs-radius-lg:26px;
+
+  display:grid;
+  grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  align-items:stretch;
+  gap:28px;
+  max-width:1060px;
+  margin:0 auto;
+  padding:38px 24px 70px;
+  color:var(--bs-text);
+  font-family:Inter, Arial, sans-serif;
+}
+
+.bs-auth,
+.bs-auth *{
+  box-sizing:border-box;
+}
+
+.bs-auth h1,
+.bs-auth h2{
+  font-family:Georgia, "Times New Roman", serif;
+  color:var(--bs-teal-dark);
+  font-weight:500;
+}
+
+.bs-auth a{
+  color:var(--bs-teal);
+  text-decoration:none;
+}
+
+.bs-auth a:hover{
+  color:var(--bs-teal-dark);
+  text-decoration:underline;
+}
+
+
+/* ---------------- CARDUL CU FORMULAR ---------------- */
+
+.bs-auth__card{
+  padding:36px 34px 30px;
+  border:1px solid var(--bs-line);
+  border-radius:var(--bs-radius-lg) !important;
+  background:#fff;
+  box-shadow:0 14px 34px rgba(11,70,72,.06);
+}
+
+.bs-auth__head{
+  margin-bottom:26px;
+}
+
+.bs-auth__title{
+  margin:0 0 8px;
+  font-size:29px;
+  line-height:1.2;
+}
+
+.bs-auth__subtitle{
+  margin:0;
+  color:var(--bs-muted);
+  font-size:13.5px;
+  line-height:1.65;
+}
+
+.bs-auth__form{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+
+/* ---------------- CAMPURI ---------------- */
+
+.bs-field{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  min-width:0;
+}
+
+.bs-field-row{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+
+.bs-field label,
+.bs-field__label-row label{
+  color:#4f6569;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+
+.bs-field__label-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.bs-auth__forgot{
+  font-size:12px;
+}
+
+.bs-auth .bs-field input{
+  width:100%;
+  min-height:46px;
+  padding:11px 14px;
+  border:1px solid var(--bs-line);
+  border-radius:12px !important;
+  background:#f8fbfb;
+  color:var(--bs-text);
+  font-family:inherit;
+  font-size:14px;
+  transition:.15s ease;
+}
+
+.bs-auth .bs-field input::placeholder{
+  color:#9fb0b1;
+}
+
+.bs-auth .bs-field input:focus{
+  outline:none;
+  border-color:#a9cecc;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(7,93,97,.08);
+}
+
+
+/* ---------------- ACORD ---------------- */
+
+.bs-auth__consent{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin-top:2px;
+  color:var(--bs-muted);
+  font-size:12.5px;
+  line-height:1.55;
+  cursor:pointer;
+}
+
+.bs-auth__consent input{
+  flex:0 0 auto;
+  width:16px;
+  height:16px;
+  margin-top:2px;
+  accent-color:var(--bs-teal);
+  cursor:pointer;
+}
+
+
+/* ---------------- BUTON ---------------- */
+
+.bs-auth__submit{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  min-height:50px;
+  margin-top:6px;
+  border:0;
+  border-radius:100px !important;
+  background:var(--bs-teal);
+  color:#fff;
+  font-family:inherit;
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+  transition:.18s ease;
+}
+
+.bs-auth__submit:hover{
+  background:var(--bs-teal-dark);
+  transform:translateY(-1px);
+}
+
+/* Butonul Google generat de aplicatie. */
+.bs-auth .bv-google-auth-inline a{
+  border-radius:100px !important;
+  border-color:var(--bs-line) !important;
+  font-family:inherit !important;
+  font-size:14px !important;
+  color:var(--bs-text) !important;
+  min-height:50px;
+}
+
+.bs-auth .bv-google-auth-inline a:hover{
+  border-color:#a9cecc !important;
+  background:#f8fbfb !important;
+  text-decoration:none;
+}
+
+
+/* ---------------- LINK CATRE CEALALTA PAGINA ---------------- */
+
+.bs-auth__switch{
+  margin:22px 0 0;
+  padding-top:20px;
+  border-top:1px solid var(--bs-line);
+  color:var(--bs-muted);
+  font-size:13.5px;
+  text-align:center;
+}
+
+.bs-auth__switch a{
+  font-weight:600;
+}
+
+
+/* ---------------- PANOUL LATERAL ---------------- */
+
+.bs-auth__aside{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:36px 32px;
+  border-radius:var(--bs-radius-lg) !important;
+  background:
+    radial-gradient(circle at 85% 15%,rgba(63,168,176,.16),transparent 42%),
+    linear-gradient(150deg,#f1faf9 0%,#e4f3f4 100%);
+}
+
+.bs-auth__aside-title{
+  margin:0 0 22px;
+  font-size:22px;
+  line-height:1.25;
+}
+
+.bs-auth__benefits{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.bs-auth__benefits li{
+  display:flex;
+  align-items:flex-start;
+  gap:13px;
+  color:#41595d;
+  font-size:13.5px;
+  line-height:1.55;
+}
+
+.bs-auth__benefits svg{
+  flex:0 0 22px;
+  width:22px;
+  height:22px;
+  margin-top:1px;
+  fill:none;
+  stroke:var(--bs-teal);
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+
+/* ---------------- RESPONSIVE ---------------- */
+
+@media(max-width:900px){
+
+  .bs-auth{
+    grid-template-columns:1fr;
+    gap:20px;
+    padding:26px 16px 50px;
+  }
+
+  /* Formularul ramane primul pe telefon. */
+  .bs-auth__card{
+    order:1;
+    padding:28px 22px 24px;
+  }
+
+  .bs-auth__aside{
+    order:2;
+    padding:26px 22px;
+  }
+
+  .bs-auth__title{
+    font-size:25px;
+  }
+
+}
+
+@media(max-width:480px){
+
+  .bs-field-row{
+    grid-template-columns:1fr;
+  }
+
+}

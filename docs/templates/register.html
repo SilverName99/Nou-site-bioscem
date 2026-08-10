@@ -1,0 +1,97 @@
+<div class="bs-auth">
+
+  <div class="bs-auth__card">
+
+    <header class="bs-auth__head">
+      <h1 class="bs-auth__title">Creeaza cont</h1>
+      <p class="bs-auth__subtitle">Dureaza mai putin de un minut si comenzile viitoare devin mai simple.</p>
+    </header>
+
+    <form class="bs-auth__form" method="post" action="/register">
+
+      <div class="bs-field-row">
+
+        <div class="bs-field">
+          <label for="bs-reg-first">Prenume</label>
+          <input id="bs-reg-first" type="text" name="first_name" required autocomplete="given-name" placeholder="Prenumele tau">
+        </div>
+
+        <div class="bs-field">
+          <label for="bs-reg-last">Nume</label>
+          <input id="bs-reg-last" type="text" name="last_name" required autocomplete="family-name" placeholder="Numele tau">
+        </div>
+
+      </div>
+
+      <div class="bs-field">
+        <label for="bs-reg-email">Email</label>
+        <input id="bs-reg-email" type="email" name="email" required autocomplete="email" placeholder="nume@exemplu.ro">
+      </div>
+
+      <div class="bs-field">
+        <label for="bs-reg-phone">Telefon</label>
+        <input id="bs-reg-phone" type="tel" name="phone" autocomplete="tel" placeholder="07xx xxx xxx">
+      </div>
+
+      <div class="bs-field-row">
+
+        <div class="bs-field">
+          <label for="bs-reg-password">Parola</label>
+          <input id="bs-reg-password" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Minim 8 caractere">
+        </div>
+
+        <div class="bs-field">
+          <label for="bs-reg-password2">Confirma parola</label>
+          <input id="bs-reg-password2" type="password" name="password_confirm" required minlength="8" autocomplete="new-password" placeholder="Repeta parola">
+        </div>
+
+      </div>
+
+      <label class="bs-auth__consent">
+        <input type="checkbox" required>
+        <span>Sunt de acord cu <a href="/termeni-conditii" target="_blank" rel="noopener">termenii si conditiile</a> si cu <a href="/prelucrarea-datelor-personale" target="_blank" rel="noopener">prelucrarea datelor personale</a>.</span>
+      </label>
+
+      <button class="bs-auth__submit" type="submit">Creeaza cont</button>
+
+    </form>
+
+    {{auth_google_button}}
+
+    <p class="bs-auth__switch">
+      Ai deja cont? <a href="/login">Autentifica-te</a>
+    </p>
+
+  </div>
+
+  <aside class="bs-auth__aside">
+
+    <h2 class="bs-auth__aside-title">De ce sa iti faci cont</h2>
+
+    <ul class="bs-auth__benefits">
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+        <span>Urmaresti comenzile si livrarile fara sa suni.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.2 6.8 19l1-5.8-4.2-4.1 5.8-.8L12 3z"/></svg>
+        <span>Aduni puncte de fidelitate la fiecare comanda.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span>Datele tale sunt protejate, iar platile sunt securizate.</span>
+      </li>
+
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.1 5.1c-6 .2-10.4 3.9-10.4 6.5 0 2.9 2 4.9 4.5 4.9 4.2 0 7.7-4 8.2-9.6.1-.9-.6-1.8-2.3-1.8Z"/><path d="M6.6 20.4c2.1-4.7 6.1-8 11.3-10.2"/></svg>
+        <span>Recomandari potrivite nevoilor tale.</span>
+      </li>
+
+    </ul>
+
+  </aside>
+
+</div>
