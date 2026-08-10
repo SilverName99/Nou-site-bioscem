@@ -177,6 +177,12 @@ doar din text îngroșat, sau când e un `<h2>`/`<h3>`. Textul îngroșat folosi
 accent în frază (`<strong>Compensează</strong> efectele...`) nu este confundat
 cu un titlu.
 
+Titlurile sinonime sunt grupate automat într-un singur câmp: „Mod de
+administrare”, „Instrucțiuni de utilizare”, „Mod de folosire” etc. ajung toate
+în **Mod de utilizare**, iar „Beneficiile SILICIUM G7”, „De ce să alegi X”,
+„Importanța magneziului” ajung în **Beneficii**. Fără grupare ar rezulta ~80 de
+câmpuri; cu grupare rămân ~17 relevante.
+
 ### 1. Analiză (nu modifică nimic)
 
 ```bash
@@ -184,6 +190,7 @@ php scripts/analyze-product-sections.php
 php scripts/analyze-product-sections.php --by-category
 php scripts/analyze-product-sections.php --product=<slug>      # detaliu pe un produs
 php scripts/analyze-product-sections.php --csv=sectiuni.csv    # export pentru Excel
+php scripts/analyze-product-sections.php --raw                 # fara grupare sinonime
 ```
 
 ### 2. Aplicare

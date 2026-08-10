@@ -26,6 +26,7 @@ use App\Support\ProductSections;
  *   --summary-csv=<f>  export CSV cu sumarul (sectiune, nr produse, categorii)
  *   --product=<slug>   afiseaza detaliat sectiunile unui singur produs
  *   --show-missing     listeaza produsele fara nicio sectiune detectata
+ *   --raw              nu grupeaza denumirile sinonime (vezi titlurile brute)
  */
 
 $options = [
@@ -35,6 +36,7 @@ $options = [
     'summary_csv' => '',
     'product' => '',
     'show_missing' => false,
+    'raw' => false,
 ];
 
 foreach (array_slice($argv, 1) as $arg) {
@@ -50,6 +52,8 @@ foreach (array_slice($argv, 1) as $arg) {
         $options['product'] = trim(substr($arg, 10));
     } elseif ($arg === '--show-missing') {
         $options['show_missing'] = true;
+    } elseif ($arg === '--raw') {
+        $options['raw'] = true;
     } else {
         exit("Optiune necunoscuta: {$arg}\nVezi antetul scriptului pentru optiuni.\n");
     }
@@ -132,14 +136,17 @@ foreach ($products as $product) {
     }
 
     foreach ($parsed['sections'] as $section) {
-        $groupKey = ProductSections::groupKey($section['label']);
+        $canonical = $options['raw']
+            ? ['key' => ProductSections::fieldKey($section['label']), 'name' => $section['label']]
+            : ProductSections::canonical($section['label']);
+        $groupKey = $canonical['key'];
         if ($groupKey === '') {
             continue;
         }
 
         if (!isset($sectionStats[$groupKey])) {
             $sectionStats[$groupKey] = [
-                'label' => $section['label'],
+                'label' => $canonical['name'],
                 'labels' => [],
                 'products' => 0,
                 'categories' => [],
@@ -157,16 +164,20 @@ foreach ($products as $product) {
             (string) $product['name'],
             $category,
             $section['label'],
-            ProductSections::fieldKey($section['label']),
+            $canonical['name'],
+            $groupKey,
             mb_substr(trim((string) preg_replace('/\s+/u', ' ', strip_tags($section['content_html']))), 0, 300),
         ];
     }
 }
 
-// Varianta de eticheta cea mai frecventa devine numele afisat.
+// Numele afisat: denumirea canonica, altfel varianta cea mai frecventa.
 foreach ($sectionStats as $groupKey => $stat) {
     arsort($stat['labels']);
-    $sectionStats[$groupKey]['label'] = (string) array_key_first($stat['labels']);
+    $mostCommon = (string) array_key_first($stat['labels']);
+    $sectionStats[$groupKey]['label'] = $options['raw']
+        ? $mostCommon
+        : ProductSections::canonical($mostCommon)['name'];
 }
 
 uasort($sectionStats, static fn(array $a, array $b): int => $b['products'] <=> $a['products']);
@@ -183,11 +194,15 @@ echo "Produse cu sectiuni detectate: {$productsWithSections}\n";
 echo "Produse fara sectiuni: " . count($withoutSections) . " (din care fara descriere: {$withoutDescription})\n";
 echo "Sectiuni distincte gasite: " . count($sectionStats) . "\n\n";
 
+if (!$options['raw']) {
+    echo "Denumirile sinonime sunt grupate automat (ruleaza cu --raw pentru titlurile brute).\n\n";
+}
+
 printf("%-38s %8s   %s\n", 'SECTIUNE', 'PRODUSE', 'CHEIE CAMP');
 echo str_repeat('-', 96) . "\n";
 
 $shown = 0;
-foreach ($sectionStats as $stat) {
+foreach ($sectionStats as $groupKey => $stat) {
     if ($stat['products'] < $options['min']) {
         continue;
     }
@@ -196,8 +211,14 @@ foreach ($sectionStats as $stat) {
         "%-38s %8d   %s\n",
         mb_strimwidth($stat['label'], 0, 37, '…'),
         $stat['products'],
-        ProductSections::fieldKey($stat['label'])
+        $groupKey
     );
+
+    if (!$options['raw'] && count($stat['labels']) > 1) {
+        arsort($stat['labels']);
+        echo "      (grupate: " . implode(', ', array_slice(array_keys($stat['labels']), 0, 5))
+            . (count($stat['labels']) > 5 ? ', …' : '') . ")\n";
+    }
 
     if ($options['by_category']) {
         arsort($stat['categories']);
@@ -241,7 +262,7 @@ function writeCsv(string $path, array $header, array $rows): bool
 if ($options['csv'] !== '') {
     $ok = writeCsv(
         $options['csv'],
-        ['slug', 'produs', 'categorie', 'sectiune', 'cheie_camp', 'continut (primele 300 caractere)'],
+        ['slug', 'produs', 'categorie', 'titlu_original', 'camp_final', 'cheie_camp', 'continut (primele 300 caractere)'],
         $rows
     );
     echo "\n" . ($ok
@@ -251,7 +272,7 @@ if ($options['csv'] !== '') {
 
 if ($options['summary_csv'] !== '') {
     $summaryRows = [];
-    foreach ($sectionStats as $stat) {
+    foreach ($sectionStats as $groupKey => $stat) {
         arsort($stat['categories']);
         $categoryList = [];
         foreach ($stat['categories'] as $category => $count) {
@@ -259,7 +280,7 @@ if ($options['summary_csv'] !== '') {
         }
         $summaryRows[] = [
             $stat['label'],
-            ProductSections::fieldKey($stat['label']),
+            $groupKey,
             $stat['products'],
             implode('; ', $categoryList),
         ];

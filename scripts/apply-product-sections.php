@@ -46,12 +46,12 @@ foreach (array_slice($argv, 1) as $arg) {
         $options['min'] = max(1, (int) substr($arg, 6));
     } elseif (str_starts_with($arg, '--fields=')) {
         $options['fields'] = array_values(array_filter(array_map(
-            static fn(string $v): string => ProductSections::fieldKey(trim($v)),
+            static fn(string $v): string => ProductSections::canonical(trim($v))['key'],
             explode(',', substr($arg, 9))
         )));
     } elseif (str_starts_with($arg, '--exclude=')) {
         $options['exclude'] = array_values(array_filter(array_map(
-            static fn(string $v): string => ProductSections::fieldKey(trim($v)),
+            static fn(string $v): string => ProductSections::canonical(trim($v))['key'],
             explode(',', substr($arg, 10))
         )));
     } elseif ($arg === '--keep-description') {
@@ -146,7 +146,7 @@ foreach ($products as $product) {
     $parsedByProduct[(int) $product['id']] = $parsed;
 
     foreach ($parsed['sections'] as $section) {
-        $fieldKey = ProductSections::fieldKey($section['label']);
+        $fieldKey = ProductSections::canonical($section['label'])['key'];
         if ($fieldKey === '') {
             continue;
         }
@@ -179,12 +179,13 @@ if ($selectedKeys === []) {
 
 arsort($selectedKeys);
 
-// Numele afișat = varianta de etichetă cea mai frecventă.
+// Numele afișat: denumirea canonică, altfel varianta cea mai frecventă.
 $fieldNames = [];
 foreach ($selectedKeys as $fieldKey => $count) {
     $variants = $labelVariants[$fieldKey] ?? [];
     arsort($variants);
-    $fieldNames[$fieldKey] = (string) (array_key_first($variants) ?: $fieldKey);
+    $mostCommon = (string) (array_key_first($variants) ?: $fieldKey);
+    $fieldNames[$fieldKey] = ProductSections::canonical($mostCommon)['name'] ?: $mostCommon;
 }
 
 echo "Sectiuni care devin campuri suplimentare:\n";
@@ -209,7 +210,7 @@ foreach ($products as $product) {
     $keptSections = [];
 
     foreach ($parsed['sections'] as $section) {
-        $fieldKey = ProductSections::fieldKey($section['label']);
+        $fieldKey = ProductSections::canonical($section['label'])['key'];
         if ($fieldKey !== '' && isset($selectedKeys[$fieldKey])) {
             // Dacă aceeași secțiune apare de două ori, se concatenează.
             $values[$fieldKey] = isset($values[$fieldKey])

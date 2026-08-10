@@ -185,4 +185,131 @@ final class ProductSections
         $key = trim($key, '_');
         return mb_substr($key, 0, 120);
     }
+
+    /**
+     * Titluri identice ca sens, scrise diferit de la produs la produs.
+     * Ordinea contează: prima potrivire câștigă.
+     */
+    private const PREFIX_RULES = [
+        // Păstrare - verificat înaintea „utilizare”, ca „mod de păstrare și
+        // utilizare” să ajungă la păstrare, nu la utilizare.
+        'mod de pastrare' => 'mod_de_pastrare',
+        'conditii de pastrare' => 'mod_de_pastrare',
+        'mod de depozitare' => 'mod_de_pastrare',
+        'conditii de depozitare' => 'mod_de_pastrare',
+
+        // Beneficii - „Beneficiile SILICIUM G7”, „De ce să alegi X”, „Importanța Y”.
+        'beneficii' => 'beneficii',
+        'beneficiile' => 'beneficii',
+        'de ce sa ' => 'beneficii',
+        'importanta ' => 'beneficii',
+
+        // Utilizare.
+        'mod de utilizare' => 'mod_de_utilizare',
+        'mod de administrare' => 'mod_de_utilizare',
+        'mod de folosire' => 'mod_de_utilizare',
+        'mod de preparare' => 'mod_de_utilizare',
+        'instructiuni de utilizare' => 'mod_de_utilizare',
+        'instructiuni de folosire' => 'mod_de_utilizare',
+        'recomandare de utilizare' => 'mod_de_utilizare',
+        'recomandari de utilizare' => 'mod_de_utilizare',
+        'recomandari si utilizare' => 'mod_de_utilizare',
+
+        // Doză.
+        'doza' => 'doza_recomandata',
+
+        // Ingrediente („Ingrediente active”, „Ingrediente/capsulă”, „Alte ingrediente”).
+        'ingrediente' => 'ingrediente',
+        'alte ingrediente' => 'ingrediente',
+
+        // Avertismente.
+        'atentionari' => 'atentionari',
+        'precautii' => 'atentionari',
+        'contraindicatii' => 'atentionari',
+        'masuri de precautie' => 'atentionari',
+
+        // Valori nutriționale.
+        'valori nutritionale' => 'valori_nutritionale',
+        'informatii nutritionale' => 'valori_nutritionale',
+
+        // Notă / observații.
+        'nota' => 'nota',
+        'observatii' => 'observatii',
+
+        // Caracteristici („Caracteristici ale produsului”).
+        'caracteristici' => 'caracteristici',
+    ];
+
+    /** Titluri care se potrivesc exact (nu ca prefix). */
+    private const EXACT_RULES = [
+        'produs de' => 'producator',
+        'producator' => 'producator',
+        'tara de origine' => 'producator',
+        'prezentare' => 'ambalare',
+        'mod de prezentare' => 'ambalare',
+        'ambalare' => 'ambalare',
+        'pentru preventie zilnica' => 'doza_recomandata',
+        'pentru tratament' => 'doza_recomandata',
+        'data expirare' => 'valabilitate',
+        'valabilitate' => 'valabilitate',
+        'alergeni' => 'nu contine',
+    ];
+
+    /** Denumirea afișată pentru fiecare cheie canonică. */
+    private const CANONICAL_NAMES = [
+        'ingrediente' => 'Ingrediente',
+        'compozitie' => 'Compoziție',
+        'mod_de_utilizare' => 'Mod de utilizare',
+        'doza_recomandata' => 'Doză recomandată',
+        'mod_de_pastrare' => 'Mod de păstrare',
+        'atentionari' => 'Atenționări',
+        'nu_contine' => 'NU conține',
+        'ambalare' => 'Ambalare',
+        'producator' => 'Producător',
+        'beneficii' => 'Beneficii',
+        'valori_nutritionale' => 'Valori nutriționale',
+        'valabilitate' => 'Valabilitate',
+        'nota' => 'Notă',
+        'observatii' => 'Observații',
+        'caracteristici' => 'Caracteristici',
+        'indicatii' => 'Indicații',
+        'continut' => 'Conținut',
+        'certificare_ecologica' => 'Certificare ecologică',
+        'proprietati' => 'Proprietăți',
+    ];
+
+    /**
+     * Reduce un titlu la câmpul canonic corespunzător.
+     *
+     * @return array{key:string, name:string}
+     */
+    public static function canonical(string $label): array
+    {
+        $group = self::groupKey($label);
+        if ($group === '') {
+            return ['key' => '', 'name' => ''];
+        }
+
+        $key = self::EXACT_RULES[$group] ?? null;
+
+        if ($key === null) {
+            foreach (self::PREFIX_RULES as $prefix => $canonicalKey) {
+                if (str_starts_with($group, $prefix)) {
+                    $key = $canonicalKey;
+                    break;
+                }
+            }
+        }
+
+        if ($key === null) {
+            $key = self::fieldKey($label);
+        }
+
+        $key = str_replace(' ', '_', $key);
+
+        return [
+            'key' => $key,
+            'name' => self::CANONICAL_NAMES[$key] ?? $label,
+        ];
+    }
 }
