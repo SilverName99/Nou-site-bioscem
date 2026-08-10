@@ -1,0 +1,90 @@
+/* =========================================================
+   BIOSCEM - COS FLOTANT
+
+   Se adauga la finalul CSS-ului din Header (Design Site -> Header),
+   pentru ca sertarul apare pe toate paginile. CSS-ul de design este
+   incarcat dupa app.css, deci regulile simple sunt suficiente.
+   ========================================================= */
+
+.floating-cart{
+  --fc-button-bg:#075d61;
+  --fc-button-text:#ffffff;
+  --fc-counter-bg:#ffffff;
+  --fc-counter-text:#075d61;
+}
+
+/* Antetul sertarului */
+.floating-cart__head-icon{
+  color:#075d61;
+}
+
+.floating-cart__head-count{
+  background:#075d61;
+  font-family:Inter, Arial, sans-serif;
+}
+
+/* Cupon */
+.floating-cart__coupon-apply{
+  background:#075d61;
+  border-color:#075d61;
+  font-family:Inter, Arial, sans-serif;
+}
+
+.floating-cart__coupon-apply:hover{
+  background:#064b4f;
+  border-color:#064b4f;
+}
+
+/* Butonul principal */
+.floating-cart__checkout{
+  background:#075d61;
+  border-color:#075d61;
+  font-family:Inter, Arial, sans-serif;
+}
+
+.floating-cart__checkout:hover{
+  background:#064b4f;
+  border-color:#064b4f;
+}
+
+/* Butonul secundar „Vezi cosul" */
+.floating-cart__view-cart{
+  border-color:#dbe6e5;
+  color:#064b4f;
+  font-family:Inter, Arial, sans-serif;
+}
+
+.floating-cart__view-cart:hover{
+  border-color:#a9cecc;
+  background:#eaf6f5;
+}
+
+.floating-cart__continue-link{
+  color:#66787b;
+  font-family:Inter, Arial, sans-serif;
+}
+
+.floating-cart__continue-link:hover{
+  color:#075d61;
+}
+
+/* Mesajul de transport gratuit */
+.floating-cart__shipping-note--free{
+  color:#075d61;
+}
+
+/* Stepper-ul de cantitate din sertar */
+.floating-cart__qty--stepper button:not(.danger){
+  background:#eef4f4;
+  border-color:#dbe6e5;
+  color:#0f3f46;
+}
+
+.floating-cart__qty--stepper button:not(.danger):hover{
+  background:#dceceb;
+}
+
+.floating-cart__qty--stepper input:focus{
+  border-color:#a9cecc;
+  box-shadow:0 0 0 3px rgba(7,93,97,.10);
+}
