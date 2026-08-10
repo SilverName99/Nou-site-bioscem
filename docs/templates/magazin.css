@@ -130,6 +130,23 @@
   color:var(--bs-muted);
 }
 
+/* Panoul are o singura coloana de filtre; o lasam pe toata latimea,
+   iar optiunile se aseaza pe randuri de cate 4. */
+.bs-shop .shop-catalog-v2__filters-grid{
+  grid-template-columns:1fr;
+}
+
+.bs-shop .shop-catalog-v2__filter-col{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:4px 20px;
+  align-items:start;
+}
+
+.bs-shop .shop-catalog-v2__filter-col h4{
+  grid-column:1 / -1;
+}
+
 .bs-shop .shop-catalog-v2__filter-col label{
   display:flex;
   align-items:center;
@@ -261,7 +278,20 @@
 
 /* ---------------- RESPONSIVE ---------------- */
 
+@media(max-width:1050px){
+
+  .bs-shop .shop-catalog-v2__filter-col{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+}
+
 @media(max-width:820px){
+
+  .bs-shop .shop-catalog-v2__filter-col{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:2px 14px;
+  }
 
   .bs-shop__head{
     padding:24px 0 4px;
@@ -277,6 +307,14 @@
 
   .bs-shop .bv-popular-card__price{
     font-size:18px;
+  }
+
+}
+
+@media(max-width:480px){
+
+  .bs-shop .shop-catalog-v2__filter-col{
+    grid-template-columns:1fr;
   }
 
 }

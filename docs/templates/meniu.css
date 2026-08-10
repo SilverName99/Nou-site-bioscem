@@ -1,0 +1,90 @@
+/* =========================================================
+   BIOSCEM - MENIU (sertarul mobil)
+
+   Stilurile sertarului sunt injectate de aplicatie DUPA acest CSS,
+   deci regulile de mai jos sunt prefixate cu `.bs-header` ca sa aiba
+   specificitate mai mare si sa castige.
+   ========================================================= */
+
+.bs-header .bv-mobile-menu-token__nav{
+  padding:10px 16px 16px;
+}
+
+/* Paginile principale */
+.bs-header .bv-mobile-menu-token__nav .menu-root > li{
+  border-bottom:1px solid #eef4f4;
+}
+
+.bs-header .bv-mobile-menu-token__nav .menu-root > li > a{
+  padding:13px 4px;
+  color:#18353a;
+  font-family:Inter, Arial, sans-serif;
+  font-size:15px;
+  font-weight:600;
+}
+
+.bs-header .bv-mobile-menu-token__nav .menu-root > li > a:hover{
+  color:#075d61;
+}
+
+/* Titlul de sectiune „Categorii" */
+.bs-header .bv-mobile-menu-token__nav .menu-root > li.bs-menu-title{
+  margin-top:18px;
+  padding:0 4px 8px;
+  border-bottom:1px solid #dbe6e5;
+  color:#7c8a8c;
+  font-family:Inter, Arial, sans-serif;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+/* Categoriile: doua coloane compacte */
+.bs-header .bv-mobile-menu-token__nav .menu-root > li.bs-menu-cats{
+  padding-top:10px;
+  border-bottom:0;
+}
+
+.bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list > li{
+  border:0;
+}
+
+.bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list a{
+  display:flex;
+  align-items:center;
+  min-height:44px;
+  padding:8px 12px;
+  border:1px solid #dbe6e5;
+  border-radius:12px;
+  background:#f6fbfa;
+  color:#0b4b4f;
+  font-family:Inter, Arial, sans-serif;
+  font-size:13px;
+  font-weight:600;
+  line-height:1.25;
+  text-decoration:none;
+}
+
+.bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list a:hover,
+.bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list a:active{
+  border-color:#a9cecc;
+  background:#eaf6f5;
+}
+
+@media(max-width:360px){
+
+  .bs-header .bv-mobile-menu-token__nav .bs-menu-cats__list{
+    grid-template-columns:1fr;
+  }
+
+}
