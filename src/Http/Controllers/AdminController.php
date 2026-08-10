@@ -1253,9 +1253,36 @@ final class AdminController
             $templates = [];
         }
 
+        // Câte produse folosesc fiecare template, plus totalul disponibil,
+        // ca butonul „Aplică la toate produsele" să arate impactul real.
+        $templateUsage = [];
+        $assignableProducts = 0;
+        try {
+            $usageRows = $db->query(
+                'SELECT product_template_id AS template_id, COUNT(*) AS total
+                 FROM products
+                 WHERE deleted_at IS NULL AND is_active = 1 AND product_template_id IS NOT NULL
+                 GROUP BY product_template_id'
+            )->fetchAll() ?: [];
+            foreach ($usageRows as $usageRow) {
+                if (!is_array($usageRow)) {
+                    continue;
+                }
+                $templateUsage[(int) ($usageRow['template_id'] ?? 0)] = (int) ($usageRow['total'] ?? 0);
+            }
+            $assignableProducts = (int) $db->query(
+                'SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND is_active = 1'
+            )->fetchColumn();
+        } catch (Throwable) {
+            $templateUsage = [];
+            $assignableProducts = 0;
+        }
+
         View::render('admin/product-templates', [
             'title' => 'Template-uri produse',
             'templates' => $templates,
+            'templateUsage' => $templateUsage,
+            'assignableProducts' => $assignableProducts,
         ], 'admin/layout');
     }
 
@@ -1465,6 +1492,53 @@ final class AdminController
                     Flash::set('error', 'Nu am putut șterge template-ul.');
                 }
             }
+            header('Location: /admin/products/templates');
+            return;
+        }
+
+        if ($action === 'apply_all') {
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                Flash::set('error', 'Template invalid.');
+                header('Location: /admin/products/templates');
+                return;
+            }
+
+            $exists = $db->prepare('SELECT name FROM product_templates WHERE id = :id LIMIT 1');
+            $exists->execute(['id' => $id]);
+            $templateName = $exists->fetchColumn();
+            if ($templateName === false) {
+                Flash::set('error', 'Template-ul nu mai există.');
+                header('Location: /admin/products/templates');
+                return;
+            }
+
+            try {
+                $stmt = $db->prepare(
+                    'UPDATE products
+                     SET product_template_id = :id
+                     WHERE deleted_at IS NULL
+                       AND is_active = 1
+                       AND (product_template_id IS NULL OR product_template_id <> :current_id)'
+                );
+                $stmt->execute(['id' => $id, 'current_id' => $id]);
+                $updated = $stmt->rowCount();
+
+                AdminActivityLog::log($db, 'product_template_apply_all', [
+                    'id' => $id,
+                    'name' => (string) $templateName,
+                    'updated' => $updated,
+                ]);
+
+                if ($updated > 0) {
+                    Flash::set('success', 'Template-ul „' . (string) $templateName . '" a fost aplicat la ' . $updated . ' produse.');
+                } else {
+                    Flash::set('success', 'Toate produsele active foloseau deja acest template.');
+                }
+            } catch (Throwable) {
+                Flash::set('error', 'Nu am putut aplica template-ul la toate produsele.');
+            }
+
             header('Location: /admin/products/templates');
             return;
         }

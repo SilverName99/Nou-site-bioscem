@@ -1,6 +1,8 @@
 <?php
 $templates = is_array($templates ?? null) ? $templates : [];
 $selectedTemplate = is_array($selectedTemplate ?? null) ? $selectedTemplate : null;
+$templateUsage = is_array($templateUsage ?? null) ? $templateUsage : [];
+$assignableProducts = (int) ($assignableProducts ?? 0);
 $current = [
     'id' => 0,
     'name' => '',
@@ -27,18 +29,30 @@ $current = [
                     <th>Nume</th>
                     <th>Slug</th>
                     <th>Status</th>
-                    <th style="width:140px;">Acțiuni</th>
+                    <th>Produse</th>
+                    <th style="width:190px;">Acțiuni</th>
                 </tr>
                 </thead>
                 <tbody>
                 <?php if ($templates === []): ?>
-                    <tr><td colspan="4">Nu există template-uri de produse.</td></tr>
+                    <tr><td colspan="5">Nu există template-uri de produse.</td></tr>
                 <?php else: ?>
                     <?php foreach ($templates as $tpl): ?>
-                        <?php $id = (int) ($tpl['id'] ?? 0); ?>
+                        <?php
+                        $id = (int) ($tpl['id'] ?? 0);
+                        $usedBy = (int) ($templateUsage[$id] ?? 0);
+                        $remaining = max(0, $assignableProducts - $usedBy);
+                        $templateName = (string) ($tpl['name'] ?? '');
+                        // Numele ajunge într-un string JS dintr-un atribut HTML,
+                        // deci apostrofurile trebuie escapate pentru ambele straturi.
+                        $templateNameJs = htmlspecialchars(
+                            str_replace(['\\', "'"], ['\\\\', "\\'"], $templateName),
+                            ENT_QUOTES
+                        );
+                        ?>
                         <tr>
                             <td>
-                                <strong><?= htmlspecialchars((string) ($tpl['name'] ?? ''), ENT_QUOTES) ?></strong><br>
+                                <strong><?= htmlspecialchars($templateName, ENT_QUOTES) ?></strong><br>
                                 <small><?= htmlspecialchars((string) ($tpl['description'] ?? ''), ENT_QUOTES) ?></small>
                             </td>
                             <td><code><?= htmlspecialchars((string) ($tpl['slug'] ?? ''), ENT_QUOTES) ?></code></td>
@@ -48,8 +62,20 @@ $current = [
                                 </span>
                             </td>
                             <td>
+                                <?php if ($usedBy > 0): ?>
+                                    <span class="status-pill ok"><?= $usedBy ?> / <?= $assignableProducts ?></span>
+                                <?php else: ?>
+                                    <small style="color:#64748b;">niciun produs</small>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <div style="display:flex;gap:8px;align-items:center;">
                                     <a class="icon-btn users-detail-btn" href="/admin/products/templates/builder?id=<?= $id ?>" title="Editează în builder">✎</a>
+                                    <form method="post" action="/admin/products/templates" style="display:inline-flex;align-items:center;margin:0;" onsubmit="return confirm('Aplici template-ul „<?= $templateNameJs ?>” la toate cele <?= $assignableProducts ?> produse active?\n\nProdusele care folosesc alt template vor fi schimbate.');">
+                                        <input type="hidden" name="action" value="apply_all">
+                                        <input type="hidden" name="id" value="<?= $id ?>">
+                                        <button class="icon-btn" type="submit" title="Aplică la toate produsele"<?= $remaining === 0 ? ' disabled' : '' ?>>⇄</button>
+                                    </form>
                                     <form method="post" action="/admin/products/templates" style="display:inline-flex;align-items:center;margin:0;" onsubmit="return confirm('Ștergi template-ul?');">
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="id" value="<?= $id ?>">
