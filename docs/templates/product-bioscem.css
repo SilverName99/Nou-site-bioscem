@@ -568,20 +568,19 @@
 
 
 /* =========================================================
-   TAB-URI
+   TAB-URI (in aceeasi sectiune cu descrierea)
    ========================================================= */
 
-.bs-tabs-shell{
-  margin-top:54px;
-  overflow:hidden;
-  border:1px solid var(--bs-line);
-  border-radius:var(--bs-radius-lg);
-  background:#fff;
-  box-shadow:0 12px 30px rgba(11,70,72,.04);
+/* Panoul parinte are deja padding; continutul tab-urilor nu mai adauga. */
+.bs-tabs-content{
+  padding:0;
 }
 
-.bs-tabs-content{
-  padding:28px 31px;
+/* Linie de separare fata de descriere, doar cand descrierea exista. */
+.bs-description-block:not(.is-empty) + .bs-tabs-content{
+  margin-top:26px;
+  padding-top:26px;
+  border-top:1px solid var(--bs-line);
 }
 
 .bs-tabs-content h2,
@@ -591,7 +590,7 @@
 
 
 /* =========================================================
-   DESCRIERE PRODUS (sectiune proprie, cu titlu)
+   DESCRIERE PRODUS (acelasi panou cu tab-urile)
    ========================================================= */
 
 .bs-panel{
@@ -843,7 +842,6 @@
 
 .bs-product-page .bs-product-info,
 .bs-product-page .bs-panel,
-.bs-product-page .bs-tabs-shell,
 .bs-product-page .bs-help{
   border-radius:var(--bs-radius-lg) !important;
 }
