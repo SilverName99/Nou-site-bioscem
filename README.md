@@ -132,6 +132,38 @@ trimite, deci o campanie programata pleaca in maxim ~5 minute dupa ora setata.
 - login Google;
 - migrare date reale din WooCommerce (produse, clienți, comenzi, puncte fidelizare).
 
+## Import produse + pagini de pe bioscem.ro (fără acces admin WordPress)
+
+Scriptul `scripts/import-bioscem.php` preia produsele și paginile direct de pe
+site-ul vechi, folosind doar endpoint-uri publice (WooCommerce Store API +
+WordPress REST API) — nu are nevoie de niciun cont WordPress. Se rulează de pe
+serverul Hostinger (SSH) sau de pe orice calculator cu PHP și acces la internet
+și la baza de date a noului site.
+
+```bash
+# 1. test fără scriere în DB (nu necesită nici măcar .env configurat)
+php scripts/import-bioscem.php --dry-run --limit=10
+
+# 2. importul real (necesită .env cu datele DB + php scripts/install.php rulat)
+php scripts/import-bioscem.php
+```
+
+Opțiuni utile:
+
+- `--base-url=https://bioscem.ro` — sursa (implicit bioscem.ro);
+- `--limit=N` — importă doar primele N produse (pentru test);
+- `--skip-images` — nu descarcă imaginile local, păstrează URL-urile de pe
+  site-ul vechi (bun pentru un test rapid; fără această opțiune imaginile se
+  descarcă în `public/uploads/products/`);
+- `--skip-products` / `--skip-pages` — importă doar cealaltă categorie;
+- `--default-stock=N` — stocul setat produselor disponibile (implicit 100;
+  stocul real nu este expus public de WooCommerce, deci trebuie ajustat
+  ulterior din admin).
+
+Scriptul e idempotent: rulat de mai multe ori, actualizează după `slug` în loc
+să dubleze. Paginile de sistem WooCommerce (cart, checkout, my-account etc.)
+sunt sărite automat, pentru că noua aplicație are propriile pagini.
+
 ## Migrare utilizatori din WordPress (fără puncte)
 
 1. Exportă din WordPress un CSV cu minim coloanele:
