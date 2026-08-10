@@ -33,7 +33,14 @@ $headerCustomerPoints = $headerCustomerLoggedIn ? max(0, (int) ($currentCustomer
 $cartCountTokens = ['{{cart_count}}', '{{ cart_count }}'];
 $mobileMenuToken = '{{mobile_menu}}';
 $mobileMenuTokenPattern = '/\{\{\s*mobile_menu\s*\}\}/i';
+// Logo pentru sertarul de meniu mobil; se ia primul fișier existent din galerie.
 $mobileMenuLogoPath = '/uploads/gallery/bioscem-logo.png';
+foreach (['bioscem-logo.webp', 'bioscem-logo.png', 'bioscem-logo.jpg', 'bioscem-logo.svg'] as $logoCandidate) {
+    if (is_file(__DIR__ . '/../public/uploads/gallery/' . $logoCandidate)) {
+        $mobileMenuLogoPath = '/uploads/gallery/' . $logoCandidate;
+        break;
+    }
+}
 $mobileMenuFallbackHtml = '<ul class="menu-root"><li><a href="/">Acasă</a></li><li><a href="/magazin">Magazin</a></li><li><a href="/blog">Blog</a></li><li><a href="/contact">Contact</a></li></ul>';
 $mobileMenuTokenAssetsEnabled = false;
 $floatingCartEnabled = (string) ($designSettings['floating_cart_enabled'] ?? '1') === '1';
