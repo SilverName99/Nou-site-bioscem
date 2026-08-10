@@ -1,201 +1,193 @@
 /* =========================================================
-   BIOSCEM - COS
+   BIOSCEM - COS (pagina /cos si sertarul de cos)
 
-   Continutul este generat de {{cart_form}} si vine cu stilurile lui
-   (in verde), injectate DUPA acest CSS. De aceea regulile sunt
-   prefixate cu `.bs-cart`: specificitate mai mare, deci castiga.
-   Componenta foloseste variabile proprii, asa ca cea mai mare parte
-   a reimbracarii se face doar schimbandu-le valorile.
+   Se pune la finalul CSS-ului din Header (Design Site -> Header),
+   nu intr-o pagina: ruta /cos foloseste vederea aplicatiei atunci
+   cand nu exista o pagina cu slug-ul `cos`, iar CSS-ul de pagina
+   nu s-ar incarca.
+
+   Prefixul `.site-shell` da specificitatea necesara, pentru ca
+   stilurile componentei sunt injectate dupa CSS-ul din head.
    ========================================================= */
 
-.bs-cart{
-  --bs-teal:#075d61;
-  --bs-teal-dark:#064b4f;
-  --bs-teal-soft:#eaf6f5;
-  --bs-text:#18353a;
-  --bs-muted:#66787b;
-  --bs-line:#dbe6e5;
-
-  padding:26px 0 60px;
-}
-
-/* Paleta componentei */
-.bs-cart .bv-cart-v2{
-  --cart-border:var(--bs-line);
-  --cart-text:var(--bs-text);
-  --cart-muted:var(--bs-muted);
-  --cart-primary:var(--bs-teal);
+.site-shell .bv-cart-v2{
+  --cart-border:#dbe6e5;
+  --cart-text:#18353a;
+  --cart-muted:#66787b;
+  --cart-primary:#075d61;
   --cart-bg:#ffffff;
 
   font-family:Inter, Arial, sans-serif;
 }
 
 
-/* ---------------- ANTET TABEL ---------------- */
+/* ---------------- TABEL PRODUSE ---------------- */
 
-.bs-cart .bv-cart-v2__head{
-  color:var(--bs-muted);
+.site-shell .bv-cart-v2__head{
+  color:#66787b;
   font-family:inherit;
   letter-spacing:.08em;
 }
 
-.bs-cart .bv-cart-v2__product-name{
+.site-shell .bv-cart-v2__product-name{
   font-family:inherit;
-  color:var(--bs-text);
+  color:#18353a;
   font-weight:600;
 }
 
-.bs-cart .bv-cart-v2__product-link:hover .bv-cart-v2__product-name{
-  color:var(--bs-teal);
+.site-shell .bv-cart-v2__product-link:hover .bv-cart-v2__product-name{
+  color:#075d61;
 }
 
-.bs-cart .bv-cart-v2__product-sub{
+.site-shell .bv-cart-v2__product-sub{
   font-family:inherit;
-  color:var(--bs-muted);
+  color:#66787b;
 }
 
-.bs-cart .bv-cart-v2__price{
+.site-shell .bv-cart-v2__price{
   font-family:Georgia, "Times New Roman", serif;
-  color:var(--bs-teal-dark);
+  color:#064b4f;
   font-weight:600;
 }
 
-.bs-cart .bv-cart-v2__price-old{
+.site-shell .bv-cart-v2__price-old{
   color:#98a7a9;
 }
 
-
-/* ---------------- CANTITATE SI STERGERE ---------------- */
-
-.bs-cart .bv-cart-v2__qty-input{
-  border-color:var(--bs-line);
-  border-radius:10px !important;
+.site-shell .bv-cart-v2__qty-input{
+  border-color:#dbe6e5;
+  border-radius:10px;
   font-family:inherit;
-  color:var(--bs-text);
+  color:#18353a;
 }
 
-.bs-cart .bv-cart-v2__remove{
+.site-shell .bv-cart-v2__remove{
   border-color:#e6d7d7;
   color:#a85a5a;
 }
 
-.bs-cart .bv-cart-v2__remove:hover{
+.site-shell .bv-cart-v2__remove:hover{
   border-color:#d9b9b9;
   background:#fdf6f6;
 }
 
 
-/* ---------------- CUPON ---------------- */
+/* ---------------- CUPON SI PUNCTE ----------------
+   Butoanele nu au clasa .btn: sunt <button> simple in .line-form. */
 
-.bs-cart .bv-cart-v2__coupon-area{
-  border-top-color:var(--bs-line);
+.site-shell .bv-cart-v2__coupon-area{
+  border-top-color:#dbe6e5;
 }
 
-.bs-cart .bv-cart-v2__coupon-area input{
-  border-color:var(--bs-line);
-  border-radius:10px !important;
+.site-shell .bv-cart-v2__line-form label{
   font-family:inherit;
-  color:var(--bs-text);
+  color:#4f6569;
 }
 
-.bs-cart .bv-cart-v2__coupon-area .btn{
-  border-radius:10px !important;
-  font-family:inherit !important;
-  font-weight:600 !important;
-  background:var(--bs-teal) !important;
-  border-color:var(--bs-teal) !important;
-  color:#fff !important;
-}
-
-.bs-cart .bv-cart-v2__coupon-area .btn:hover{
-  background:var(--bs-teal-dark) !important;
-  border-color:var(--bs-teal-dark) !important;
-}
-
-/* Butonul secundar „Elimina cupon" */
-.bs-cart .bv-cart-v2__coupon-area .btn-secondary{
-  background:#fff !important;
-  border-color:var(--bs-line) !important;
-  color:var(--bs-teal-dark) !important;
-}
-
-.bs-cart .bv-cart-v2__coupon-area .btn-secondary:hover{
-  background:var(--bs-teal-soft) !important;
-  border-color:#a9cecc !important;
-}
-
-.bs-cart .bv-cart-v2__coupon-note{
+.site-shell .bv-cart-v2__line-form input{
+  border-color:#dbe6e5;
+  border-radius:10px;
   font-family:inherit;
-  color:var(--bs-muted);
+  color:#18353a;
 }
 
-
-/* ---------------- SUMAR COMANDA ---------------- */
-
-.bs-cart .bv-cart-v2__aside{
-  border-radius:20px !important;
-  border-color:var(--bs-line);
+.site-shell .bv-cart-v2__line-form input:focus{
+  outline:none;
+  border-color:#a9cecc;
+  box-shadow:0 0 0 3px rgba(7,93,97,.10);
 }
 
-.bs-cart .bv-cart-v2__aside h2,
-.bs-cart .bv-cart-v2__aside h3{
-  font-family:Georgia, "Times New Roman", serif;
-  color:var(--bs-teal-dark);
-  font-weight:500;
-}
-
-.bs-cart .bv-cart-v2__row{
+/* „Aplica" */
+.site-shell .bv-cart-v2__line-form button{
+  background:#075d61;
+  color:#fff;
   font-family:inherit;
+  font-size:12.5px;
+  font-weight:600;
+  padding:11px 16px;
+  transition:background .18s ease;
 }
 
-/* Bara de progres pentru transport gratuit */
-.bs-cart .bv-cart-v2__free-text{
+.site-shell .bv-cart-v2__line-form button:hover{
+  background:#064b4f;
+}
+
+/* „Elimina cupon" (varianta secundara) */
+.site-shell .bv-cart-v2__line-form--ghost button,
+.site-shell .bv-cart-v2__line-form button.bv-cart-v2__line-form--ghost{
+  background:#f4faf9;
+  color:#064b4f;
+  border:1px solid #cbe0df;
+}
+
+.site-shell .bv-cart-v2__line-form--ghost button:hover,
+.site-shell .bv-cart-v2__line-form button.bv-cart-v2__line-form--ghost:hover{
+  background:#eaf6f5;
+  border-color:#a9cecc;
+}
+
+.site-shell .bv-cart-v2__coupon-note,
+.site-shell .bv-cart-v2__points-help,
+.site-shell .bv-cart-v2__points-live,
+.site-shell .bv-cart-v2__points-login{
   font-family:inherit;
-  color:var(--bs-muted);
+  color:#66787b;
 }
 
-.bs-cart .bv-cart-v2__free-text strong{
-  color:var(--bs-teal);
-}
-
-.bs-cart .bv-cart-v2__progress{
-  background:#e8f0f0;
-}
-
-.bs-cart .bv-cart-v2__progress > span{
-  background:linear-gradient(90deg,#0a7d82,var(--bs-teal));
-}
-
-
-/* ---------------- PUNCTE DE FIDELITATE ---------------- */
-
-.bs-cart .bv-cart-v2__points-slider{
+.site-shell .bv-cart-v2__points-slider{
   background:linear-gradient(90deg,
-    var(--bs-teal) 0%,
-    var(--bs-teal) var(--points-progress,0%),
+    #075d61 0%,
+    #075d61 var(--points-progress,0%),
     #dfe9e9 var(--points-progress,0%),
     #dfe9e9 100%);
 }
 
-.bs-cart .bv-cart-v2__points-slider::-webkit-slider-thumb{
-  background:var(--bs-teal);
+.site-shell .bv-cart-v2__points-slider::-webkit-slider-thumb{
+  background:#075d61;
 }
 
-.bs-cart .bv-cart-v2__points-slider::-moz-range-thumb{
-  background:var(--bs-teal);
+.site-shell .bv-cart-v2__points-slider::-moz-range-thumb{
+  background:#075d61;
 }
 
-.bs-cart .bv-cart-v2__points-help,
-.bs-cart .bv-cart-v2__points-live,
-.bs-cart .bv-cart-v2__points-login{
+
+/* ---------------- SUMAR ---------------- */
+
+.site-shell .bv-cart-v2__aside{
+  border-color:#dbe6e5;
+}
+
+.site-shell .bv-cart-v2__aside h2,
+.site-shell .bv-cart-v2__aside h3{
+  font-family:Georgia, "Times New Roman", serif;
+  color:#064b4f;
+  font-weight:500;
+}
+
+.site-shell .bv-cart-v2__row{
   font-family:inherit;
 }
 
+.site-shell .bv-cart-v2__free-text{
+  font-family:inherit;
+  color:#66787b;
+}
 
-/* ---------------- BUTON FINALIZARE ---------------- */
+.site-shell .bv-cart-v2__free-text strong{
+  color:#075d61;
+}
 
-.bs-cart .bv-cart-v2__checkout{
-  background:var(--bs-teal);
+.site-shell .bv-cart-v2__progress{
+  background:#e8f0f0;
+}
+
+.site-shell .bv-cart-v2__progress > span{
+  background:linear-gradient(90deg,#0a7d82,#075d61);
+}
+
+/* „Finalizeaza comanda" */
+.site-shell .bv-cart-v2__checkout{
+  background:#075d61;
   font-family:inherit;
   font-size:15px;
   font-weight:600;
@@ -203,23 +195,23 @@
   transition:background .18s ease, transform .18s ease;
 }
 
-.bs-cart .bv-cart-v2__checkout:hover{
-  background:var(--bs-teal-dark);
+.site-shell .bv-cart-v2__checkout:hover{
+  background:#064b4f;
   transform:translateY(-1px);
 }
 
 
 /* ---------------- COS GOL ---------------- */
 
-.bs-cart .bv-cart-v2__empty{
+.site-shell .bv-cart-v2__empty{
   font-family:inherit;
-  color:var(--bs-muted);
+  color:#66787b;
 }
 
-.bs-cart .bv-cart-v2__empty .btn{
-  background:var(--bs-teal) !important;
-  border-color:var(--bs-teal) !important;
-  color:#fff !important;
-  border-radius:100px !important;
-  font-family:inherit !important;
+.site-shell .bv-cart-v2__empty .btn{
+  background:#075d61;
+  border-color:#075d61;
+  color:#fff;
+  border-radius:100px;
+  font-family:inherit;
 }
