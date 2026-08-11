@@ -70,6 +70,14 @@ final class ResponseCache
         $cacheFile = $cacheDir . '/' . $cacheKey . '.html';
         $metaFile = $cacheDir . '/' . $cacheKey . '.json';
         $ttlSeconds = max(60, (int) ($rule['ttl_seconds'] ?? 1800));
+        // Cu disponibilitatea citită din ERP, o pagină ținută în cache o
+        // jumătate de oră ar minți despre stoc — un produs epuizat ar apărea
+        // în continuare la vânzare. Scurtăm la fereastra folosită oricum de
+        // ErpStock, ca cele două să nu se contrazică.
+        if ((string) ($settings['erp_stock_enabled'] ?? '0') === '1'
+            && (string) ($settings['erp_enabled'] ?? '0') === '1') {
+            $ttlSeconds = min($ttlSeconds, 60);
+        }
 
         $meta = self::readMeta($metaFile);
         if (is_array($meta) && is_file($cacheFile)) {
