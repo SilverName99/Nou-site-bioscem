@@ -494,11 +494,16 @@
         if (config.showShipping) {
             rows.push(`<p class="floating-cart__line floating-cart__line--shipping"><span>Transport</span><strong>${shippingLabelHtml}</strong></p>`);
         }
-        if (config.showDiscount) {
-            rows.push(`<p class="floating-cart__line"><span>Reducere</span><strong>-${formatMoney(summary.discount || 0)}</strong></p>`);
+        // Liniile de reducere apar doar când chiar există o reducere; „-0.00 lei"
+        // nu spune nimic și încarcă degeaba sumarul. Setarea rămâne comutatorul
+        // principal — dacă e oprită, linia nu apare nici când există reducere.
+        const discountValue = Number(summary.discount || 0);
+        if (config.showDiscount && discountValue > 0) {
+            rows.push(`<p class="floating-cart__line"><span>Reducere</span><strong>-${formatMoney(discountValue)}</strong></p>`);
         }
-        if (config.showPointsDiscount) {
-            rows.push(`<p class="floating-cart__line"><span>Reducere puncte</span><strong>-${formatMoney(summary.points_discount || 0)}</strong></p>`);
+        const pointsDiscountValue = Number(summary.points_discount || 0);
+        if (config.showPointsDiscount && pointsDiscountValue > 0) {
+            rows.push(`<p class="floating-cart__line"><span>Reducere puncte</span><strong>-${formatMoney(pointsDiscountValue)}</strong></p>`);
         }
         rows.push(`<p class="floating-cart__total"><span>Total</span><strong>${formatMoney(summary.total || 0)}</strong></p>`);
 
