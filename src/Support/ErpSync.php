@@ -388,6 +388,7 @@ final class ErpSync
             'erp_next_retry_at' => 'DATETIME DEFAULT NULL',
             'erp_synced_at' => 'DATETIME DEFAULT NULL',
             'erp_problems' => 'TEXT DEFAULT NULL',
+            'erp_factura_numar' => 'VARCHAR(40) DEFAULT NULL',
         ];
 
         foreach ($columns as $name => $definition) {

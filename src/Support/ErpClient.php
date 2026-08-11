@@ -101,6 +101,50 @@ final class ErpClient
         return $out;
     }
 
+    /**
+     * Notificările pe care ERP-ul nu a reușit să ni le livreze (site jos,
+     * rețea căzută). Cron-ul le preia și le aplică, apoi le confirmă.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function pendingNotifications(): array
+    {
+        $rows = $this->request('GET', '/api/site/notificari');
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Confirmă notificările procesate, ca ERP-ul să nu le mai trimită.
+     *
+     * @param int[] $ids
+     */
+    public function confirmNotifications(array $ids): void
+    {
+        if ($ids === []) {
+            return;
+        }
+        $this->request('POST', '/api/site/notificari/confirma', ['ids' => array_values($ids)]);
+    }
+
+    /** Raportează în ERP AWB-ul generat pe site. */
+    public function reportAwb(string $numarSite, string $awb, string $trackingUrl = ''): void
+    {
+        if (trim($numarSite) === '' || trim($awb) === '') {
+            return;
+        }
+        $this->request('POST', '/api/site/comenzi/awb', [
+            'numarSite' => trim($numarSite),
+            'awb' => trim($awb),
+            'trackingUrl' => trim($trackingUrl),
+        ]);
+    }
+
     /** Trimite o comandă în ERP. Idempotent: ERP-ul deduplică pe numărul comenzii. */
     public function pushOrder(array $payload): array
     {

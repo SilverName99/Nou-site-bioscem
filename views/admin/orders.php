@@ -241,6 +241,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'skipped' => 'ERP: netrimisă',
                         ];
                         $erpPill = ['sent' => 'ok', 'failed' => 'off', 'skipped' => 'muted'][$erpStatus] ?? 'warn';
+                        $erpFactura = trim((string) ($order['erp_factura_numar'] ?? ''));
                     ?>
                     <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?>">
                         <td class="orders-table__check">
@@ -275,6 +276,9 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             </div>
                         </td>
                         <td>
+                            <?php if ($erpFactura !== ''): ?>
+                                <small style="display:block;color:#0f766e;">Factură ERP: <?= htmlspecialchars($erpFactura, ENT_QUOTES) ?></small>
+                            <?php endif; ?>
                             <?php if ($awb !== ''): ?>
                                 <small style="display:block;">FAN: <?= htmlspecialchars($awb, ENT_QUOTES) ?></small>
                                 <small style="display:block;color:#64748b;"><?= htmlspecialchars($trackingStatus !== '' ? $trackingStatus : 'AWB generat', ENT_QUOTES) ?></small>

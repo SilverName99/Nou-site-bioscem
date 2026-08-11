@@ -131,6 +131,8 @@ $router->get('/checkout', [SiteController::class, 'checkout']);
 $router->post('/checkout', [SiteController::class, 'checkoutSubmit']);
 $router->get('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
 $router->post('/webhook/stripe', [SiteController::class, 'stripeWebhook']);
+// Notificările venite din ERP (aprobare/anulare comandă), autentificate cu cheia de integrare.
+$router->post('/api/erp/notificare', [AdminController::class, 'erpNotification']);
 $router->post('/newsletter/optin/{slug}', [SiteController::class, 'optInSubmit']);
 $router->get('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribe']);
 $router->get('/newsletter/track/open/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackOpen']);

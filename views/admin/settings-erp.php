@@ -93,3 +93,19 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
         cele cu ramburs pleacă imediat ce sunt plasate.
     </p>
 </section>
+
+<section class="panel">
+    <h2>Ce se întâmplă la aprobarea din ERP</h2>
+    <p>
+        Când operatorul aprobă comanda în ERP, ERP-ul emite factura, descarcă stocul
+        și anunță site-ul. Site-ul trece comanda în „În procesare", reține numărul
+        facturii, generează AWB-ul FAN (credențialele de curier rămân aici) și trimite
+        clientului emailul cu tracking. Numărul AWB se întoarce apoi în ERP.
+    </p>
+    <p>
+        Dacă site-ul e indisponibil în momentul aprobării, ERP-ul păstrează
+        notificarea, iar cron-ul de mai sus o preia la următoarea rulare — deci nu se
+        pierde nicio aprobare. Anularea din ERP anulează comanda și pe site și
+        returnează punctele de fidelitate.
+    </p>
+</section>

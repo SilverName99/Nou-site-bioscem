@@ -4257,7 +4257,8 @@ final class AdminController
                         shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
                         notes,
-                        erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at
+                        erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
+                        erp_factura_numar
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
                  ORDER BY ' . $orderBySql . '
@@ -5848,6 +5849,173 @@ final class AdminController
                 LoyaltyService::reverseAwardedPointsForOrder($db, $orderId, Auth::id());
             }
         }
+    }
+
+    /**
+     * Endpoint apelat de ERP când o comandă e aprobată sau anulată.
+     *
+     * Autentificarea folosește aceeași cheie ca sensul invers (site → ERP),
+     * trimisă în antetul `X-Andaxi-Site-Key`. Răspunsul întoarce AWB-ul
+     * generat, ca ERP-ul să-l poată afișa pe comandă.
+     */
+    public function erpNotification(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(503);
+            echo json_encode(['ok' => false, 'message' => 'Baza de date nu este disponibilă.']);
+            return;
+        }
+
+        $settings = Settings::all($db);
+        $expected = trim((string) ($settings['erp_api_key'] ?? ''));
+        $provided = trim((string) ($_SERVER['HTTP_X_ANDAXI_SITE_KEY'] ?? ''));
+
+        if ((string) ($settings['erp_enabled'] ?? '0') !== '1') {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'message' => 'Integrarea cu ERP-ul este dezactivată pe site.']);
+            return;
+        }
+        if ($expected === '' || $provided === '' || !hash_equals($expected, $provided)) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'message' => 'Cheie de integrare invalidă.']);
+            return;
+        }
+
+        $raw = (string) file_get_contents('php://input');
+        $event = json_decode($raw, true);
+        if (!is_array($event)) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'message' => 'Payload invalid.']);
+            return;
+        }
+
+        $result = $this->handleErpEvent($event);
+        if (($result['ok'] ?? false) !== true) {
+            http_response_code(422);
+        }
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Aplică pe site un eveniment venit din ERP. Folosit atât de endpoint-ul
+     * de notificare, cât și de cron-ul care recuperează notificările nelivrate.
+     *
+     * @return array{ok: bool, message: string, awb?: string, trackingUrl?: string}
+     */
+    public function handleErpEvent(array $event): array
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            return ['ok' => false, 'message' => 'Baza de date nu este disponibilă.'];
+        }
+
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $eveniment = trim((string) ($event['eveniment'] ?? ''));
+        $numarSite = trim((string) ($event['numarSite'] ?? ''));
+        if ($eveniment === '' || $numarSite === '') {
+            return ['ok' => false, 'message' => 'Evenimentul nu are „eveniment" sau „numarSite".'];
+        }
+
+        $stmt = $db->prepare('SELECT id, status, fan_awb, fan_tracking_url FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute(['nr' => $numarSite]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            return ['ok' => false, 'message' => 'Comanda ' . $numarSite . ' nu există pe site.'];
+        }
+        $orderId = (int) $order['id'];
+
+        return match ($eveniment) {
+            'comanda_aprobata' => $this->applyErpApproval($db, $orderId, $order, $event),
+            'comanda_anulata' => $this->applyErpCancellation($db, $orderId, $order),
+            default => ['ok' => false, 'message' => 'Eveniment necunoscut: ' . $eveniment],
+        };
+    }
+
+    /**
+     * Comandă aprobată în ERP: reținem numărul facturii, trecem comanda în
+     * procesare, generăm AWB-ul (credențialele FAN sunt aici, pe site) și
+     * trimitem clientului emailul cu tracking.
+     */
+    private function applyErpApproval(PDO $db, int $orderId, array $order, array $event): array
+    {
+        $facturaNumar = trim((string) ($event['facturaNumar'] ?? ''));
+
+        try {
+            $db->prepare(
+                'UPDATE orders
+                 SET erp_factura_numar = :factura, erp_status = :erp_status, erp_last_error = NULL
+                 WHERE id = :id'
+            )->execute([
+                'factura' => $facturaNumar !== '' ? $facturaNumar : null,
+                'erp_status' => \App\Support\ErpSync::STATUS_SENT,
+                'id' => $orderId,
+            ]);
+        } catch (Throwable) {
+            // Coloanele lipsă nu blochează restul fluxului.
+        }
+
+        // Statusul se schimbă direct, fără emailul de „în procesare": clientul
+        // primește un singur mesaj, cel cu AWB-ul, imediat după generare.
+        $previousStatus = trim((string) ($order['status'] ?? ''));
+        if (!in_array($previousStatus, ['completed', 'cancelled', 'refunded'], true)) {
+            try {
+                $db->prepare('UPDATE orders SET status = :status WHERE id = :id')
+                    ->execute(['status' => 'processing', 'id' => $orderId]);
+                $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, 'processing');
+            } catch (Throwable) {
+            }
+        }
+
+        $awb = trim((string) ($order['fan_awb'] ?? ''));
+        $awbMessage = '';
+        if ($awb === '') {
+            try {
+                $rezultat = $this->createFanAwbInternal($db, $orderId);
+                if (($rezultat['ok'] ?? false) !== true) {
+                    $awbMessage = (string) ($rezultat['message'] ?? '');
+                }
+            } catch (Throwable $exception) {
+                $awbMessage = $exception->getMessage();
+            }
+
+            $reload = $db->prepare('SELECT fan_awb, fan_tracking_url FROM orders WHERE id = :id LIMIT 1');
+            $reload->execute(['id' => $orderId]);
+            $fresh = $reload->fetch() ?: [];
+            $awb = trim((string) ($fresh['fan_awb'] ?? ''));
+            $order['fan_tracking_url'] = (string) ($fresh['fan_tracking_url'] ?? '');
+        }
+
+        if ($awb !== '') {
+            $settings = Settings::all($db);
+            EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+        }
+
+        return [
+            'ok' => true,
+            'message' => $awb !== ''
+                ? 'Comandă aprobată, AWB generat.'
+                : ('Comandă aprobată, dar AWB-ul nu a putut fi generat. ' . $awbMessage),
+            'awb' => $awb,
+            'trackingUrl' => trim((string) ($order['fan_tracking_url'] ?? '')),
+        ];
+    }
+
+    /** Comandă anulată în ERP: o anulăm și pe site (punctele se întorc). */
+    private function applyErpCancellation(PDO $db, int $orderId, array $order): array
+    {
+        if (trim((string) ($order['status'] ?? '')) === 'cancelled') {
+            return ['ok' => true, 'message' => 'Comanda era deja anulată pe site.'];
+        }
+
+        $rezultat = $this->updateOrderStatusInternal($db, $orderId, 'cancelled');
+        return [
+            'ok' => (bool) ($rezultat['ok'] ?? false),
+            'message' => (string) ($rezultat['message'] ?? ''),
+        ];
     }
 
     public function createFanAwb(array $params): void
