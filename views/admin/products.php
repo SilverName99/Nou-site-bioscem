@@ -58,7 +58,12 @@
                         <small class="old-price"><?= number_format($basePrice, 2) ?> RON</small>
                     <?php endif; ?>
                 </div>
-                <div class="col-stock"><?= (int) $product['stock'] ?></div>
+                <div class="col-stock">
+                    <?= (int) $product['stock'] ?>
+                    <?php if ((int) ($product['stock_from_erp'] ?? 0) === 1): ?>
+                        <small style="display:block;color:#0f766e;font-weight:600;" title="Cantitate disponibilă în gestiunea din ERP (stoc minus rezervări)">din ERP</small>
+                    <?php endif; ?>
+                </div>
                 <div class="col-status">
                     <span class="status-pill <?= ((int) $product['is_active'] === 1) ? 'ok' : 'off' ?>">
                         <?= ((int) $product['is_active'] === 1) ? 'activ' : 'inactiv' ?>

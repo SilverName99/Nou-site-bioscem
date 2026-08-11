@@ -4814,6 +4814,9 @@ CSS;
 
             $rows = is_array($rows) ? $rows : [];
             $rows = array_map(fn (array $row): array => $this->normalizeProduct($row), $rows);
+            // Cu ERP-ul conectat, disponibilitatea vine din gestiune — pentru toate
+            // listele construite din aici (acasă, produse similare, widget-uri).
+            \App\Support\ErpStock::applyToProducts($db, $rows);
             return [$rows, $db];
         }
 

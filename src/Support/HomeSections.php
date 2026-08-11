@@ -94,6 +94,9 @@ final class HomeSections
             return '';
         }
 
+        // Disponibilitatea reală, când site-ul e legat de ERP.
+        ErpStock::applyToProducts($db, $rows);
+
         $cards = [];
         foreach ($rows as $row) {
             if (!is_array($row)) {

@@ -23,7 +23,7 @@ final class ErpStock
     /** Cât timp ținem răspunsul, ca să nu lovim ERP-ul la fiecare afișare. */
     private const TTL_SECONDS = 60;
 
-    /** @var array<string, bool>|null Cache pe durata cererii. */
+    /** @var array<string, float>|null Disponibilul pe SKU, pe durata cererii. */
     private static ?array $memo = null;
 
     /** Integrarea de stoc e pornită și configurată? */
@@ -86,16 +86,12 @@ final class ErpStock
             if (!array_key_exists($key, $availability)) {
                 continue;
             }
-            if ($availability[$key] === false) {
-                $product['out_of_stock'] = 1;
-                $product['stock'] = 0;
-            } else {
-                $product['out_of_stock'] = 0;
-                // ERP-ul spune doar „există"; nu afișăm o cantitate exactă.
-                if ((int) ($product['stock'] ?? 0) <= 0) {
-                    $product['stock'] = 1;
-                }
-            }
+            $disponibil = $availability[$key];
+            $product['out_of_stock'] = $disponibil > 0 ? 0 : 1;
+            $product['stock'] = (int) floor(max(0.0, $disponibil));
+            // Marcaj pentru interfețe: cantitatea afișată vine din gestiune,
+            // nu din fișa produsului de pe site.
+            $product['stock_from_erp'] = 1;
         }
         unset($product);
     }
@@ -109,11 +105,11 @@ final class ErpStock
     }
 
     /**
-     * Disponibilitatea pe SKU (majuscule). SKU-urile pe care ERP-ul nu le
+     * Cantitatea disponibilă pe SKU (majuscule). SKU-urile pe care ERP-ul nu le
      * cunoaște lipsesc din rezultat, ca apelantul să păstreze stocul de pe site.
      *
      * @param string[] $skus
-     * @return array<string, bool>
+     * @return array<string, float>
      */
     public static function availability(?PDO $db, array $skus): array
     {
@@ -143,7 +139,7 @@ final class ErpStock
                         // SKU-urile necunoscute în ERP nu intră în cache ca
                         // „indisponibil" — le lăsăm pe seama stocului de pe site.
                         if (($info['cunoscut'] ?? false) === true) {
-                            self::$memo[$sku] = (bool) ($info['existent'] ?? false);
+                            self::$memo[$sku] = (float) ($info['disponibil'] ?? 0);
                         }
                     }
                     self::writeCache(self::$memo);
@@ -199,7 +195,7 @@ final class ErpStock
         return $out;
     }
 
-    /** @return array<string, bool> */
+    /** @return array<string, float> */
     private static function readCache(): array
     {
         $file = self::cacheFile();
@@ -219,13 +215,13 @@ final class ErpStock
         }
 
         $out = [];
-        foreach ($decoded as $sku => $existent) {
-            $out[strtoupper((string) $sku)] = (bool) $existent;
+        foreach ($decoded as $sku => $disponibil) {
+            $out[strtoupper((string) $sku)] = (float) $disponibil;
         }
         return $out;
     }
 
-    /** @param array<string, bool> $data */
+    /** @param array<string, float> $data */
     private static function writeCache(array $data): void
     {
         $file = self::cacheFile();

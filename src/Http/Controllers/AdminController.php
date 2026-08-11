@@ -903,6 +903,10 @@ final class AdminController
                     }
                 }
             }
+            // Cu ERP-ul conectat, stocul afișat în admin e cel din gestiune —
+            // ca operatorul să vadă aceeași cifră ca site-ul și ca ERP-ul.
+            \App\Support\ErpStock::applyToProducts($db, $products);
+
             foreach ($products as &$product) {
                 if (!is_array($product)) {
                     continue;
