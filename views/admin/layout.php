@@ -83,7 +83,7 @@ if ($adminFavicon === '') {
         $usersSecurityActive = $isActive(['/admin/users/security']);
         $usersGdprActive = $isActive(['/admin/users/gdpr-agreements']);
         $usersListActive = $isActive(['/admin/users']) && !$usersSettingsActive && !$usersPointsActive && !$usersSecurityActive && !$usersGdprActive;
-        $configOpen = $isActive(['/admin/settings/store', '/admin/settings/shipping', '/admin/settings/payments', '/admin/settings/mannequin', '/admin/settings/admins']);
+        $configOpen = $isActive(['/admin/settings/store', '/admin/settings/shipping', '/admin/settings/payments', '/admin/settings/erp', '/admin/settings/mannequin', '/admin/settings/admins']);
         $activityLogActive = $isActive(['/admin/activity-log']);
         $emailsOpen = $isActive(['/admin/emails/sender', '/admin/emails/test']);
         $newsletterOpen = $isActive(['/admin/emails/newsletters']);
@@ -173,7 +173,7 @@ if ($adminFavicon === '') {
                     </div>
                     <?php endif; ?>
 
-                    <?php if ($can('/admin/settings/store') || $can('/admin/settings/shipping') || $can('/admin/settings/payments') || $can('/admin/settings/mannequin') || $can('/admin/settings/google') || $can('/admin/settings/admins')): ?>
+                    <?php if ($can('/admin/settings/store') || $can('/admin/settings/shipping') || $can('/admin/settings/payments') || $can('/admin/settings/erp') || $can('/admin/settings/mannequin') || $can('/admin/settings/google') || $can('/admin/settings/admins')): ?>
                     <div class="admin-nav-group toggle-group <?= $configOpen ? 'open' : '' ?>" data-toggle-group="configurare">
                         <button type="button" class="group-toggle <?= $configOpen ? 'active' : '' ?>">
                             <span class="left">
@@ -195,6 +195,11 @@ if ($adminFavicon === '') {
                             <?php if ($can('/admin/settings/payments')): ?>
                             <a class="<?= $isActive(['/admin/settings/payments']) ? 'active' : '' ?>" href="/admin/settings/payments">
                                 <span class="nav-icon"><?= $icon('payments') ?></span> Setări plăți
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($can('/admin/settings/erp')): ?>
+                            <a class="<?= $isActive(['/admin/settings/erp']) ? 'active' : '' ?>" href="/admin/settings/erp">
+                                <span class="nav-icon"><?= $icon('settings') ?></span> ERP ANDAXI
                             </a>
                             <?php endif; ?>
                             <?php if ($can('/admin/settings/mannequin')): ?>

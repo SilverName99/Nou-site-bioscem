@@ -230,6 +230,17 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         $statusPillClass = (string) ($statusPillClassMap[$statusKey] ?? 'info');
                         $paymentStatusPillClass = (string) ($paymentStatusPillClassMap[$paymentStatusKey] ?? 'info');
                         $paymentMethodPillClass = (string) ($paymentMethodPillClassMap[$paymentMethodKey] ?? 'muted');
+                        $erpEnabled = (string) ($settings['erp_enabled'] ?? '0') === '1';
+                        $erpStatus = strtolower(trim((string) ($order['erp_status'] ?? 'pending')));
+                        $erpError = trim((string) ($order['erp_last_error'] ?? ''));
+                        $erpProblems = trim((string) ($order['erp_problems'] ?? ''));
+                        $erpLabels = [
+                            'sent' => 'ERP: trimisă',
+                            'pending' => 'ERP: în așteptare',
+                            'failed' => 'ERP: eșuată',
+                            'skipped' => 'ERP: netrimisă',
+                        ];
+                        $erpPill = ['sent' => 'ok', 'failed' => 'off', 'skipped' => 'muted'][$erpStatus] ?? 'warn';
                     ?>
                     <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?>">
                         <td class="orders-table__check">
@@ -255,6 +266,12 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                     <span class="status-pill status-pill--<?= htmlspecialchars($paymentStatusPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentStatusLabels[$paymentStatusKey] ?? $paymentStatus), ENT_QUOTES) ?></span>
                                 <?php endif; ?>
                                 <span class="status-pill status-pill--<?= htmlspecialchars($paymentMethodPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentMethodLabels[$paymentMethodKey] ?? $paymentMethodRaw), ENT_QUOTES) ?></span>
+                                <?php if ($erpEnabled): ?>
+                                    <span class="status-pill status-pill--<?= htmlspecialchars($erpPill, ENT_QUOTES) ?>"
+                                          title="<?= htmlspecialchars($erpError !== '' ? $erpError : ($erpProblems !== '' ? 'De rezolvat în ERP: ' . $erpProblems : ''), ENT_QUOTES) ?>">
+                                        <?= htmlspecialchars((string) ($erpLabels[$erpStatus] ?? $erpStatus), ENT_QUOTES) ?>
+                                    </span>
+                                <?php endif; ?>
                             </div>
                         </td>
                         <td>
@@ -276,6 +293,11 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" onsubmit="return confirm('Sigur vrei să generezi AWB FAN pentru această comandă?');">
                                             <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
                                             <button type="submit" class="order-action-btn" title="Generează AWB FAN">🚚</button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($erpEnabled && $erpStatus !== 'sent'): ?>
+                                        <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">
+                                            <button type="submit" class="order-action-btn" title="Retrimite în ERP<?= $erpError !== '' ? (' — ultima eroare: ' . htmlspecialchars($erpError, ENT_QUOTES)) : '' ?>">🔄</button>
                                         </form>
                                     <?php endif; ?>
                                     <button

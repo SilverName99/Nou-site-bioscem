@@ -305,6 +305,9 @@ final class SiteController
         }
 
         $product = $this->normalizeProduct($product);
+        // Cu ERP-ul conectat, disponibilitatea vine din gestiune, nu din fișa
+        // produsului. Dacă ERP-ul nu răspunde, rămâne stocul de pe site.
+        $product = \App\Support\ErpStock::applyToProduct($db, $product);
         $product['bbd_entries'] = $this->decorateProductBbdEntriesWithAvailability($product);
         $isOutOfStock = (int) ($product['out_of_stock'] ?? 0) === 1;
         $extraFields = [];
@@ -1054,6 +1057,9 @@ final class SiteController
         }
 
         EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'new_order');
+        // Comanda pleacă spre ERP; dacă ERP-ul nu răspunde, rămâne marcată
+        // pentru reîncercare și clientul nu vede nicio eroare.
+        \App\Support\ErpSync::push($db, $orderId);
         EmailAutomation::markCartConverted($db, session_id());
         Cart::clear();
         unset($_SESSION['checkout_form']);
@@ -5131,6 +5137,7 @@ CSS;
         }
 
         $rows = $stmt->fetchAll() ?: [];
+        \App\Support\ErpStock::applyToProducts($db, $rows);
         $items = [];
         foreach ($rows as $row) {
             if (!is_array($row)) {
@@ -5308,6 +5315,7 @@ CSS;
             $settings = Settings::all($db);
             if ($targetOrderId > 0) {
                 EmailAutomation::sendOrderTemplateById($db, $settings, $targetOrderId, 'new_order');
+                \App\Support\ErpSync::push($db, $targetOrderId);
             }
         } else {
             if ($targetOrderId > 0) {
@@ -5359,6 +5367,7 @@ CSS;
         if ($paid) {
             $settings = Settings::all($db);
             EmailAutomation::sendOrderTemplateById($db, $settings, $targetOrderId, 'new_order');
+            \App\Support\ErpSync::push($db, $targetOrderId);
             return;
         }
 

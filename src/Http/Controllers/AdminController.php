@@ -4162,6 +4162,7 @@ final class AdminController
 
         if ($db instanceof PDO) {
             $this->ensureOptionalSchema($db);
+            \App\Support\ErpSync::ensureSchema($db);
             $this->ensurePromoSchema($db);
             \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
             $promoProducts = $db->query('SELECT id, name FROM promotional_products WHERE is_active = 1 ORDER BY sort_order ASC, name ASC')->fetchAll() ?: [];
@@ -4255,7 +4256,8 @@ final class AdminController
                         billing_is_company, billing_company_name, billing_company_tax_id, billing_company_registration_no,
                         shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
-                        notes
+                        notes,
+                        erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
                  ORDER BY ' . $orderBySql . '
@@ -4379,6 +4381,7 @@ final class AdminController
             'orderStatusLabels' => $orderStatusLabels,
             'orderPaymentStatusLabels' => $orderPaymentStatusLabels,
             'orderPaymentMethodLabels' => $orderPaymentMethodLabels,
+            'settings' => Settings::all($db),
         ], 'admin/layout');
     }
 
@@ -6754,6 +6757,152 @@ final class AdminController
 
         Flash::set('success', 'Setările Stripe au fost salvate.');
         header('Location: /admin/settings/payments');
+    }
+
+    public function erpSettingsForm(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        $settings = Settings::all($db);
+        $queue = ['pending' => 0, 'failed' => 0, 'sent' => 0];
+
+        if ($db instanceof PDO) {
+            \App\Support\ErpSync::ensureSchema($db);
+            try {
+                $rows = $db->query(
+                    "SELECT erp_status, COUNT(*) AS total
+                     FROM orders WHERE deleted_at IS NULL
+                     GROUP BY erp_status"
+                )->fetchAll() ?: [];
+                foreach ($rows as $row) {
+                    $status = (string) ($row['erp_status'] ?? '');
+                    if (array_key_exists($status, $queue)) {
+                        $queue[$status] = (int) ($row['total'] ?? 0);
+                    }
+                }
+            } catch (Throwable) {
+                // Contoarele sunt informative; pagina se afișează oricum.
+            }
+        }
+
+        View::render('admin/settings-erp', [
+            'title' => 'ERP ANDAXI',
+            'settings' => $settings,
+            'queue' => $queue,
+        ], 'admin/layout');
+    }
+
+    public function erpSettingsSave(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/settings/erp');
+            return;
+        }
+
+        $action = (string) ($_POST['action'] ?? 'save');
+        $existing = Settings::all($db);
+
+        // Cheia se rescrie doar când operatorul chiar a tastat una nouă —
+        // altfel un „Salvează" fără să o retasteze ar șterge integrarea.
+        $apiKey = trim((string) ($_POST['erp_api_key'] ?? ''));
+        if ($apiKey === '') {
+            $apiKey = (string) ($existing['erp_api_key'] ?? '');
+        }
+
+        $url = rtrim(trim((string) ($_POST['erp_url'] ?? '')), '/');
+        // Adresa se dă fără „/api"; îl tăiem dacă a fost lipit din browser.
+        if (str_ends_with($url, '/api')) {
+            $url = substr($url, 0, -4);
+        }
+
+        Settings::save($db, [
+            'erp_enabled' => isset($_POST['erp_enabled']) ? '1' : '0',
+            'erp_url' => $url,
+            'erp_api_key' => $apiKey,
+            'erp_timeout' => (string) max(5, min(60, (int) ($_POST['erp_timeout'] ?? 20))),
+            'erp_stock_enabled' => isset($_POST['erp_stock_enabled']) ? '1' : '0',
+        ]);
+
+        // Setările s-au schimbat: disponibilitatea în cache nu mai e de încredere.
+        \App\Support\ErpStock::flush();
+        AdminActivityLog::log($db, 'erp_settings_save', ['action' => $action]);
+
+        if ($action === 'test') {
+            $client = \App\Support\ErpClient::fromSettings(Settings::all($db));
+            if ($client === null) {
+                Flash::set('error', 'Completează adresa ERP-ului și cheia de integrare.');
+            } else {
+                try {
+                    $ping = $client->ping();
+                    $gestiune = (bool) ($ping['gestiuneConfigurata'] ?? false);
+                    if ($gestiune) {
+                        Flash::set('success', 'Conexiune reușită. ERP-ul răspunde și are gestiunea configurată.');
+                    } else {
+                        Flash::set('error', 'Conexiune reușită, dar în ERP nu e aleasă gestiunea implicită (Setări → Setări site).');
+                    }
+                } catch (Throwable $exception) {
+                    Flash::set('error', $exception->getMessage());
+                }
+            }
+            header('Location: /admin/settings/erp');
+            return;
+        }
+
+        if ($action === 'retry') {
+            $rezultat = \App\Support\ErpSync::retryPending($db, 50);
+            if ($rezultat['incercate'] === 0) {
+                Flash::set('success', 'Nu există comenzi de retrimis.');
+            } else {
+                Flash::set(
+                    $rezultat['esuate'] > 0 ? 'error' : 'success',
+                    sprintf(
+                        'Reîncercate %d comenzi: %d trimise, %d încă eșuate.',
+                        $rezultat['incercate'],
+                        $rezultat['reusite'],
+                        $rezultat['esuate']
+                    )
+                );
+            }
+            header('Location: /admin/settings/erp');
+            return;
+        }
+
+        Flash::set('success', 'Setările ERP au fost salvate.');
+        header('Location: /admin/settings/erp');
+    }
+
+    /** Retrimite manual o comandă în ERP, din lista de comenzi. */
+    public function orderErpRetry(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $orderId = (int) ($params['id'] ?? 0);
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            Flash::set('error', 'Comandă invalidă.');
+            header('Location: /admin/orders');
+            return;
+        }
+
+        $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
+        Flash::set($rezultat['ok'] ? 'success' : 'error', $rezultat['message']);
+        AdminActivityLog::log($db, 'erp_order_retry', [
+            'order_id' => $orderId,
+            'ok' => $rezultat['ok'],
+        ]);
+
+        header('Location: /admin/orders');
     }
 
     public function googleSettingsForm(): void

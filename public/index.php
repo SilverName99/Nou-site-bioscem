@@ -224,6 +224,7 @@ $router->post('/admin/products/{id}/force-delete', [AdminController::class, 'for
 $router->post('/admin/products/image-upload', [AdminController::class, 'productImageUpload']);
 $router->get('/admin/orders', [AdminController::class, 'orders']);
 $router->get('/admin/orders/export', [AdminController::class, 'ordersExport']);
+$router->post('/admin/orders/{id}/erp-retry', [AdminController::class, 'orderErpRetry']);
 $router->get('/admin/orders/trash', [AdminController::class, 'ordersTrash']);
 $router->post('/admin/orders/{id}/status', [AdminController::class, 'updateOrderStatus']);
 $router->post('/admin/orders/{id}/delete', [AdminController::class, 'deleteOrder']);
@@ -257,6 +258,8 @@ $router->post('/admin/settings/shipping', [AdminController::class, 'shippingSett
 $router->post('/admin/settings/shipping/localities/import', [AdminController::class, 'shippingLocalitiesImport']);
 $router->post('/admin/settings/shipping/streets/import', [AdminController::class, 'shippingStreetsImport']);
 $router->post('/admin/settings/shipping/extra-km/import', [AdminController::class, 'shippingLocalitiesKmImport']);
+$router->get('/admin/settings/erp', [AdminController::class, 'erpSettingsForm']);
+$router->post('/admin/settings/erp', [AdminController::class, 'erpSettingsSave']);
 $router->get('/admin/settings/payments', [AdminController::class, 'paymentSettingsForm']);
 $router->post('/admin/settings/payments', [AdminController::class, 'paymentSettingsSave']);
 $router->get('/admin/emails', [AdminController::class, 'emails']);

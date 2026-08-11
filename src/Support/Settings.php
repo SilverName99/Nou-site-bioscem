@@ -144,6 +144,12 @@ final class Settings
         'store_quantity_apply_cart_page' => '0',
         // Sertarul lateral „Oferte” (produse cu preț redus / dată de expirare).
         'store_bbd_sidebar_enabled' => '1',
+        // Integrare ERP ANDAXI (comenzi + stoc).
+        'erp_enabled' => '0',
+        'erp_url' => '',
+        'erp_api_key' => '',
+        'erp_timeout' => '20',
+        'erp_stock_enabled' => '0',
         'store_favicon_url' => '',
         'store_seo_home_title' => '',
         'store_seo_home_description' => '',
