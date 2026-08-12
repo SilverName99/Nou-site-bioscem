@@ -349,6 +349,72 @@ if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'f
                    value="<?= htmlspecialchars((string) ($settings['fan_sender_zip_code'] ?? ''), ENT_QUOTES) ?>">
         </div>
 
+        <?php
+        // Depozitele (gestiunile) legate de site în ERP: câte o adresă de
+        // ridicare pentru fiecare. Secțiunea apare doar când ERP-ul răspunde
+        // și are gestiuni legate.
+        $erpDepozite = is_array($erpDepozite ?? null) ? $erpDepozite : [];
+        $fanDepozite = json_decode((string) ($settings['fan_depozite_json'] ?? ''), true);
+        $fanDepozite = is_array($fanDepozite) ? $fanDepozite : [];
+        ?>
+        <?php if ($erpDepozite !== []): ?>
+            <article class="panel shipping-settings-panel" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?> style="grid-column:1/-1;margin:12px 0 0;background:#f8fafc;border-color:#cbd5e1;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <div>
+                        <h3 style="margin:0;">Adrese de ridicare per depozit</h3>
+                        <p style="margin:6px 0 0;color:#64748b;">
+                            Depozitele legate de site în ERP<?= ($erpGestiuniPeJudete ?? false) ? ', cu alocare pe județe' : '' ?>.
+                            Comenzile din județele unui depozit pleacă de la adresa lui;
+                            depozitele fără adresă completă folosesc expeditorul global de mai sus.
+                        </p>
+                    </div>
+                    <a class="btn btn-secondary" href="/admin/settings/shipping/judete/export"
+                       title="Descarcă județele FAN pentru importul din ERP (Liste de referință → Județe)">
+                        ⭳ Export Județe
+                    </a>
+                </div>
+            </article>
+            <?php foreach ($erpDepozite as $depozit): ?>
+                <?php
+                $depozitId = (string) ($depozit['id'] ?? '');
+                $depozitAdresa = is_array($fanDepozite[$depozitId] ?? null) ? $fanDepozite[$depozitId] : [];
+                $depozitJudete = array_map('strval', (array) ($depozit['judete'] ?? []));
+                $fieldName = static fn (string $key): string => 'fan_depozit[' . htmlspecialchars($depozitId, ENT_QUOTES) . '][' . $key . ']';
+                $fieldValue = static fn (string $key): string => htmlspecialchars((string) ($depozitAdresa[$key] ?? ''), ENT_QUOTES);
+                ?>
+                <div style="grid-column:1/-1;margin-top:6px;" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <h3 style="margin:0 0 2px;"><?= htmlspecialchars((string) ($depozit['name'] ?? ''), ENT_QUOTES) ?></h3>
+                    <small style="color:#64748b;">
+                        <?= $depozitJudete !== [] ? ('Județe: ' . htmlspecialchars(implode(', ', $depozitJudete), ENT_QUOTES)) : 'Fără județe alocate în ERP.' ?>
+                    </small>
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Județ</label>
+                    <input type="text" name="<?= $fieldName('county') ?>" value="<?= $fieldValue('county') ?>">
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Localitate</label>
+                    <input type="text" name="<?= $fieldName('locality') ?>" value="<?= $fieldValue('locality') ?>">
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Stradă (cu număr)</label>
+                    <input type="text" name="<?= $fieldName('street') ?>" value="<?= $fieldValue('street') ?>">
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Cod poștal</label>
+                    <input type="text" name="<?= $fieldName('zip_code') ?>" value="<?= $fieldValue('zip_code') ?>">
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Contact (opțional, altfel expeditorul global)</label>
+                    <input type="text" name="<?= $fieldName('name') ?>" value="<?= $fieldValue('name') ?>" placeholder="Nume">
+                </div>
+                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <label>Telefon (opțional)</label>
+                    <input type="text" name="<?= $fieldName('phone') ?>" value="<?= $fieldValue('phone') ?>">
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+
         <div style="grid-column:1/-1;">
             <button class="btn" type="submit">Salvează setările de livrare</button>
         </div>

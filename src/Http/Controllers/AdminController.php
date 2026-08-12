@@ -6694,14 +6694,73 @@ final class AdminController
         $localitiesCount = $this->fanLocalitiesCount($db);
         $streetsCount = $this->fanStreetsCount($db);
         $kmLocalitiesCount = $this->fanLocalitiesExtraKmCount($db);
+
+        // Depozitele (gestiunile) legate de site în ERP, pentru blocurile de
+        // adresă per depozit. Dacă ERP-ul nu răspunde, secțiunea nu apare.
+        $erpDepozite = [];
+        $erpGestiuniPeJudete = false;
+        if ($db instanceof PDO) {
+            $mapare = \App\Support\ErpShipping::gestiuni($db);
+            if (is_array($mapare)) {
+                $erpDepozite = $mapare['gestiuni'];
+                $erpGestiuniPeJudete = (bool) ($mapare['gestiuniPeJudete'] ?? false);
+            }
+        }
+
         View::render('admin/settings-shipping', [
             'title' => 'Setări livrare',
             'settings' => $settings,
             'fanLocalitiesCount' => $localitiesCount,
             'fanStreetsCount' => $streetsCount,
             'fanExtraKmCount' => $kmLocalitiesCount,
+            'erpDepozite' => $erpDepozite,
+            'erpGestiuniPeJudete' => $erpGestiuniPeJudete,
             'shippingTab' => $this->normalizeShippingSettingsTab((string) ($_GET['tab'] ?? 'fan-localities')),
         ], 'admin/layout');
+    }
+
+    /**
+     * Exportă județele din nomenclatorul FAN al site-ului, pentru importul din
+     * ERP (Liste de referință → Județe → Import Județe). O coloană: numele.
+     */
+    public function shippingJudeteExport(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/settings/shipping');
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+
+        try {
+            $rows = $db->query('SELECT county FROM fan_localities GROUP BY county ORDER BY county ASC')->fetchAll() ?: [];
+        } catch (Throwable) {
+            $rows = [];
+        }
+        if ($rows === []) {
+            Flash::set('error', 'Nu există județe FAN importate. Importă întâi localitățile FAN.');
+            header('Location: /admin/settings/shipping');
+            return;
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="judete-fan-' . date('Y-m-d') . '.csv"');
+        header('Pragma: no-cache');
+
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['nume'], ',');
+        foreach ($rows as $row) {
+            $county = trim((string) ($row['county'] ?? ''));
+            if ($county !== '') {
+                fputcsv($out, [$county], ',');
+            }
+        }
+        fclose($out);
     }
 
     public function shippingSettingsSave(): void
@@ -6770,10 +6829,39 @@ final class AdminController
             'fan_parcel_length_cm' => trim((string) ($_POST['fan_parcel_length_cm'] ?? '')),
             'fan_parcel_width_cm' => trim((string) ($_POST['fan_parcel_width_cm'] ?? '')),
             'fan_parcel_height_cm' => trim((string) ($_POST['fan_parcel_height_cm'] ?? '')),
+            'fan_depozite_json' => $this->fanDepoziteJsonFromInput($_POST['fan_depozit'] ?? null),
         ]);
 
         Flash::set('success', 'Setările de livrare au fost salvate.');
         header('Location: /admin/settings/shipping?tab=' . rawurlencode($shippingTab));
+    }
+
+    /**
+     * Adresele FAN per depozit, din formularul de livrare, ca JSON compact.
+     * Depozitele fără niciun câmp completat nu se salvează.
+     */
+    private function fanDepoziteJsonFromInput(mixed $input): string
+    {
+        if (!is_array($input)) {
+            return '';
+        }
+        $out = [];
+        foreach ($input as $gestiuneId => $fields) {
+            if (!is_array($fields)) {
+                continue;
+            }
+            $adresa = [];
+            foreach (['name', 'phone', 'email', 'county', 'locality', 'street', 'street_no', 'zip_code'] as $key) {
+                $value = trim((string) ($fields[$key] ?? ''));
+                if ($value !== '') {
+                    $adresa[$key] = $value;
+                }
+            }
+            if ($adresa !== []) {
+                $out[(string) $gestiuneId] = $adresa;
+            }
+        }
+        return $out === [] ? '' : (string) json_encode($out, JSON_UNESCAPED_UNICODE);
     }
 
     private function fanNormalizeSelectedOptions(array $selected): string
@@ -7006,6 +7094,7 @@ final class AdminController
 
         // Setările s-au schimbat: disponibilitatea în cache nu mai e de încredere.
         \App\Support\ErpStock::flush();
+        \App\Support\ErpShipping::flush();
         AdminActivityLog::log($db, 'erp_settings_save', ['action' => $action]);
 
         if ($action === 'test') {
@@ -11916,6 +12005,21 @@ HTML;
                 'width' => (float) $dimensions['width'],
                 'height' => (float) $dimensions['height'],
             ];
+        }
+
+        // Gestiuni pe județe: AWB-ul se ridică de la depozitul care deservește
+        // județul de livrare al comenzii (adresa din Setări livrare, per depozit).
+        $awbCounty = ((int) ($order['shipping_same_as_billing'] ?? 1)) === 1
+            ? trim((string) ($order['billing_county'] ?? ''))
+            : trim((string) ($order['shipping_county'] ?? ''));
+        $awbDb = $this->db();
+        $senderOverride = \App\Support\ErpShipping::senderForCounty(
+            $awbDb instanceof PDO ? $awbDb : null,
+            $settings,
+            $awbCounty
+        );
+        if ($senderOverride !== null) {
+            $settings = array_merge($settings, $senderOverride);
         }
 
         $senderName = trim((string) ($settings['fan_sender_name'] ?? ''));

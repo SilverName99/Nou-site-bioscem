@@ -5702,6 +5702,17 @@ CSS;
         );
         $recipientCounty = $resolvedRecipient['county'];
         $recipientLocality = $resolvedRecipient['locality'];
+        // Gestiuni pe județe: expeditorul devine depozitul care deservește
+        // județul clientului. Dacă ERP-ul nu răspunde sau județul nu e mapat,
+        // rămâne expeditorul global.
+        $senderOverride = \App\Support\ErpShipping::senderForCounty(
+            $db instanceof PDO ? $db : null,
+            $settings,
+            $recipientCounty
+        );
+        if ($senderOverride !== null) {
+            $settings = array_merge($settings, $senderOverride);
+        }
         $senderCounty = trim((string) ($settings['fan_sender_county'] ?? ''));
         $senderLocality = trim((string) ($settings['fan_sender_locality'] ?? ''));
         $resolvedSender = $this->resolveFanAddressForApi(
@@ -8669,6 +8680,17 @@ CSS;
         $senderName = trim((string) ($settings['fan_sender_name'] ?? ''));
         $senderPhone = trim((string) ($settings['fan_sender_phone'] ?? ''));
         $senderEmail = trim((string) ($settings['fan_sender_email'] ?? ''));
+        // Gestiuni pe județe: expeditorul devine depozitul care deservește
+        // județul clientului. Dacă ERP-ul nu răspunde sau județul nu e mapat,
+        // rămâne expeditorul global.
+        $senderOverride = \App\Support\ErpShipping::senderForCounty(
+            $db instanceof PDO ? $db : null,
+            $settings,
+            $recipientCounty
+        );
+        if ($senderOverride !== null) {
+            $settings = array_merge($settings, $senderOverride);
+        }
         $senderCounty = trim((string) ($settings['fan_sender_county'] ?? ''));
         $senderLocality = trim((string) ($settings['fan_sender_locality'] ?? ''));
         $resolvedSender = $this->resolveFanAddressForApi(

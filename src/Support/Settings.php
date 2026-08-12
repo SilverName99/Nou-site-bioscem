@@ -150,6 +150,8 @@ final class Settings
         'erp_api_key' => '',
         'erp_timeout' => '20',
         'erp_stock_enabled' => '0',
+        // Adrese FAN per depozit (JSON: gestiuneId → adresă), pentru gestiuni pe județe.
+        'fan_depozite_json' => '',
         'store_favicon_url' => '',
         'store_seo_home_title' => '',
         'store_seo_home_description' => '',

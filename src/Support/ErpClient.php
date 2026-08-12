@@ -145,6 +145,31 @@ final class ErpClient
         ]);
     }
 
+    /**
+     * Gestiunile legate de site, cu județele deservite de fiecare.
+     *
+     * @return array{gestiuniPeJudete: bool, gestiuni: array<int, array{id: string, name: string, judete: string[]}>}
+     */
+    public function gestiuni(): array
+    {
+        $raw = $this->request('GET', '/api/site/gestiuni');
+        $gestiuni = [];
+        foreach ((array) ($raw['gestiuni'] ?? []) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $gestiuni[] = [
+                'id' => (string) ($row['id'] ?? ''),
+                'name' => (string) ($row['name'] ?? ''),
+                'judete' => array_values(array_map('strval', (array) ($row['judete'] ?? []))),
+            ];
+        }
+        return [
+            'gestiuniPeJudete' => (bool) ($raw['gestiuniPeJudete'] ?? false),
+            'gestiuni' => $gestiuni,
+        ];
+    }
+
     /** Trimite o comandă în ERP. Idempotent: ERP-ul deduplică pe numărul comenzii. */
     public function pushOrder(array $payload): array
     {
