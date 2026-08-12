@@ -152,6 +152,30 @@ final class ErpSync
         self::mark($db, $orderId, self::STATUS_SKIPPED, ['error' => $motiv]);
     }
 
+    /**
+     * Comanda nu mai are ce căuta în ERP (anulată, eșuată, rambursată).
+     * O marcăm netrimisă doar dacă chiar nu a plecat încă — dacă ERP-ul o are
+     * deja, referința rămâne, iar anularea se face acolo.
+     */
+    public static function skipDacaNetrimisa(PDO $db, int $orderId, string $motiv = ''): void
+    {
+        if ($orderId <= 0) {
+            return;
+        }
+        try {
+            self::ensureSchema($db);
+            $stmt = $db->prepare('SELECT erp_status FROM orders WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $orderId]);
+            $status = strtolower(trim((string) ($stmt->fetchColumn() ?: self::STATUS_PENDING)));
+            if ($status === self::STATUS_SENT || $status === self::STATUS_SKIPPED) {
+                return;
+            }
+            self::skip($db, $orderId, $motiv);
+        } catch (Throwable) {
+            // Marcajul e informativ; o eroare aici nu trebuie să oprească anularea.
+        }
+    }
+
     // ───────────────────────────────────────────────────────────
     // Payload
     // ───────────────────────────────────────────────────────────

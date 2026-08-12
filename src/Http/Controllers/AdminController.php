@@ -5623,6 +5623,16 @@ final class AdminController
                 EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'cancelled');
             }
 
+            if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
+                // Comanda nu mai pleacă în ERP: o scoatem din coada de
+                // reîncercări, ca să nu rămână veșnic „în așteptare".
+                \App\Support\ErpSync::skipDacaNetrimisa(
+                    $db,
+                    $orderId,
+                    'Comandă ' . $status . ' pe site; nu se mai trimite în ERP.'
+                );
+            }
+
             $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, $status);
             return ['ok' => true, 'message' => 'Statusul comenzii a fost actualizat.'];
         } catch (Throwable $exception) {

@@ -256,6 +256,14 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'failed' => 'ERP: eșuată',
                             'skipped' => 'ERP: netrimisă',
                         ];
+                        // O comandă anulată/eșuată nu mai pleacă în ERP, chiar dacă a
+                        // rămas marcată „în așteptare" dinainte de anulare.
+                        if (in_array($statusKey, ['cancelled', 'refunded', 'failed'], true)
+                            && in_array($erpStatus, ['pending', 'failed'], true)
+                        ) {
+                            $erpStatus = 'skipped';
+                            $erpError = '';
+                        }
                         $erpPill = ['sent' => 'ok', 'failed' => 'off', 'skipped' => 'muted'][$erpStatus] ?? 'warn';
                         $erpFactura = trim((string) ($order['erp_factura_numar'] ?? ''));
                     ?>
@@ -330,7 +338,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                             <button type="submit" class="order-action-btn" title="Generează AWB FAN">🚚</button>
                                         </form>
                                     <?php endif; ?>
-                                    <?php if ($erpEnabled && $erpStatus !== 'sent'): ?>
+                                    <?php if ($erpEnabled && !in_array($erpStatus, ['sent', 'skipped'], true)): ?>
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">
                                             <button type="submit" class="order-action-btn" title="Retrimite în ERP<?= $erpError !== '' ? (' — ultima eroare: ' . htmlspecialchars($erpError, ENT_QUOTES)) : '' ?>">🔄</button>
                                         </form>

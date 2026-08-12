@@ -5354,6 +5354,11 @@ CSS;
             ]);
             LoyaltyService::refundRedeemedPointsForOrder($db, $orderId);
             LoyaltyService::reverseAwardedPointsForOrder($db, $orderId);
+            \App\Support\ErpSync::skipDacaNetrimisa(
+                $db,
+                $orderId,
+                'Plata a fost respinsă; comanda nu se trimite în ERP.'
+            );
             return true;
         }
 
@@ -5511,6 +5516,11 @@ CSS;
         ]);
         LoyaltyService::refundRedeemedPointsForOrder($db, $orderId);
         LoyaltyService::reverseAwardedPointsForOrder($db, $orderId);
+        \App\Support\ErpSync::skipDacaNetrimisa(
+            $db,
+            $orderId,
+            'Plata nu a putut fi inițializată; comanda nu se trimite în ERP.'
+        );
     }
 
     private function applyStripeSessionResult(PDO $db, array $session, bool $paid): void
