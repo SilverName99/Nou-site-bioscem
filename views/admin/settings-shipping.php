@@ -41,12 +41,23 @@ $renderCampJudet = static function (string $name, string $value, string $etichet
 
 $renderCampLocalitate = static function (string $name, string $value, string $numeCampJudet, string $eticheta = 'Localitate'): void {
     $id = 'fanloc-' . substr(md5($name), 0, 8);
+    $nameAttr = htmlspecialchars($name, ENT_QUOTES);
+    $valueAttr = htmlspecialchars($value, ENT_QUOTES);
     echo '<label for="' . $id . '">' . htmlspecialchars($eticheta, ENT_QUOTES) . '</label>';
-    echo '<input type="text" id="' . $id . '" name="' . htmlspecialchars($name, ENT_QUOTES) . '" value="' . htmlspecialchars($value, ENT_QUOTES) . '"'
-        . ' list="' . $id . '-list" autocomplete="off" placeholder="scrie 2-3 litere..."'
-        . ' data-fan-locality data-county-field="' . htmlspecialchars($numeCampJudet, ENT_QUOTES) . '">';
-    echo '<datalist id="' . $id . '-list"></datalist>';
-    echo '<small style="color:#64748b;">Sugestiile vin din localitățile FAN importate. La București alege <strong>Bucuresti</strong>; sectorul se trece la Stradă.</small>';
+    echo '<div class="fan-combo" data-fan-combo>';
+    // Valoarea trimisă la salvare stă într-un câmp ascuns: câmpul vizibil nu
+    // are `name`, ca browserul să nu-l trateze drept adresă și să suprapună
+    // propriile sugestii de autofill peste lista noastră.
+    echo '<input type="hidden" name="' . $nameAttr . '" value="' . $valueAttr . '" data-fan-combo-value>';
+    echo '<input type="text" id="' . $id . '" value="' . $valueAttr . '" class="fan-combo__input"'
+        . ' autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"'
+        . ' role="combobox" aria-expanded="false" aria-autocomplete="list"'
+        . ' placeholder="scrie sau alege localitatea..." data-fan-combo-input'
+        . ' data-county-field="' . htmlspecialchars($numeCampJudet, ENT_QUOTES) . '">';
+    echo '<button type="button" class="fan-combo__toggle" tabindex="-1" aria-label="Arată localitățile" data-fan-combo-toggle>▾</button>';
+    echo '<div class="fan-combo__list" data-fan-combo-list hidden></div>';
+    echo '</div>';
+    echo '<small style="color:#64748b;">Din localitățile FAN importate. La București alege <strong>Bucuresti</strong>; sectorul se trece la Stradă.</small>';
 };
 ?>
 
@@ -77,6 +88,60 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
         }
         .shipping-settings-group[hidden] {
             display: none !important;
+        }
+
+        /* Selector de localitate FAN: input + listă proprie, ca sugestiile să
+           nu se amestece cu autofill-ul de adrese al browserului. */
+        .fan-combo {
+            position: relative;
+        }
+        .fan-combo__input {
+            width: 100%;
+            padding-right: 32px;
+        }
+        .fan-combo__toggle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            width: 30px;
+            border: 0;
+            background: transparent;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .fan-combo__list {
+            position: absolute;
+            z-index: 40;
+            top: calc(100% + 2px);
+            left: 0;
+            right: 0;
+            max-height: 260px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+        }
+        .fan-combo__list[hidden] {
+            display: none;
+        }
+        .fan-combo__option {
+            padding: 7px 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .fan-combo__option:hover,
+        .fan-combo__option.is-active {
+            background: #ecfdf5;
+            color: #0f766e;
+        }
+        .fan-combo__empty {
+            padding: 8px 10px;
+            font-size: 13px;
+            color: #94a3b8;
         }
     </style>
 
@@ -523,8 +588,8 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
  * județul ales alături, ca adresa salvată să fie exact una acceptată de FAN.
  */
 (() => {
-    const inputs = Array.from(document.querySelectorAll('[data-fan-locality]'));
-    if (inputs.length === 0) {
+    const combos = Array.from(document.querySelectorAll('[data-fan-combo]'));
+    if (combos.length === 0) {
         return;
     }
 
@@ -551,49 +616,165 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
         }
     };
 
-    inputs.forEach((input) => {
+    combos.forEach((combo) => {
+        const input = combo.querySelector('[data-fan-combo-input]');
+        const hidden = combo.querySelector('[data-fan-combo-value]');
+        const list = combo.querySelector('[data-fan-combo-list]');
+        const toggle = combo.querySelector('[data-fan-combo-toggle]');
+        if (!input || !hidden || !list) {
+            return;
+        }
+
         const countyName = String(input.getAttribute('data-county-field') || '').trim();
         const countyField = countyName !== ''
             ? document.querySelector('[name="' + countyName + '"]')
             : null;
-        const list = document.getElementById(input.getAttribute('list') || '');
-        if (!(list instanceof HTMLDataListElement)) {
-            return;
-        }
 
+        let optiuni = [];
+        let activ = -1;
         let timer = null;
-        const refresh = async () => {
-            const county = countyField ? String(countyField.value || '').trim() : '';
-            if (county === '') {
-                list.innerHTML = '';
-                return;
-            }
-            const items = await suggest(county, String(input.value || '').trim());
-            list.innerHTML = '';
-            items.forEach((item) => {
-                const option = document.createElement('option');
-                option.value = item;
-                list.appendChild(option);
-            });
+
+        const county = () => (countyField ? String(countyField.value || '').trim() : '');
+
+        const inchide = () => {
+            list.hidden = true;
+            input.setAttribute('aria-expanded', 'false');
+            activ = -1;
         };
 
-        const refreshLater = () => {
+        const marcheaza = () => {
+            Array.from(list.children).forEach((el, i) => {
+                el.classList.toggle('is-active', i === activ);
+            });
+            if (activ >= 0 && list.children[activ]) {
+                list.children[activ].scrollIntoView({ block: 'nearest' });
+            }
+        };
+
+        const alege = (valoare) => {
+            input.value = valoare;
+            hidden.value = valoare;
+            inchide();
+        };
+
+        const deseneaza = () => {
+            list.innerHTML = '';
+            if (county() === '') {
+                const gol = document.createElement('div');
+                gol.className = 'fan-combo__empty';
+                gol.textContent = 'Alege întâi județul.';
+                list.appendChild(gol);
+            } else if (optiuni.length === 0) {
+                const gol = document.createElement('div');
+                gol.className = 'fan-combo__empty';
+                gol.textContent = 'Nicio localitate FAN care să se potrivească.';
+                list.appendChild(gol);
+            } else {
+                optiuni.forEach((item) => {
+                    const el = document.createElement('div');
+                    el.className = 'fan-combo__option';
+                    el.setAttribute('role', 'option');
+                    el.textContent = item;
+                    // mousedown, nu click: blur-ul input-ului ar închide lista întâi.
+                    el.addEventListener('mousedown', (event) => {
+                        event.preventDefault();
+                        alege(item);
+                    });
+                    list.appendChild(el);
+                });
+            }
+            list.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+            activ = -1;
+        };
+
+        const incarca = async () => {
+            if (county() === '') {
+                optiuni = [];
+                deseneaza();
+                return;
+            }
+            optiuni = await suggest(county(), String(input.value || '').trim());
+            deseneaza();
+        };
+
+        const incarcaMaiTarziu = () => {
             if (timer !== null) {
                 window.clearTimeout(timer);
             }
-            timer = window.setTimeout(refresh, 200);
+            timer = window.setTimeout(incarca, 180);
         };
 
-        input.addEventListener('input', refreshLater);
-        input.addEventListener('focus', refreshLater);
+        input.addEventListener('input', () => {
+            // Textul scris rămâne valoarea salvată chiar dacă nu alege din listă;
+            // la salvare, serverul îl potrivește cu nomenclatorul FAN.
+            hidden.value = input.value;
+            incarcaMaiTarziu();
+        });
+        input.addEventListener('focus', incarca);
+        input.addEventListener('blur', () => {
+            window.setTimeout(inchide, 120);
+        });
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.hidden) {
+                    void incarca();
+                    return;
+                }
+                const total = optiuni.length;
+                if (total === 0) {
+                    return;
+                }
+                activ = event.key === 'ArrowDown'
+                    ? (activ + 1) % total
+                    : (activ <= 0 ? total - 1 : activ - 1);
+                marcheaza();
+                return;
+            }
+            if (event.key === 'Enter' && !list.hidden && activ >= 0 && optiuni[activ]) {
+                event.preventDefault();
+                alege(optiuni[activ]);
+                return;
+            }
+            if (event.key === 'Escape') {
+                inchide();
+            }
+        });
+
+        if (toggle) {
+            toggle.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                if (list.hidden) {
+                    input.focus();
+                    void incarca();
+                } else {
+                    inchide();
+                }
+            });
+        }
+
         if (countyField) {
             countyField.addEventListener('change', () => {
                 // Alt județ, alte localități: ce era scris nu mai e valabil.
                 input.value = '';
-                list.innerHTML = '';
-                refreshLater();
+                hidden.value = '';
+                optiuni = [];
+                inchide();
             });
         }
+    });
+
+    document.addEventListener('click', (event) => {
+        combos.forEach((combo) => {
+            if (!combo.contains(event.target)) {
+                const list = combo.querySelector('[data-fan-combo-list]');
+                if (list) {
+                    list.hidden = true;
+                }
+            }
+        });
     });
 })();
 </script>
