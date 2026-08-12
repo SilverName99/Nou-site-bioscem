@@ -7043,6 +7043,62 @@ final class AdminController
     }
 
     /**
+     * Exportă localitățile din nomenclatorul FAN al site-ului, pentru importul
+     * din ERP (Liste de referință → Localități). Două coloane: județ și
+     * localitate, în grafia FAN — aceeași pe care o trimite site-ul la comenzi.
+     */
+    public function shippingLocalitatiExport(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/settings/shipping');
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+
+        try {
+            $stmt = $db->query(
+                'SELECT county, locality FROM fan_localities ORDER BY county ASC, locality ASC'
+            );
+        } catch (Throwable) {
+            $stmt = null;
+        }
+        if ($stmt === null || $stmt === false) {
+            Flash::set('error', 'Nu există localități FAN importate. Importă întâi localitățile FAN.');
+            header('Location: /admin/settings/shipping');
+            return;
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="localitati-fan-' . date('Y-m-d') . '.csv"');
+        header('Pragma: no-cache');
+
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['judet', 'localitate'], ',');
+        $scrise = 0;
+        while (($row = $stmt->fetch()) !== false) {
+            $county = trim((string) ($row['county'] ?? ''));
+            $locality = trim((string) ($row['locality'] ?? ''));
+            if ($county === '' || $locality === '') {
+                continue;
+            }
+            fputcsv($out, [$county, $locality], ',');
+            $scrise++;
+        }
+        fclose($out);
+        if ($scrise === 0) {
+            // Antetul a plecat deja; nu putem redirecta, dar fișierul e gol
+            // și operatorul vede imediat că trebuie să importe localitățile.
+            return;
+        }
+    }
+
+    /**
      * Exportă județele din nomenclatorul FAN al site-ului, pentru importul din
      * ERP (Liste de referință → Județe → Import Județe). O coloană: numele.
      */

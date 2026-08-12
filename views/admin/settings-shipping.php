@@ -471,10 +471,16 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                             depozitele fără adresă completă folosesc expeditorul global de mai sus.
                         </p>
                     </div>
-                    <a class="btn btn-secondary" href="/admin/settings/shipping/judete/export"
-                       title="Descarcă județele FAN pentru importul din ERP (Liste de referință → Județe)">
-                        ⭳ Export Județe
-                    </a>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <a class="btn btn-secondary" href="/admin/settings/shipping/judete/export"
+                           title="Descarcă județele FAN pentru importul din ERP (Liste de referință → Județe)">
+                            ⭳ Export Județe
+                        </a>
+                        <a class="btn btn-secondary" href="/admin/settings/shipping/localitati/export"
+                           title="Descarcă localitățile FAN pentru importul din ERP (Liste de referință → Localități)">
+                            ⭳ Export Localități
+                        </a>
+                    </div>
                 </div>
             </article>
             <?php foreach ($erpDepozite as $depozit): ?>
