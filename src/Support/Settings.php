@@ -92,6 +92,12 @@ final class Settings
         'euplatesc_currency' => 'RON',
         // Stripe rămâne disponibil ca alternativă, dar ascuns implicit.
         'stripe_enabled' => '0',
+        // Mod mentenanță: vizitatorii văd „Revenim în curând", testerii văd site-ul.
+        'maintenance_enabled' => '0',
+        'maintenance_title' => 'Revenim în curând',
+        'maintenance_message' => 'Lucrăm la magazin chiar acum. Ne întoarcem cât de repede putem.',
+        'maintenance_key' => '',
+        'maintenance_allowed_ips' => '',
         'customer_google_auth_enabled' => '0',
         'customer_google_client_id' => '',
         'customer_google_client_secret' => '',

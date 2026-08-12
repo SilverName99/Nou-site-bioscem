@@ -21,7 +21,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
         $applyFloatingCart = (string) ($settings['store_quantity_apply_floating_cart'] ?? '0') === '1';
         $applyCartPage = (string) ($settings['store_quantity_apply_cart_page'] ?? '0') === '1';
         $bbdSidebarEnabled = (string) ($settings['store_bbd_sidebar_enabled'] ?? '1') !== '0';
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching'];
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance'];
         $defaultStoreTab = trim((string) ($_GET['tab'] ?? 'pages'));
         if (!in_array($defaultStoreTab, $availableStoreTabs, true)) {
             $defaultStoreTab = 'pages';
@@ -60,6 +60,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'branding' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="branding">Favicon</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'seo' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="seo">SEO Google</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'clarity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="clarity">Microsoft Clarity</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'maintenance' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="maintenance">Mentenanță</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'quantity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="quantity">Control cantitate</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
@@ -205,6 +206,87 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 <p style="margin:10px 0 0;color:#64748b;font-size:13px;">
                     După salvare, Clarity începe să colecteze date automat (de obicei apar în câteva minute).
                 </p>
+            </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="maintenance" <?= $defaultStoreTab !== 'maintenance' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <?php
+            $maintenanceEnabled = (string) ($settings['maintenance_enabled'] ?? '0') === '1';
+            $maintenanceKey = trim((string) ($settings['maintenance_key'] ?? ''));
+            $maintenanceLink = \App\Support\Maintenance::linkPreview((string) ($appUrl ?? ''), $maintenanceKey);
+            ?>
+            <h3 style="margin-top:0;">Mod mentenanță</h3>
+            <p style="margin:0 0 10px;color:#64748b;">
+                Cât timp e activ, vizitatorii văd pagina „Revenim în curând", iar tu poți testa
+                site-ul normal. Administrarea, plățile și legătura cu ERP-ul rămân funcționale.
+            </p>
+
+            <?php if ($maintenanceEnabled): ?>
+                <div class="panel" style="margin:0 0 12px;background:#fffbeb;border-color:#fde68a;color:#92400e;">
+                    <strong>Site-ul este în mentenanță acum.</strong>
+                    Vizitatorii nu pot cumpăra. Dezactivează bifa de mai jos când ești gata de lansare.
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_maintenance">
+                <div style="display:grid;gap:10px;max-width:760px;">
+                    <label style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" name="maintenance_enabled" value="1" <?= $maintenanceEnabled ? 'checked' : '' ?>>
+                        <strong>Activează modul mentenanță</strong>
+                    </label>
+
+                    <div class="field">
+                        <label for="maintenance_title">Titlu</label>
+                        <input id="maintenance_title" type="text" name="maintenance_title" maxlength="120"
+                               value="<?= htmlspecialchars((string) ($settings['maintenance_title'] ?? ''), ENT_QUOTES) ?>"
+                               placeholder="Revenim în curând">
+                    </div>
+
+                    <div class="field">
+                        <label for="maintenance_message">Mesaj</label>
+                        <textarea id="maintenance_message" name="maintenance_message" rows="3"
+                                  placeholder="Lucrăm la magazin chiar acum."><?= htmlspecialchars((string) ($settings['maintenance_message'] ?? ''), ENT_QUOTES) ?></textarea>
+                        <small style="color:#64748b;">Se afișează sub titlu. Telefonul și emailul din setările de contact apar automat.</small>
+                    </div>
+
+                    <div class="field">
+                        <label for="maintenance_allowed_ips">IP-uri cu acces (opțional)</label>
+                        <input id="maintenance_allowed_ips" type="text" name="maintenance_allowed_ips"
+                               value="<?= htmlspecialchars((string) ($settings['maintenance_allowed_ips'] ?? ''), ENT_QUOTES) ?>"
+                               placeholder="ex: 86.120.10.5, 79.117.4.20">
+                        <small style="color:#64748b;">
+                            Separate prin virgulă. IP-ul tău curent este
+                            <strong><?= htmlspecialchars((string) ($_SERVER['REMOTE_ADDR'] ?? '?'), ENT_QUOTES) ?></strong>.
+                        </small>
+                    </div>
+
+                    <div>
+                        <button class="btn" type="submit">Salvează setările de mentenanță</button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="panel" style="margin:12px 0 0;background:#f8fafc;border-color:#dbe4ef;">
+                <h4 style="margin:0 0 8px;">Cum testezi în timpul mentenanței</h4>
+                <ol style="margin:0 0 10px;padding-left:18px;display:grid;gap:6px;color:#334155;">
+                    <li>Ești logat în administrare → vezi site-ul normal, fără să faci nimic.</li>
+                    <li>Pentru client sau colegi, trimite linkul de previzualizare de mai jos. La prima deschidere lasă un cookie valabil 30 de zile, deci linkul se dă o singură dată.</li>
+                </ol>
+                <?php if ($maintenanceLink !== ''): ?>
+                    <div class="field" style="margin:0;">
+                        <label for="maintenance_link">Link de previzualizare</label>
+                        <input id="maintenance_link" type="text" readonly onfocus="this.select()"
+                               value="<?= htmlspecialchars($maintenanceLink, ENT_QUOTES) ?>">
+                    </div>
+                <?php else: ?>
+                    <p style="margin:0;color:#64748b;">Cheia de previzualizare se generează la prima salvare.</p>
+                <?php endif; ?>
+                <form method="post" action="/admin/settings/store" style="margin-top:10px;"
+                      onsubmit="return confirm('Se generează o cheie nouă. Linkurile trimise până acum nu vor mai funcționa. Continui?');">
+                    <input type="hidden" name="action" value="regenerate_maintenance_key">
+                    <button class="btn btn-secondary" type="submit">Generează o cheie nouă</button>
+                </form>
             </div>
         </article>
 

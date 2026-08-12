@@ -76,6 +76,15 @@ $appConfig = require __DIR__ . '/../config/app.php';
 $cacheDb = Database::connection((array) ($appConfig['db'] ?? []));
 $cacheSettings = Settings::all($cacheDb);
 ResponseCache::applyAssetCacheHeaders($cacheSettings, (string) ($_SERVER['REQUEST_URI'] ?? ''));
+// Mod mentenanță: se verifică înaintea cache-ului de pagină, ca vizitatorii să
+// nu primească o pagină salvată dinainte de activare.
+if (\App\Support\Maintenance::intercepteaza(
+    $cacheSettings,
+    (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
+    (string) ($_SERVER['REQUEST_URI'] ?? '/')
+)) {
+    return;
+}
 $pageCacheContext = ResponseCache::beginRequest(
     (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
     (string) ($_SERVER['REQUEST_URI'] ?? '/'),

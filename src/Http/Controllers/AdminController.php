@@ -6320,6 +6320,7 @@ final class AdminController
         $db = $this->db();
         $settings = Settings::all($db);
         $sitemapFilename = $this->normalizeSitemapFilename((string) ($settings['store_sitemap_filename'] ?? 'sitemap.xml'));
+        $appUrl = $this->appUrl();
         $galleryImages = [];
         if ($db instanceof PDO) {
             $this->ensureOptionalSchema($db);
@@ -6343,6 +6344,7 @@ final class AdminController
             'galleryImages' => $galleryImages,
             'sitemapFilename' => $sitemapFilename,
             'sitemapUrl' => rtrim($this->appUrl(), '/') . '/' . $sitemapFilename,
+            'appUrl' => $appUrl,
             'storeSettingsTab' => trim((string) ($_GET['tab'] ?? 'pages')),
             'cacheStats' => ResponseCache::pageCacheStats(),
         ], 'admin/layout');
@@ -6485,6 +6487,37 @@ final class AdminController
             ]);
             Flash::set('success', 'Setările SEO globale au fost salvate.');
             header('Location: /admin/settings/store');
+            return;
+        }
+        if ($action === 'save_maintenance') {
+            $activ = isset($_POST['maintenance_enabled']);
+            $cheie = trim((string) ($settings['maintenance_key'] ?? ''));
+            if ($cheie === '') {
+                // Fără cheie nu se poate previzualiza; o generăm la prima salvare.
+                $cheie = \App\Support\Maintenance::cheieNoua();
+            }
+            Settings::save($db, [
+                'maintenance_enabled' => $activ ? '1' : '0',
+                'maintenance_title' => trim((string) ($_POST['maintenance_title'] ?? '')),
+                'maintenance_message' => trim((string) ($_POST['maintenance_message'] ?? '')),
+                'maintenance_allowed_ips' => trim((string) ($_POST['maintenance_allowed_ips'] ?? '')),
+                'maintenance_key' => $cheie,
+            ]);
+            // Paginile salvate dinainte nu mai sunt valabile în niciun sens.
+            $this->refreshCacheAfterPublicContentChange();
+            Flash::set(
+                'success',
+                $activ
+                    ? 'Modul mentenanță este activ. Vizitatorii văd pagina „Revenim în curând".'
+                    : 'Modul mentenanță a fost dezactivat. Site-ul este public.'
+            );
+            header('Location: /admin/settings/store?tab=maintenance');
+            return;
+        }
+        if ($action === 'regenerate_maintenance_key') {
+            Settings::save($db, ['maintenance_key' => \App\Support\Maintenance::cheieNoua()]);
+            Flash::set('success', 'Cheie nouă generată. Linkurile trimise anterior nu mai funcționează.');
+            header('Location: /admin/settings/store?tab=maintenance');
             return;
         }
         if ($action === 'save_clarity_settings') {
