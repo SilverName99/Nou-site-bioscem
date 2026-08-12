@@ -6,6 +6,48 @@ if ($shippingTab === 'store-rules') {
 if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'fan-api', 'delivery-settings'], true)) {
     $shippingTab = 'fan-localities';
 }
+
+/**
+ * Județ + localitate se aleg din nomenclatorul FAN importat pe site, ca
+ * adresele de ridicare să fie exact cele pe care le acceptă FAN la AWB.
+ * Când lista nu e importată încă, se cade pe câmpuri libere.
+ */
+$fanJudete = array_values(array_filter(array_map('strval', (array) ($fanJudete ?? []))));
+
+$renderCampJudet = static function (string $name, string $value, string $eticheta = 'Județ') use ($fanJudete): void {
+    $id = 'fanjud-' . substr(md5($name), 0, 8);
+    $nameAttr = htmlspecialchars($name, ENT_QUOTES);
+    echo '<label for="' . $id . '">' . htmlspecialchars($eticheta, ENT_QUOTES) . '</label>';
+    if ($fanJudete === []) {
+        echo '<input type="text" id="' . $id . '" name="' . $nameAttr . '" value="' . htmlspecialchars($value, ENT_QUOTES) . '" data-fan-county>';
+        return;
+    }
+    echo '<select id="' . $id . '" name="' . $nameAttr . '" data-fan-county>';
+    echo '<option value="">— alege județul —</option>';
+    $gasit = false;
+    foreach ($fanJudete as $judet) {
+        $selected = $judet === $value;
+        $gasit = $gasit || $selected;
+        echo '<option value="' . htmlspecialchars($judet, ENT_QUOTES) . '"' . ($selected ? ' selected' : '') . '>'
+            . htmlspecialchars($judet, ENT_QUOTES) . '</option>';
+    }
+    // Valoarea salvată înainte de import rămâne selectabilă, ca să nu se piardă.
+    if (!$gasit && trim($value) !== '') {
+        echo '<option value="' . htmlspecialchars($value, ENT_QUOTES) . '" selected>'
+            . htmlspecialchars($value, ENT_QUOTES) . ' (în afara listei FAN)</option>';
+    }
+    echo '</select>';
+};
+
+$renderCampLocalitate = static function (string $name, string $value, string $numeCampJudet, string $eticheta = 'Localitate'): void {
+    $id = 'fanloc-' . substr(md5($name), 0, 8);
+    echo '<label for="' . $id . '">' . htmlspecialchars($eticheta, ENT_QUOTES) . '</label>';
+    echo '<input type="text" id="' . $id . '" name="' . htmlspecialchars($name, ENT_QUOTES) . '" value="' . htmlspecialchars($value, ENT_QUOTES) . '"'
+        . ' list="' . $id . '-list" autocomplete="off" placeholder="scrie 2-3 litere..."'
+        . ' data-fan-locality data-county-field="' . htmlspecialchars($numeCampJudet, ENT_QUOTES) . '">';
+    echo '<datalist id="' . $id . '-list"></datalist>';
+    echo '<small style="color:#64748b;">Sugestiile vin din localitățile FAN importate. La București alege <strong>Bucuresti</strong>; sectorul se trece la Stradă.</small>';
+};
 ?>
 
 <section class="panel">
@@ -323,15 +365,11 @@ if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'f
             <input type="email" name="fan_sender_email"
                    value="<?= htmlspecialchars((string) ($settings['fan_sender_email'] ?? ''), ENT_QUOTES) ?>">
         </div>
-        <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
-            <label>Județ expeditor</label>
-            <input type="text" name="fan_sender_county"
-                   value="<?= htmlspecialchars((string) ($settings['fan_sender_county'] ?? ''), ENT_QUOTES) ?>">
+        <div class="field" data-fan-address data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+            <?php $renderCampJudet('fan_sender_county', (string) ($settings['fan_sender_county'] ?? ''), 'Județ expeditor'); ?>
         </div>
-        <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
-            <label>Localitate expeditor</label>
-            <input type="text" name="fan_sender_locality"
-                   value="<?= htmlspecialchars((string) ($settings['fan_sender_locality'] ?? ''), ENT_QUOTES) ?>">
+        <div class="field" data-fan-address data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+            <?php $renderCampLocalitate('fan_sender_locality', (string) ($settings['fan_sender_locality'] ?? ''), 'fan_sender_county', 'Localitate expeditor'); ?>
         </div>
         <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
             <label>Stradă expeditor</label>
@@ -388,13 +426,11 @@ if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'f
                         <?= $depozitJudete !== [] ? ('Județe: ' . htmlspecialchars(implode(', ', $depozitJudete), ENT_QUOTES)) : 'Fără județe alocate în ERP.' ?>
                     </small>
                 </div>
-                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
-                    <label>Județ</label>
-                    <input type="text" name="<?= $fieldName('county') ?>" value="<?= $fieldValue('county') ?>">
+                <div class="field" data-fan-address data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <?php $renderCampJudet('fan_depozit[' . $depozitId . '][county]', (string) ($depozitAdresa['county'] ?? '')); ?>
                 </div>
-                <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
-                    <label>Localitate</label>
-                    <input type="text" name="<?= $fieldName('locality') ?>" value="<?= $fieldValue('locality') ?>">
+                <div class="field" data-fan-address data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
+                    <?php $renderCampLocalitate('fan_depozit[' . $depozitId . '][locality]', (string) ($depozitAdresa['locality'] ?? ''), 'fan_depozit[' . $depozitId . '][county]'); ?>
                 </div>
                 <div class="field" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?>>
                     <label>Stradă (cu număr)</label>
@@ -478,6 +514,86 @@ if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'f
                 activate(key);
             }
         });
+    });
+})();
+
+/**
+ * Sugestii de localități FAN pentru câmpurile de adresă (expeditor global și
+ * depozite). Lista vine din nomenclatorul importat pe site, filtrată după
+ * județul ales alături, ca adresa salvată să fie exact una acceptată de FAN.
+ */
+(() => {
+    const inputs = Array.from(document.querySelectorAll('[data-fan-locality]'));
+    if (inputs.length === 0) {
+        return;
+    }
+
+    const cache = new Map();
+
+    const suggest = async (county, query) => {
+        const key = county + '||' + query;
+        if (cache.has(key)) {
+            return cache.get(key);
+        }
+        const url = '/admin/settings/shipping/localities/search?county='
+            + encodeURIComponent(county) + '&q=' + encodeURIComponent(query);
+        try {
+            const response = await fetch(url, { credentials: 'same-origin' });
+            if (!response.ok) {
+                return [];
+            }
+            const data = await response.json();
+            const items = Array.isArray(data.items) ? data.items : [];
+            cache.set(key, items);
+            return items;
+        } catch (error) {
+            return [];
+        }
+    };
+
+    inputs.forEach((input) => {
+        const countyName = String(input.getAttribute('data-county-field') || '').trim();
+        const countyField = countyName !== ''
+            ? document.querySelector('[name="' + countyName + '"]')
+            : null;
+        const list = document.getElementById(input.getAttribute('list') || '');
+        if (!(list instanceof HTMLDataListElement)) {
+            return;
+        }
+
+        let timer = null;
+        const refresh = async () => {
+            const county = countyField ? String(countyField.value || '').trim() : '';
+            if (county === '') {
+                list.innerHTML = '';
+                return;
+            }
+            const items = await suggest(county, String(input.value || '').trim());
+            list.innerHTML = '';
+            items.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item;
+                list.appendChild(option);
+            });
+        };
+
+        const refreshLater = () => {
+            if (timer !== null) {
+                window.clearTimeout(timer);
+            }
+            timer = window.setTimeout(refresh, 200);
+        };
+
+        input.addEventListener('input', refreshLater);
+        input.addEventListener('focus', refreshLater);
+        if (countyField) {
+            countyField.addEventListener('change', () => {
+                // Alt județ, alte localități: ce era scris nu mai e valabil.
+                input.value = '';
+                list.innerHTML = '';
+                refreshLater();
+            });
+        }
     });
 })();
 </script>

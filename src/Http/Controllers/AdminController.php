@@ -6909,10 +6909,103 @@ final class AdminController
             'fanLocalitiesCount' => $localitiesCount,
             'fanStreetsCount' => $streetsCount,
             'fanExtraKmCount' => $kmLocalitiesCount,
+            'fanJudete' => $this->fanCountyList($db),
             'erpDepozite' => $erpDepozite,
             'erpGestiuniPeJudete' => $erpGestiuniPeJudete,
             'shippingTab' => $this->normalizeShippingSettingsTab((string) ($_GET['tab'] ?? 'fan-localities')),
         ], 'admin/layout');
+    }
+
+    /**
+     * Județele din nomenclatorul FAN importat pe site, pentru dropdown-urile
+     * de adrese (expeditor global și depozite).
+     *
+     * @return string[]
+     */
+    private function fanCountyList(?PDO $db): array
+    {
+        if (!$db instanceof PDO) {
+            return [];
+        }
+        try {
+            $rows = $db->query('SELECT county FROM fan_localities GROUP BY county ORDER BY county ASC')->fetchAll() ?: [];
+        } catch (Throwable) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $county = trim((string) ($row['county'] ?? ''));
+            if ($county !== '') {
+                $out[] = $county;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Localitățile FAN dintr-un județ, pentru câmpurile de adresă din admin.
+     *
+     * Spre deosebire de ruta publică folosită la checkout, aici NU se adaugă
+     * variantele de sector: adresa expeditorului merge la FAN exact cum e
+     * salvată, deci se pot alege doar denumiri care există în nomenclator.
+     */
+    public function shippingLocalitiesSearch(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        // Verificare fără redirect: e o rută de date, apelată din JS.
+        $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?: '/admin/settings/shipping';
+        if (!Auth::check() || !Auth::canAccessPath($path)) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'items' => []]);
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(503);
+            echo json_encode(['ok' => false, 'items' => []]);
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+
+        $county = trim((string) ($_GET['county'] ?? ''));
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $items = [];
+
+        // Căutarea merge pe coloanele normalizate, deci diacriticele și
+        // majusculele scrise de operator nu contează.
+        $countyNorm = $this->normalizeFanLocalityToken($county);
+        $countyNorm = (string) preg_replace('/^(judetul|judet|municipiul)\s+/', '', $countyNorm);
+        if (str_contains($countyNorm, 'bucuresti')) {
+            $countyNorm = 'bucuresti';
+        }
+        $queryNorm = $this->normalizeFanLocalityToken($query);
+
+        try {
+            $stmt = $db->prepare(
+                'SELECT locality
+                 FROM fan_localities
+                 WHERE county_norm = :county_norm
+                   AND (:has_query = 0 OR locality_norm LIKE :like)
+                 ORDER BY locality ASC
+                 LIMIT 50'
+            );
+            $stmt->bindValue(':county_norm', $countyNorm, PDO::PARAM_STR);
+            $stmt->bindValue(':has_query', $queryNorm === '' ? 0 : 1, PDO::PARAM_INT);
+            $stmt->bindValue(':like', '%' . $queryNorm . '%', PDO::PARAM_STR);
+            $stmt->execute();
+            foreach ($stmt->fetchAll() ?: [] as $row) {
+                $locality = trim((string) ($row['locality'] ?? ''));
+                if ($locality !== '') {
+                    $items[] = $locality;
+                }
+            }
+        } catch (Throwable) {
+            $items = [];
+        }
+
+        echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -6983,6 +7076,13 @@ final class AdminController
         if ($packageType === 'envelope' && $envelopeCount <= 0) {
             $envelopeCount = 1;
         }
+        // Adresa expeditorului merge la FAN exact cum e salvată, deci o aducem
+        // la grafia din nomenclatorul FAN importat pe site.
+        [$senderCounty, $senderLocality] = $this->fanCanonicalAddress(
+            $db,
+            trim((string) ($_POST['fan_sender_county'] ?? '')),
+            trim((string) ($_POST['fan_sender_locality'] ?? ''))
+        );
         Settings::save($db, [
             'shipping_include_coupons' => isset($_POST['shipping_include_coupons']) ? '1' : '0',
             'shipping_free_bucharest' => trim((string) ($_POST['shipping_free_bucharest'] ?? '200')),
@@ -7016,8 +7116,8 @@ final class AdminController
             'fan_sender_name' => trim((string) ($_POST['fan_sender_name'] ?? '')),
             'fan_sender_phone' => trim((string) ($_POST['fan_sender_phone'] ?? '')),
             'fan_sender_email' => trim((string) ($_POST['fan_sender_email'] ?? '')),
-            'fan_sender_county' => trim((string) ($_POST['fan_sender_county'] ?? '')),
-            'fan_sender_locality' => trim((string) ($_POST['fan_sender_locality'] ?? '')),
+            'fan_sender_county' => $senderCounty,
+            'fan_sender_locality' => $senderLocality,
             'fan_sender_street' => trim((string) ($_POST['fan_sender_street'] ?? '')),
             'fan_sender_street_no' => trim((string) ($_POST['fan_sender_street_no'] ?? '')),
             'fan_sender_zip_code' => trim((string) ($_POST['fan_sender_zip_code'] ?? '')),
@@ -7025,7 +7125,7 @@ final class AdminController
             'fan_parcel_length_cm' => trim((string) ($_POST['fan_parcel_length_cm'] ?? '')),
             'fan_parcel_width_cm' => trim((string) ($_POST['fan_parcel_width_cm'] ?? '')),
             'fan_parcel_height_cm' => trim((string) ($_POST['fan_parcel_height_cm'] ?? '')),
-            'fan_depozite_json' => $this->fanDepoziteJsonFromInput($_POST['fan_depozit'] ?? null),
+            'fan_depozite_json' => $this->fanDepoziteJsonFromInput($db, $_POST['fan_depozit'] ?? null),
         ]);
 
         Flash::set('success', 'Setările de livrare au fost salvate.');
@@ -7036,7 +7136,7 @@ final class AdminController
      * Adresele FAN per depozit, din formularul de livrare, ca JSON compact.
      * Depozitele fără niciun câmp completat nu se salvează.
      */
-    private function fanDepoziteJsonFromInput(mixed $input): string
+    private function fanDepoziteJsonFromInput(?PDO $db, mixed $input): string
     {
         if (!is_array($input)) {
             return '';
@@ -7054,10 +7154,114 @@ final class AdminController
                 }
             }
             if ($adresa !== []) {
-                $out[(string) $gestiuneId] = $adresa;
+                [$adresa['county'], $adresa['locality']] = $this->fanCanonicalAddress(
+                    $db,
+                    (string) ($adresa['county'] ?? ''),
+                    (string) ($adresa['locality'] ?? '')
+                );
+                $out[(string) $gestiuneId] = array_filter(
+                    $adresa,
+                    static fn (string $v): bool => trim($v) !== ''
+                );
             }
         }
         return $out === [] ? '' : (string) json_encode($out, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Aduce perechea județ + localitate la grafia exactă din nomenclatorul FAN
+     * importat pe site (diacritice, majuscule, cratime). Ce nu se potrivește
+     * rămâne așa cum a fost scris — nu blocăm salvarea, dar FAN va reclama la
+     * AWB, iar operatorul vede în formular exact ce a introdus.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function fanCanonicalAddress(?PDO $db, string $county, string $locality): array
+    {
+        $county = trim($county);
+        $locality = trim($locality);
+        if ($county === '' || !$db instanceof PDO) {
+            return [$county, $locality];
+        }
+
+        $countyNorm = $this->normalizeFanLocalityToken($county);
+        $countyNorm = (string) preg_replace('/^(judetul|judet|municipiul)\s+/', '', $countyNorm);
+        if (str_contains($countyNorm, 'bucuresti')) {
+            $countyNorm = 'bucuresti';
+        }
+        if ($countyNorm === '') {
+            return [$county, $locality];
+        }
+
+        try {
+            // Grafia oficială a județului, chiar dacă localitatea nu se potrivește.
+            $stmtJudet = $db->prepare(
+                'SELECT county FROM fan_localities WHERE county_norm = :county_norm LIMIT 1'
+            );
+            $stmtJudet->execute(['county_norm' => $countyNorm]);
+            $randJudet = $stmtJudet->fetch() ?: null;
+            $countyCanonic = is_array($randJudet) ? trim((string) ($randJudet['county'] ?? '')) : '';
+            if ($countyCanonic === '') {
+                return [$county, $locality];
+            }
+            if ($locality === '') {
+                return [$countyCanonic, $locality];
+            }
+
+            $stmtLoc = $db->prepare(
+                'SELECT locality FROM fan_localities
+                 WHERE county_norm = :county_norm AND locality_norm = :locality_norm
+                 LIMIT 1'
+            );
+            foreach ($this->fanLocalityCandidates($locality, $countyNorm) as $candidat) {
+                $stmtLoc->execute([
+                    'county_norm' => $countyNorm,
+                    'locality_norm' => $candidat,
+                ]);
+                $rand = $stmtLoc->fetch() ?: null;
+                $gasit = is_array($rand) ? trim((string) ($rand['locality'] ?? '')) : '';
+                if ($gasit !== '') {
+                    return [$countyCanonic, $gasit];
+                }
+            }
+
+            return [$countyCanonic, $locality];
+        } catch (Throwable) {
+            return [$county, $locality];
+        }
+    }
+
+    /**
+     * Variantele normalizate sub care poate fi căutată o localitate: cum a fost
+     * scrisă, fără prefix („Municipiul", „Comuna"), cu cratimă ↔ spațiu și,
+     * pentru București, sectoarele reduse la „bucuresti" (FAN nu are sectoare
+     * ca localități).
+     *
+     * @return string[]
+     */
+    private function fanLocalityCandidates(string $locality, string $countyNorm): array
+    {
+        $base = $this->normalizeFanLocalityToken($locality);
+        if ($base === '') {
+            return [];
+        }
+
+        $candidati = [$base];
+        $faraPrefix = trim((string) preg_replace('/^(municipiul|orasul|oras|comuna|satul|sat)\s+/', '', $base));
+        if ($faraPrefix !== '' && $faraPrefix !== $base) {
+            $candidati[] = $faraPrefix;
+        }
+        foreach ($candidati as $candidat) {
+            $candidati[] = str_replace(' ', '-', $candidat);
+            $candidati[] = str_replace('-', ' ', $candidat);
+        }
+        if ($countyNorm === 'bucuresti'
+            && (str_contains($base, 'sector') || preg_match('/^[1-6]$/', $base) === 1)
+        ) {
+            $candidati[] = 'bucuresti';
+        }
+
+        return array_values(array_unique(array_filter($candidati, static fn (string $v): bool => $v !== '')));
     }
 
     private function fanNormalizeSelectedOptions(array $selected): string

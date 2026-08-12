@@ -257,6 +257,7 @@ $router->get('/admin/settings/floating-cart', [AdminController::class, 'floating
 $router->post('/admin/settings/floating-cart', [AdminController::class, 'floatingCartSettingsSave']);
 $router->get('/admin/settings/shipping', [AdminController::class, 'shippingSettingsForm']);
 $router->get('/admin/settings/shipping/judete/export', [AdminController::class, 'shippingJudeteExport']);
+$router->get('/admin/settings/shipping/localities/search', [AdminController::class, 'shippingLocalitiesSearch']);
 $router->post('/admin/settings/shipping', [AdminController::class, 'shippingSettingsSave']);
 $router->post('/admin/settings/shipping/localities/import', [AdminController::class, 'shippingLocalitiesImport']);
 $router->post('/admin/settings/shipping/streets/import', [AdminController::class, 'shippingStreetsImport']);
