@@ -4253,7 +4253,7 @@ final class AdminController
                         coupon_code,
                         loyalty_points_used, loyalty_points_discount, loyalty_points_awarded, created_at,
                         deleted_at, ad_source, ad_click_id,
-                        fan_awb, fan_tracking_url, fan_tracking_status, fan_tracking_last_event_at, fan_tracking_synced_at,
+                        fan_awb, fan_awb_list, fan_tracking_url, fan_tracking_status, fan_tracking_last_event_at, fan_tracking_synced_at,
                         completed_awb_email_sent_at, completed_awb_email_error,
                         billing_first_name, billing_last_name, billing_email, billing_phone,
                         billing_address_line1, billing_address_line2, billing_city, billing_county, billing_postcode,
@@ -5701,10 +5701,189 @@ final class AdminController
         }
     }
 
+    /**
+     * Câte un AWB per depozit, pentru comenzile care pleacă în mai multe
+     * colete (ERP-ul trimite coletele la aprobare: depozit + produse).
+     *
+     * Rambursul întreg merge pe primul colet (depozitul județului de livrare);
+     * dacă acel AWB nu se poate genera, ne oprim înainte de a crea ceva, ca
+     * încercarea următoare să pornească curat. Un eșec la un colet ulterior
+     * păstrează AWB-urile deja create (sunt expedieri reale la FAN) și
+     * întoarce eroarea, ca operatorul să rezolve manual restul.
+     *
+     * @param array<int, array{gestiuneId?: string, gestiuneName?: string, produse?: array<int, array{sku?: string, denumire?: string, cantitate?: string}>}> $colete
+     * @return array{ok: bool, message: string}
+     */
+    private function createFanAwbMulti(PDO $db, int $orderId, array $colete): array
+    {
+        if ($orderId <= 0 || $colete === []) {
+            return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
+        }
+        $this->ensureOptionalSchema($db);
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $order = $this->loadOrderForFan($db, $orderId);
+        if ($order === null) {
+            return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
+        }
+        if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
+            return ['ok' => false, 'message' => 'Comanda are deja un AWB FAN generat.'];
+        }
+
+        $settings = Settings::all($db);
+        $credentials = $this->fanCredentialsFromSettings($settings);
+        if ($credentials === null) {
+            return ['ok' => false, 'message' => 'Completeaza in Setari Livrare: FAN client id, username si parola API.'];
+        }
+
+        $itemsBySku = $this->orderItemsBySku($db, $orderId);
+        $totalColete = count($colete);
+        $generated = [];
+        $errors = [];
+
+        foreach (array_values($colete) as $index => $colet) {
+            if (!is_array($colet)) {
+                continue;
+            }
+            $gestiuneId = trim((string) ($colet['gestiuneId'] ?? ''));
+            $gestiuneName = trim((string) ($colet['gestiuneName'] ?? ''));
+            $eticheta = 'colet ' . ($index + 1) . '/' . $totalColete . ($gestiuneName !== '' ? ' (' . $gestiuneName . ')' : '');
+
+            // Produsele coletului, potrivite pe SKU cu order_items (greutate + valoare).
+            $items = [];
+            $valoare = 0.0;
+            foreach ((array) ($colet['produse'] ?? []) as $produs) {
+                if (!is_array($produs)) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($produs['sku'] ?? '')));
+                $cantitate = max(0.0, (float) ($produs['cantitate'] ?? 0));
+                $item = $itemsBySku[$sku] ?? null;
+                $items[] = [
+                    'quantity' => max(1, (int) ceil($cantitate)),
+                    'weight_grams' => (int) ($item['weight_grams'] ?? 0),
+                ];
+                $valoare += $cantitate * (float) ($item['unit_price'] ?? 0);
+            }
+
+            $payload = $this->buildFanShipmentPayload($order, $settings, $credentials['client_id'], [
+                'items' => $items,
+                // Rambursul întreg pe primul colet; restul pleacă fără ramburs.
+                'cod' => $index === 0 ? null : 0.0,
+                'declared_value' => $valoare > 0 ? round($valoare, 2) : null,
+                'content_suffix' => '— ' . $eticheta,
+                'sender_gestiune_id' => $gestiuneId,
+            ]);
+
+            try {
+                try {
+                    $result = FanCourierGateway::createInternalAwb($credentials, $payload);
+                } catch (RuntimeException $exception) {
+                    if (!$this->shouldRetryFanAwbWithStandardService($order, $payload, $exception->getMessage())) {
+                        throw $exception;
+                    }
+                    $payload = $this->fanPayloadWithService($payload, 'Standard');
+                    $result = FanCourierGateway::createInternalAwb($credentials, $payload);
+                }
+                $awb = trim((string) ($result['awb'] ?? ''));
+                if ($awb === '') {
+                    throw new RuntimeException('FAN nu a returnat numarul AWB.');
+                }
+                $generated[] = [
+                    'awb' => $awb,
+                    'tracking_url' => FanCourierGateway::trackingUrl($awb),
+                    'gestiune' => $gestiuneName !== '' ? $gestiuneName : $gestiuneId,
+                    'colet' => $index + 1,
+                ];
+            } catch (RuntimeException $exception) {
+                $errors[] = ucfirst($eticheta) . ': ' . $exception->getMessage();
+                if ($index === 0) {
+                    // Primul colet poartă rambursul: fără el nu creăm nimic.
+                    return ['ok' => false, 'message' => 'Nu am putut genera AWB-urile FAN: ' . implode(' ', $errors)];
+                }
+            }
+        }
+
+        if ($generated === []) {
+            return ['ok' => false, 'message' => 'Nu am putut genera AWB-urile FAN: ' . implode(' ', $errors)];
+        }
+
+        $previousStatus = trim((string) ($order['status'] ?? ''));
+        $stmt = $db->prepare(
+            'UPDATE orders
+             SET fan_awb = :fan_awb,
+                 fan_awb_list = :fan_awb_list,
+                 fan_tracking_url = :fan_tracking_url,
+                 fan_tracking_status = :fan_tracking_status,
+                 fan_tracking_synced_at = NOW(),
+                 status = :status
+             WHERE id = :id'
+        );
+        $stmt->execute([
+            'fan_awb' => $generated[0]['awb'],
+            'fan_awb_list' => json_encode($generated, JSON_UNESCAPED_UNICODE),
+            'fan_tracking_url' => $generated[0]['tracking_url'],
+            'fan_tracking_status' => 'AWB generat (' . count($generated) . '/' . $totalColete . ' colete)',
+            'status' => 'completed',
+            'id' => $orderId,
+        ]);
+        if ($previousStatus !== 'completed') {
+            $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, 'completed');
+        }
+        EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+
+        $listaAwb = implode(', ', array_column($generated, 'awb'));
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'AWB generat doar pentru o parte din colete (' . $listaAwb . '). ' . implode(' ', $errors),
+            ];
+        }
+        return [
+            'ok' => true,
+            'message' => 'AWB-uri FAN generate: ' . $listaAwb . ' (' . $totalColete . ' colete). Status comandă: completed.',
+        ];
+    }
+
+    /**
+     * Produsele comenzii indexate pe SKU (majuscule), pentru împărțirea pe
+     * colete: greutatea și valoarea fiecărui colet se calculează din ele.
+     *
+     * @return array<string, array{weight_grams: int, unit_price: float}>
+     */
+    private function orderItemsBySku(PDO $db, int $orderId): array
+    {
+        $stmt = $db->prepare(
+            'SELECT oi.quantity, oi.unit_price, p.weight_grams, p.sku
+             FROM order_items oi
+             LEFT JOIN products p ON p.id = oi.product_id
+             WHERE oi.order_id = :order_id
+             ORDER BY oi.id ASC'
+        );
+        $stmt->execute(['order_id' => $orderId]);
+
+        $out = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku === '') {
+                continue;
+            }
+            $out[$sku] = [
+                'weight_grams' => (int) ($row['weight_grams'] ?? 0),
+                'unit_price' => (float) ($row['unit_price'] ?? 0),
+            ];
+        }
+        return $out;
+    }
+
     private function shouldRetryFanAwbWithStandardService(array $order, array $payload, string $errorMessage): bool
     {
+        // Trecerea pe „Standard" ar pierde încasarea rambursului, deci nu se
+        // face când AWB-ul chiar are ramburs. Un colet secundar (ramburs 0)
+        // al unei comenzi COD poate totuși cădea pe Standard.
         $paymentMethod = strtolower(trim((string) ($order['payment_method'] ?? '')));
-        if ($paymentMethod === 'cod') {
+        $payloadCod = (float) ($payload['shipments'][0]['info']['cod'] ?? 0);
+        if ($paymentMethod === 'cod' && $payloadCod > 0) {
             return false;
         }
 
@@ -5977,20 +6156,37 @@ final class AdminController
         $awb = trim((string) ($order['fan_awb'] ?? ''));
         $awbMessage = '';
         if ($awb === '') {
+            // ERP-ul trimite coletele (depozit + produse). Mai multe colete =
+            // câte un AWB per depozit; altfel, fluxul obișnuit cu un singur AWB.
+            $colete = is_array($event['colete'] ?? null) ? array_values($event['colete']) : [];
             try {
-                $rezultat = $this->createFanAwbInternal($db, $orderId);
+                $rezultat = count($colete) >= 2
+                    ? $this->createFanAwbMulti($db, $orderId, $colete)
+                    : $this->createFanAwbInternal($db, $orderId);
                 if (($rezultat['ok'] ?? false) !== true) {
                     $awbMessage = (string) ($rezultat['message'] ?? '');
                 }
             } catch (Throwable $exception) {
                 $awbMessage = $exception->getMessage();
             }
+        }
 
-            $reload = $db->prepare('SELECT fan_awb, fan_tracking_url FROM orders WHERE id = :id LIMIT 1');
-            $reload->execute(['id' => $orderId]);
-            $fresh = $reload->fetch() ?: [];
-            $awb = trim((string) ($fresh['fan_awb'] ?? ''));
-            $order['fan_tracking_url'] = (string) ($fresh['fan_tracking_url'] ?? '');
+        $reload = $db->prepare('SELECT fan_awb, fan_awb_list, fan_tracking_url FROM orders WHERE id = :id LIMIT 1');
+        $reload->execute(['id' => $orderId]);
+        $fresh = $reload->fetch() ?: [];
+        $awb = trim((string) ($fresh['fan_awb'] ?? ''));
+        $order['fan_tracking_url'] = (string) ($fresh['fan_tracking_url'] ?? '');
+
+        // Către ERP se întorc toate AWB-urile comenzii, separate prin virgulă.
+        $listaAwb = json_decode((string) ($fresh['fan_awb_list'] ?? ''), true);
+        if (is_array($listaAwb) && count($listaAwb) > 1) {
+            $toate = array_filter(array_map(
+                static fn ($intrare): string => is_array($intrare) ? trim((string) ($intrare['awb'] ?? '')) : '',
+                $listaAwb
+            ), static fn (string $v): bool => $v !== '');
+            if ($toate !== []) {
+                $awb = implode(', ', $toate);
+            }
         }
 
         if ($awb !== '') {
@@ -11903,7 +12099,17 @@ HTML;
         return $order;
     }
 
-    private function buildFanShipmentPayload(array $order, array $settings, int $clientId): array
+    /**
+     * Payload-ul FAN pentru un AWB. `$override` e folosit la comenzile care
+     * pleacă în mai multe colete (câte unul per depozit):
+     *   - items: doar produsele coletului (greutatea se calculează din ele);
+     *   - cod: rambursul coletului (0 la toate în afară de primul);
+     *   - declared_value: valoarea produselor din colet;
+     *   - content_suffix: " — colet 1/2 (Depozit X)" pe conținut/observații;
+     *   - sender_gestiune_id: depozitul de ridicare (adresa lui din
+     *     Setări livrare), în locul căutării după județul de livrare.
+     */
+    private function buildFanShipmentPayload(array $order, array $settings, int $clientId, array $override = []): array
     {
         $service = trim((string) ($settings['fan_service_type'] ?? 'Standard'));
         if ($service === '') {
@@ -11924,7 +12130,10 @@ HTML;
         if ($defaultWeight <= 0) {
             $defaultWeight = 1;
         }
-        $weight = $this->fanOrderWeightKg((array) ($order['items'] ?? []), $defaultWeight);
+        $weightItems = isset($override['items']) && is_array($override['items'])
+            ? $override['items']
+            : (array) ($order['items'] ?? []);
+        $weight = $this->fanOrderWeightKg($weightItems, $defaultWeight);
         $dimensions = $this->fanDimensionsFromSettings($settings);
 
         // AWB-ul se emite către adresa de LIVRARE. Dacă livrarea diferă de facturare
@@ -11959,6 +12168,15 @@ HTML;
         $recipientEmail = trim((string) ($order['billing_email'] ?? ''));
 
         $cod = ((string) ($order['payment_method'] ?? '') === 'cod') ? (float) ($order['total'] ?? 0) : 0.0;
+        if (array_key_exists('cod', $override) && $override['cod'] !== null) {
+            $cod = (float) $override['cod'];
+        }
+        $declaredValue = round((float) ($order['total'] ?? 0), 2);
+        if (isset($override['declared_value']) && (float) $override['declared_value'] > 0) {
+            $declaredValue = round((float) $override['declared_value'], 2);
+        }
+        $contentSuffix = trim((string) ($override['content_suffix'] ?? ''));
+        $contentLabel = 'Comanda ' . (string) ($order['order_number'] ?? '') . ($contentSuffix !== '' ? ' ' . $contentSuffix : '');
 
         $shipment = [
             'info' => [
@@ -11971,7 +12189,7 @@ HTML;
                 ],
                 'weight' => $weight,
                 'cod' => $cod > 0 ? round($cod, 2) : 0,
-                'declaredValue' => round((float) ($order['total'] ?? 0), 2),
+                'declaredValue' => $declaredValue,
                 'payment' => $shippingPayer,
                 'refund' => null,
                 'returnPayment' => $cod > 0
@@ -11979,8 +12197,8 @@ HTML;
                         ? trim((string) ($settings['fan_cod_payer'] ?? 'sender'))
                         : 'sender')
                     : null,
-                'observation' => 'Comanda ' . (string) ($order['order_number'] ?? ''),
-                'content' => 'Comanda ' . (string) ($order['order_number'] ?? ''),
+                'observation' => $contentLabel,
+                'content' => $contentLabel,
                 'costCenter' => null,
                 'options' => $this->fanOptionCodesFromSettings($settings),
             ],
@@ -12009,15 +12227,21 @@ HTML;
 
         // Gestiuni pe județe: AWB-ul se ridică de la depozitul care deservește
         // județul de livrare al comenzii (adresa din Setări livrare, per depozit).
-        $awbCounty = ((int) ($order['shipping_same_as_billing'] ?? 1)) === 1
-            ? trim((string) ($order['billing_county'] ?? ''))
-            : trim((string) ($order['shipping_county'] ?? ''));
-        $awbDb = $this->db();
-        $senderOverride = \App\Support\ErpShipping::senderForCounty(
-            $awbDb instanceof PDO ? $awbDb : null,
-            $settings,
-            $awbCounty
-        );
+        // La comenzile în mai multe colete, depozitul vine explicit din ERP.
+        $senderGestiuneId = trim((string) ($override['sender_gestiune_id'] ?? ''));
+        if ($senderGestiuneId !== '') {
+            $senderOverride = \App\Support\ErpShipping::senderForGestiune($settings, $senderGestiuneId);
+        } else {
+            $awbCounty = ((int) ($order['shipping_same_as_billing'] ?? 1)) === 1
+                ? trim((string) ($order['billing_county'] ?? ''))
+                : trim((string) ($order['shipping_county'] ?? ''));
+            $awbDb = $this->db();
+            $senderOverride = \App\Support\ErpShipping::senderForCounty(
+                $awbDb instanceof PDO ? $awbDb : null,
+                $settings,
+                $awbCounty
+            );
+        }
         if ($senderOverride !== null) {
             $settings = array_merge($settings, $senderOverride);
         }

@@ -389,6 +389,9 @@ final class ErpSync
             'erp_synced_at' => 'DATETIME DEFAULT NULL',
             'erp_problems' => 'TEXT DEFAULT NULL',
             'erp_factura_numar' => 'VARCHAR(40) DEFAULT NULL',
+            // Toate AWB-urile comenzii (JSON), când pleacă în mai multe colete
+            // din depozite diferite; `fan_awb` rămâne primul colet.
+            'fan_awb_list' => 'TEXT DEFAULT NULL',
         ];
 
         foreach ($columns as $name => $definition) {

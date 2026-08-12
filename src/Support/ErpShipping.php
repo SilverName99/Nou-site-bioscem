@@ -54,6 +54,18 @@ final class ErpShipping
             return null;
         }
 
+        return self::senderForGestiune($settings, $gestiuneId);
+    }
+
+    /**
+     * Expeditorul FAN pentru un depozit anume (folosit la comenzile care
+     * pleacă în mai multe colete: fiecare colet își știe deja depozitul, din
+     * ERP). Null dacă adresa depozitului nu e completată pe site.
+     *
+     * @return array<string, string>|null
+     */
+    public static function senderForGestiune(array $settings, string $gestiuneId): ?array
+    {
         $adresa = self::depotAddress($settings, $gestiuneId);
         if ($adresa === null) {
             return null;

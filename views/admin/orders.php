@@ -222,6 +222,21 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         $awb = trim((string) ($order['fan_awb'] ?? ''));
                         $trackingStatus = trim((string) ($order['fan_tracking_status'] ?? ''));
                         $trackingUrl = trim((string) ($order['fan_tracking_url'] ?? ''));
+                        // Comenzile plecate din mai multe depozite au mai multe AWB-uri.
+                        $awbColete = [];
+                        $awbListaRaw = json_decode((string) ($order['fan_awb_list'] ?? ''), true);
+                        if (is_array($awbListaRaw) && count($awbListaRaw) > 1) {
+                            foreach ($awbListaRaw as $awbIntrare) {
+                                if (!is_array($awbIntrare) || trim((string) ($awbIntrare['awb'] ?? '')) === '') {
+                                    continue;
+                                }
+                                $awbColete[] = [
+                                    'awb' => trim((string) $awbIntrare['awb']),
+                                    'url' => trim((string) ($awbIntrare['tracking_url'] ?? '')),
+                                    'gestiune' => trim((string) ($awbIntrare['gestiune'] ?? '')),
+                                ];
+                            }
+                        }
                         $pointsAwarded = (int) ($order['loyalty_points_awarded'] ?? 0);
                         $orderId = (int) ($order['id'] ?? 0);
                         $customerName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
@@ -279,7 +294,22 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             <?php if ($erpFactura !== ''): ?>
                                 <small style="display:block;color:#0f766e;">Factură ERP: <?= htmlspecialchars($erpFactura, ENT_QUOTES) ?></small>
                             <?php endif; ?>
-                            <?php if ($awb !== ''): ?>
+                            <?php if (count($awbColete) > 1): ?>
+                                <?php foreach ($awbColete as $awbColet): ?>
+                                    <small style="display:block;">
+                                        FAN:
+                                        <?php if ($awbColet['url'] !== ''): ?>
+                                            <a href="<?= htmlspecialchars($awbColet['url'], ENT_QUOTES) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($awbColet['awb'], ENT_QUOTES) ?></a>
+                                        <?php else: ?>
+                                            <?= htmlspecialchars($awbColet['awb'], ENT_QUOTES) ?>
+                                        <?php endif; ?>
+                                        <?php if ($awbColet['gestiune'] !== ''): ?>
+                                            <span style="color:#64748b;">(<?= htmlspecialchars($awbColet['gestiune'], ENT_QUOTES) ?>)</span>
+                                        <?php endif; ?>
+                                    </small>
+                                <?php endforeach; ?>
+                                <small style="display:block;color:#64748b;"><?= htmlspecialchars($trackingStatus !== '' ? $trackingStatus : 'AWB generat', ENT_QUOTES) ?></small>
+                            <?php elseif ($awb !== ''): ?>
                                 <small style="display:block;">FAN: <?= htmlspecialchars($awb, ENT_QUOTES) ?></small>
                                 <small style="display:block;color:#64748b;"><?= htmlspecialchars($trackingStatus !== '' ? $trackingStatus : 'AWB generat', ENT_QUOTES) ?></small>
                             <?php else: ?>

@@ -59,9 +59,11 @@ final class EmailAutomation
         }
 
         self::ensureSchema($db);
+        // Garantează coloana fan_awb_list (comenzile care pleacă în mai multe colete).
+        ErpSync::ensureSchema($db);
         $stmt = $db->prepare(
             'SELECT id, order_number, status, billing_first_name, billing_last_name, billing_email,
-                    fan_awb, fan_tracking_url, created_at, total
+                    fan_awb, fan_awb_list, fan_tracking_url, created_at, total
              FROM orders
              WHERE id = :id AND deleted_at IS NULL
              LIMIT 1'
@@ -101,9 +103,34 @@ final class EmailAutomation
             $customerName = 'Client';
         }
 
+        // Comenzile din mai multe depozite au mai multe AWB-uri (fan_awb_list);
+        // emailul de tracking primește câte un link pentru fiecare colet.
+        $trackingLinks = [];
+        $listaAwb = json_decode((string) ($order['fan_awb_list'] ?? ''), true);
+        if (is_array($listaAwb)) {
+            foreach ($listaAwb as $intrare) {
+                if (!is_array($intrare)) {
+                    continue;
+                }
+                $awbColet = trim((string) ($intrare['awb'] ?? ''));
+                if ($awbColet === '') {
+                    continue;
+                }
+                $urlColet = trim((string) ($intrare['tracking_url'] ?? ''));
+                $trackingLinks[] = [
+                    'awb' => $awbColet,
+                    'url' => $urlColet !== '' ? $urlColet : FanCourierGateway::trackingUrl($awbColet),
+                    'gestiune' => trim((string) ($intrare['gestiune'] ?? '')),
+                ];
+            }
+        }
+
         $awb = trim((string) ($order['fan_awb'] ?? ''));
         $trackingUrl = trim((string) ($order['fan_tracking_url'] ?? ''));
-        if ($awb !== '') {
+        if ($trackingLinks !== []) {
+            $awb = implode(', ', array_column($trackingLinks, 'awb'));
+            $trackingUrl = (string) $trackingLinks[0]['url'];
+        } elseif ($awb !== '') {
             $trackingUrl = FanCourierGateway::trackingUrl($awb);
         }
         if ($trackingUrl === '') {
@@ -124,6 +151,7 @@ final class EmailAutomation
             'awb' => $awb,
             'courier_name' => $awb !== '' ? 'FAN Courier' : 'Curier rapid',
             'tracking_url' => $trackingUrl,
+            'tracking_links' => $trackingLinks,
             'cart_summary' => '',
             'order_status' => self::orderStatusLabel((string) ($order['status'] ?? '')),
             'estimated_delivery' => self::estimatedDeliveryWindowLabel((string) ($order['created_at'] ?? '')),

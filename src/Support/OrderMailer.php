@@ -790,9 +790,36 @@ HTML;
         $safeOrderNumber = htmlspecialchars($orderNumber, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeAwb = htmlspecialchars($awb, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeTrackingUrl = htmlspecialchars($trackingUrlRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeTrackingLink = $safeTrackingUrl !== ''
-            ? '<a href="' . $safeTrackingUrl . '" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Urmareste coletul pe FAN Courier</a>'
-            : '';
+
+        // Comanda poate pleca în mai multe colete (din depozite diferite):
+        // {{tracking_link}} devine câte un buton pentru fiecare AWB.
+        $trackingLinks = [];
+        foreach ((array) ($context['tracking_links'] ?? []) as $link) {
+            if (!is_array($link)) {
+                continue;
+            }
+            $linkAwb = trim((string) ($link['awb'] ?? ''));
+            $linkUrl = trim((string) ($link['url'] ?? ''));
+            if ($linkAwb === '' || $linkUrl === '') {
+                continue;
+            }
+            $trackingLinks[] = ['awb' => $linkAwb, 'url' => $linkUrl];
+        }
+
+        $butonStil = 'display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;';
+        if (count($trackingLinks) > 1) {
+            $butoane = [];
+            foreach ($trackingLinks as $i => $link) {
+                $butoane[] = '<a href="' . htmlspecialchars($link['url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    . '" style="' . $butonStil . 'margin:2px 0;">Urmareste coletul ' . ($i + 1) . ' ('
+                    . htmlspecialchars($link['awb'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ')</a>';
+            }
+            $safeTrackingLink = implode('<br>', $butoane);
+        } else {
+            $safeTrackingLink = $safeTrackingUrl !== ''
+                ? '<a href="' . $safeTrackingUrl . '" style="' . $butonStil . '">Urmareste coletul pe FAN Courier</a>'
+                : '';
+        }
         $cartSummary = trim((string) ($context['cart_summary'] ?? ''));
         $safeCartSummary = nl2br(htmlspecialchars($cartSummary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
         $abandonedCartSummary = self::abandonedCartSummaryData($cartSummary);
