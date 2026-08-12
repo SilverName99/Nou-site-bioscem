@@ -51,10 +51,11 @@ $stripeActiv = (string) ($settings['stripe_enabled'] ?? '0') === '1';
         </div>
 
         <article class="panel" style="grid-column:1/-1;margin:4px 0 0;background:#ecfdf5;border-color:#a7f3d0;">
-            <h4 style="margin:0 0 6px;">De configurat în panoul EuPlătesc</h4>
+            <h4 style="margin:0 0 6px;">Adresele folosite la plată</h4>
             <p style="margin:0 0 8px;color:#475569;">
-                Adaugă aceste adrese la contul de comerciant. Fără <strong>URL-ul de notificare</strong>,
-                comenzile rămân „plată în așteptare" chiar dacă banii au fost încasați.
+                Se trimit automat cu fiecare tranzacție, deci nu trebuie configurate nicăieri.
+                Le poți trece și în panoul EuPlătesc (Setări), ca plasă de siguranță, dacă
+                procesatorul îți cere adrese fixe pe cont.
             </p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;">
                 <tr>
@@ -71,7 +72,8 @@ $stripeActiv = (string) ($settings['stripe_enabled'] ?? '0') === '1';
                 </tr>
             </table>
             <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-                Adresele de retur se trimit automat cu fiecare plată, deci în panou e obligatoriu doar URL-ul de notificare.
+                URL-ul de notificare e cel care marchează comanda ca plătită. Dacă plata reușește
+                dar comanda rămâne „plată în așteptare", el e primul lucru de verificat.
             </p>
         </article>
 
