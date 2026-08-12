@@ -21,7 +21,7 @@ Migrare `bioscem.ro` către un magazin custom PHP (backend preluat din proiectul
   - formular produs nou;
   - listă comenzi;
   - setări livrare FAN (skeleton configurabil);
-  - setări Stripe keys + webhook secret;
+  - setări plăți: EuPlătesc (merchant ID + cheie secretă, URL de notificare) și, opțional, Stripe;
   - secțiune Pagini (editor HTML cu preview live + mod desktop/tabletă/telefon);
   - secțiune Galerie (gestionare imagini);
   - secțiune Design Site (editare Header/Footer/Meniu cu preview);
@@ -78,7 +78,7 @@ wget -q -O /dev/null https://domeniul-tau.tld/health
 
 ### FAN Courier - automatizari AWB + tracking
 
-- daca in `Admin -> Setari livrare` activezi `Generare AWB automata`, sistemul incearca sa genereze AWB automat cand comanda intra in `processing` (ex: dupa plata confirmata Stripe);
+- daca in `Admin -> Setari livrare` activezi `Generare AWB automata`, sistemul incearca sa genereze AWB automat cand comanda intra in `processing` (ex: dupa confirmarea platii cu cardul);
 - cand comanda este marcata `completed` si are AWB, sistemul trimite automat clientului email cu:
   - codul de urmarire (AWB)
   - link direct catre pagina FAN de tracking;

@@ -29,9 +29,19 @@ $pointsSliderMin = $pointsCanMeetMin ? ($pointsMinRedeem > 0 ? $pointsMinRedeem 
 $pointsSliderValue = max($pointsSliderMin, min($pointsSliderMax, $pointsRequested > 0 ? $pointsRequested : $pointsSliderMin));
 $isLoggedIn = (bool) ($isLoggedIn ?? false);
 $loginUrl = '/login';
-$paymentMethod = (string) ($values['payment_method'] ?? 'stripe');
-if (!in_array($paymentMethod, ['stripe', 'cod'], true)) {
-    $paymentMethod = 'stripe';
+// Metodele de card active vin din setări (EuPlătesc implicit, Stripe opțional).
+$cardMethods = array_values(array_filter(
+    (array) ($cardMethods ?? []),
+    static fn ($m): bool => in_array($m, ['euplatesc', 'stripe'], true)
+));
+$cardLabels = [
+    'euplatesc' => ['Card bancar', 'Plată online securizată prin EuPlătesc'],
+    'stripe' => ['Card (Stripe)', 'Plată online securizată'],
+];
+$paymentMethods = array_merge($cardMethods, ['cod']);
+$paymentMethod = (string) ($values['payment_method'] ?? '');
+if (!in_array($paymentMethod, $paymentMethods, true)) {
+    $paymentMethod = $paymentMethods[0];
 }
 $antiBot = is_array($antiBot ?? null) ? $antiBot : [];
 $antiBotToken = trim((string) ($antiBot['token'] ?? ''));
@@ -289,13 +299,15 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
                             <label>Metodă de plată</label>
                             <div class="bv-checkout-v3__payment">
-                                <label class="bv-checkout-v3__method">
-                                    <input type="radio" name="payment_method" value="stripe" <?= $paymentMethod === 'stripe' ? 'checked' : '' ?>>
-                                    <span class="bv-checkout-v3__method-label">
-                                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.7"/></svg>
-                                        <span><strong>Card (Stripe)</strong><br><span>Plată online securizată</span></span>
-                                    </span>
-                                </label>
+                                <?php foreach ($cardMethods as $cardMethod): ?>
+                                    <label class="bv-checkout-v3__method">
+                                        <input type="radio" name="payment_method" value="<?= htmlspecialchars($cardMethod, ENT_QUOTES) ?>" <?= $paymentMethod === $cardMethod ? 'checked' : '' ?>>
+                                        <span class="bv-checkout-v3__method-label">
+                                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.7"/></svg>
+                                            <span><strong><?= htmlspecialchars($cardLabels[$cardMethod][0], ENT_QUOTES) ?></strong><br><span><?= htmlspecialchars($cardLabels[$cardMethod][1], ENT_QUOTES) ?></span></span>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
                                 <label class="bv-checkout-v3__method">
                                     <input type="radio" name="payment_method" value="cod" <?= $paymentMethod === 'cod' ? 'checked' : '' ?>>
                                     <span class="bv-checkout-v3__method-label">
@@ -404,10 +416,14 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     <div class="bv-checkout-v3__row bv-checkout-v3__row--total"><span>Total de plată</span><strong data-checkout-total><?= number_format($total, 2) ?> lei</strong></div>
                 </div>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
-                    <?= $previewMode ? 'Preview checkout' : ($paymentMethod === 'stripe' ? 'Către plată' : 'Plasează comanda') ?>
+                    <?= $previewMode ? 'Preview checkout' : (in_array($paymentMethod, ['euplatesc', 'stripe'], true) ? 'Către plată' : 'Plasează comanda') ?>
                 </button>
                 <p class="bv-checkout-v3__shipping-error" data-checkout-shipping-error></p>
-                <p class="bv-checkout-v3__note">Plată securizată prin Stripe.</p>
+                <?php if ($cardMethods !== []): ?>
+                    <p class="bv-checkout-v3__note">
+                        Plată securizată prin <?= in_array('euplatesc', $cardMethods, true) ? 'EuPlătesc' : 'Stripe' ?>.
+                    </p>
+                <?php endif; ?>
             </aside>
         </div>
     <?php endif; ?>
@@ -506,7 +522,7 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
             if (!(submitButton instanceof HTMLButtonElement)) return;
             const selected = paymentInputs.find((input) => input instanceof HTMLInputElement && input.checked);
             const method = selected instanceof HTMLInputElement ? String(selected.value || '') : '';
-            submitButton.textContent = method === 'stripe' ? 'Către plată' : 'Plasează comanda';
+            submitButton.textContent = (method === 'stripe' || method === 'euplatesc') ? 'Către plată' : 'Plasează comanda';
         };
         paymentInputs.forEach((input) => {
             if (!(input instanceof HTMLInputElement)) return;

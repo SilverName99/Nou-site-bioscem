@@ -130,7 +130,7 @@ final class ErpSync
                AND erp_attempts < :max_attempts
                AND (erp_next_retry_at IS NULL OR erp_next_retry_at <= NOW())
                AND status NOT IN ('cancelled', 'refunded', 'failed')
-               AND (payment_method <> 'stripe' OR payment_status = 'paid')
+               AND (payment_method NOT IN ('stripe', 'euplatesc') OR payment_status = 'paid')
              ORDER BY id ASC
              LIMIT " . max(1, min(200, $limit))
         );
@@ -268,7 +268,7 @@ final class ErpSync
         }
         $metoda = strtolower((string) ($order['payment_method'] ?? ''));
         $platit = strtolower((string) ($order['payment_status'] ?? '')) === 'paid';
-        if ($metoda === 'stripe' && !$platit) {
+        if (in_array($metoda, ['stripe', 'euplatesc'], true) && !$platit) {
             return 'Comanda cu plata prin card se trimite după confirmarea plății.';
         }
         return null;

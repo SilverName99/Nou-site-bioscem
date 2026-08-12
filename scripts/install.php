@@ -57,6 +57,16 @@ try {
     $db->exec('ALTER TABLE orders ADD COLUMN payment_error TEXT DEFAULT NULL AFTER paid_at');
 } catch (Throwable) {
 }
+
+try {
+    $db->exec('ALTER TABLE orders ADD COLUMN euplatesc_ep_id VARCHAR(64) DEFAULT NULL AFTER payment_error');
+} catch (Throwable) {
+}
+
+try {
+    $db->exec('ALTER TABLE orders ADD COLUMN euplatesc_approval VARCHAR(64) DEFAULT NULL AFTER euplatesc_ep_id');
+} catch (Throwable) {
+}
 try {
     $db->exec('ALTER TABLE orders ADD COLUMN fan_awb VARCHAR(100) DEFAULT NULL AFTER billing_postcode');
 } catch (Throwable) {

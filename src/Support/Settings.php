@@ -85,6 +85,13 @@ final class Settings
         'stripe_secret_key' => '',
         'stripe_webhook_secret' => '',
         'stripe_currency' => 'ron',
+        // EuPlătesc — plata cu cardul prin redirect (procesatorul implicit).
+        'euplatesc_enabled' => '0',
+        'euplatesc_merchant_id' => '',
+        'euplatesc_secret_key' => '',
+        'euplatesc_currency' => 'RON',
+        // Stripe rămâne disponibil ca alternativă, dar ascuns implicit.
+        'stripe_enabled' => '0',
         'customer_google_auth_enabled' => '0',
         'customer_google_client_id' => '',
         'customer_google_client_secret' => '',

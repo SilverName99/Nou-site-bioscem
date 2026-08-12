@@ -4159,6 +4159,7 @@ final class AdminController
         ];
         $orderPaymentMethodLabels = [
             'cod' => 'Ramburs',
+            'euplatesc' => 'Card',
             'stripe' => 'Card',
             'card' => 'Card',
             'bank_transfer' => 'Card',
@@ -4226,7 +4227,7 @@ final class AdminController
             if ($filters['payment_method'] !== '') {
                 $paymentMethodFilter = strtolower($filters['payment_method']);
                 if ($paymentMethodFilter === 'card') {
-                    $where[] = 'LOWER(payment_method) IN ("card", "stripe", "bank_transfer")';
+                    $where[] = 'LOWER(payment_method) IN ("card", "euplatesc", "stripe", "bank_transfer")';
                 } elseif ($paymentMethodFilter === 'cod') {
                     $where[] = 'LOWER(payment_method) = "cod"';
                 } else {
@@ -5244,7 +5245,7 @@ final class AdminController
             $params['status'] = $filters['status'];
         }
         if ($filters['payment_method'] === 'card') {
-            $where[] = "payment_method IN ('stripe', 'card', 'bank_transfer')";
+            $where[] = "payment_method IN ('euplatesc', 'stripe', 'card', 'bank_transfer')";
         } elseif ($filters['payment_method'] === 'cod') {
             $where[] = "payment_method = 'cod'";
         }
@@ -5301,7 +5302,7 @@ final class AdminController
             'processing' => 'În procesare', 'completed' => 'Finalizată',
             'cancelled' => 'Anulată', 'refunded' => 'Rambursată', 'failed' => 'Eșuată',
         ];
-        $paymentMethodLabels = ['cod' => 'Ramburs', 'stripe' => 'Card', 'card' => 'Card', 'bank_transfer' => 'Card'];
+        $paymentMethodLabels = ['cod' => 'Ramburs', 'euplatesc' => 'Card', 'stripe' => 'Card', 'card' => 'Card', 'bank_transfer' => 'Card'];
         $paymentStatusLabels = ['paid' => 'Plătit', 'unpaid' => 'Neplătit', 'failed' => 'Eșuat', 'pending' => 'În așteptare'];
 
         $filename = 'comenzi-' . date('Y-m-d-His') . '.csv';
@@ -5464,7 +5465,7 @@ final class AdminController
 
         $paymentMethod = trim((string) ($input['payment_method'] ?? ''));
         $paymentMethod = strtolower($paymentMethod);
-        if ($paymentMethod === 'stripe' || $paymentMethod === 'bank_transfer') {
+        if (in_array($paymentMethod, ['euplatesc', 'stripe', 'bank_transfer'], true)) {
             $paymentMethod = 'card';
         }
         if ($paymentMethod !== '' && !in_array($paymentMethod, ['card', 'cod'], true)) {
@@ -7398,6 +7399,7 @@ final class AdminController
         View::render('admin/settings-payments', [
             'title' => 'Setări plăți',
             'settings' => $settings,
+            'appUrl' => $this->appUrl(),
         ], 'admin/layout');
     }
 
@@ -7408,14 +7410,31 @@ final class AdminController
         }
 
         $db = $this->db();
+        $euCurrency = strtoupper(trim((string) ($_POST['euplatesc_currency'] ?? 'RON')));
+        if (preg_match('/^[A-Z]{3}$/', $euCurrency) !== 1) {
+            $euCurrency = 'RON';
+        }
+        // Cheia secretă EuPlătesc e hexazecimală; spațiile lipite la copiere
+        // ar strica semnătura, deci le curățăm aici.
+        $euSecret = preg_replace('/\s+/', '', (string) ($_POST['euplatesc_secret_key'] ?? '')) ?? '';
+
         Settings::save($db, [
+            'euplatesc_enabled' => isset($_POST['euplatesc_enabled']) ? '1' : '0',
+            'euplatesc_merchant_id' => trim((string) ($_POST['euplatesc_merchant_id'] ?? '')),
+            'euplatesc_secret_key' => $euSecret,
+            'euplatesc_currency' => $euCurrency,
+            'stripe_enabled' => isset($_POST['stripe_enabled']) ? '1' : '0',
             'stripe_publishable_key' => trim((string) ($_POST['stripe_publishable_key'] ?? '')),
             'stripe_secret_key' => trim((string) ($_POST['stripe_secret_key'] ?? '')),
             'stripe_webhook_secret' => trim((string) ($_POST['stripe_webhook_secret'] ?? '')),
             'stripe_currency' => strtolower(trim((string) ($_POST['stripe_currency'] ?? 'ron'))),
         ]);
 
-        Flash::set('success', 'Setările Stripe au fost salvate.');
+        $avertisment = '';
+        if ($euSecret !== '' && preg_match('/^[0-9a-fA-F]+$/', $euSecret) !== 1) {
+            $avertisment = ' Atenție: cheia secretă EuPlătesc nu pare hexazecimală — plățile vor fi respinse.';
+        }
+        Flash::set($avertisment === '' ? 'success' : 'error', 'Setările de plată au fost salvate.' . $avertisment);
         header('Location: /admin/settings/payments');
     }
 
@@ -14452,12 +14471,14 @@ HTML;
             'billing_county' => 'Bucuresti',
             'billing_postcode' => '010101',
             'notes' => '',
-            'payment_method' => 'stripe',
+            'payment_method' => 'euplatesc',
         ];
 
         return $this->renderPartialPhpView('site/components/checkout-form', [
             'summary' => $summary,
             'values' => $values,
+            // În preview arătăm ambele metode de card, ca designul să fie vizibil.
+            'cardMethods' => ['euplatesc', 'stripe'],
             'isLoggedIn' => true,
             'antiBot' => ['token' => '', 'rendered_at' => 0],
             'previewMode' => true,

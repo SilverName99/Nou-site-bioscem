@@ -130,7 +130,9 @@ $router->post('/api/cart/coupon/clear', [SiteController::class, 'cartClearCoupon
 $router->get('/checkout', [SiteController::class, 'checkout']);
 $router->post('/checkout', [SiteController::class, 'checkoutSubmit']);
 $router->get('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
+$router->post('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
 $router->post('/webhook/stripe', [SiteController::class, 'stripeWebhook']);
+$router->post('/webhook/euplatesc', [SiteController::class, 'euPlatescIpn']);
 // Notificările venite din ERP (aprobare/anulare comandă), autentificate cu cheia de integrare.
 $router->post('/api/erp/notificare', [AdminController::class, 'erpNotification']);
 $router->post('/newsletter/optin/{slug}', [SiteController::class, 'optInSubmit']);

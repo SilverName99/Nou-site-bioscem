@@ -1,6 +1,6 @@
 <section class="panel">
     <h1>Comandă plasată cu succes</h1>
-    <?php if (($stripeReturn ?? false) === true): ?>
+    <?php if (($stripeReturn ?? false) === true || ($euplatescReturn ?? false) === true): ?>
         <?php if (($paymentStatus ?? '') === 'paid'): ?>
             <p>Plata cu cardul a fost confirmată. Mulțumim!</p>
         <?php else: ?>

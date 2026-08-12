@@ -54,6 +54,7 @@ $paymentStatusPillClassMap = [
 $paymentMethodPillClassMap = [
     'cod' => 'cod',
     'card' => 'card',
+    'euplatesc' => 'card',
     'stripe' => 'card',
     'bank_transfer' => 'card',
 ];

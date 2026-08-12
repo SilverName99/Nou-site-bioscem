@@ -15,6 +15,7 @@ use App\Support\LoyaltyService;
 use App\Support\NewsletterService;
 use App\Support\OrderMailer;
 use App\Support\Settings;
+use App\Support\EuPlatescGateway;
 use App\Support\StripeGateway;
 use App\Support\View;
 use App\Support\WordPressPassword;
@@ -800,8 +801,11 @@ final class SiteController
 
     public function checkout(): void
     {
-        if (isset($_GET['stripe_cancelled'])) {
+        if (isset($_GET['stripe_cancelled']) || isset($_GET['euplatesc_cancelled'])) {
             Flash::set('error', 'Plata cu cardul a fost anulată. Poți reîncerca checkout-ul.');
+        }
+        if (isset($_GET['euplatesc_failed'])) {
+            Flash::set('error', 'Plata cu cardul nu a fost aprobată. Poți reîncerca sau alege plata ramburs.');
         }
 
         $db = $this->db();
@@ -889,7 +893,9 @@ final class SiteController
         }
 
         $orderNumber = $this->generateOrderNumber();
-        $status = ($billing['payment_method'] === 'stripe') ? 'pending_payment' : 'pending';
+        $status = in_array($billing['payment_method'], self::METODE_CARD, true)
+            ? 'pending_payment'
+            : 'pending';
         $now = new DateTimeImmutable('now');
         $customer = CustomerAuth::user($db);
         $customerUserId = is_array($customer) ? (int) ($customer['id'] ?? 0) : 0;
@@ -1043,13 +1049,34 @@ final class SiteController
             return;
         }
 
+        if ($billing['payment_method'] === 'euplatesc') {
+            try {
+                $fields = $this->createEuPlatescRequest($db, $orderId, $orderNumber, $summary, $billing);
+                // Coșul se golește abia la confirmarea plății (pe silent URL),
+                // ca un client care renunță să-și găsească produsele la loc.
+                unset($_SESSION['checkout_form']);
+                View::render('site/euplatesc-redirect', [
+                    'title' => 'Se deschide plata securizată',
+                    'gatewayUrl' => EuPlatescGateway::GATEWAY_URL,
+                    'fields' => $fields,
+                    'orderNumber' => $orderNumber,
+                ], 'layout-blank');
+                return;
+            } catch (RuntimeException $exception) {
+                $this->markOrderPaymentFailed($db, $orderId, $exception->getMessage());
+                Flash::set('error', 'Nu am putut inițializa plata cu cardul. ' . $exception->getMessage());
+                header('Location: /checkout');
+                return;
+            }
+        }
+
         if ($billing['payment_method'] === 'stripe') {
             try {
                 $session = $this->createStripeCheckoutSession($db, $orderId, $orderNumber, $summary, $billing);
                 header('Location: ' . (string) $session['url']);
                 return;
             } catch (RuntimeException $exception) {
-                $this->markOrderStripeFailed($db, $orderId, $exception->getMessage());
+                $this->markOrderPaymentFailed($db, $orderId, $exception->getMessage());
                 Flash::set('error', 'Nu am putut inițializa plata cu cardul. ' . $exception->getMessage());
                 header('Location: /checkout');
                 return;
@@ -1072,6 +1099,17 @@ final class SiteController
         $orderNumber = (string) ($params['orderNumber'] ?? '');
         $db = $this->db();
         $stripeReturn = isset($_GET['stripe']) && (string) $_GET['stripe'] === '1';
+        // EuPlătesc trimite clientul înapoi prin POST, cu rezultatul semnat.
+        // Confirmarea „oficială" vine pe silent URL; aici doar ne asigurăm că
+        // pagina arată starea corectă chiar dacă notificarea a întârziat.
+        $euplatescReturn = isset($_GET['euplatesc']) && (string) $_GET['euplatesc'] === '1';
+        if ($db instanceof PDO && $euplatescReturn && $_POST !== []) {
+            try {
+                $this->applyEuPlatescResult($db, $_POST);
+            } catch (Throwable) {
+                // Silent URL-ul rămâne sursa de adevăr; pagina se afișează oricum.
+            }
+        }
         if ($db instanceof PDO && $stripeReturn) {
             try {
                 $this->syncStripeSessionFromReturn($db, $orderNumber, (string) ($_GET['session_id'] ?? ''));
@@ -1135,7 +1173,7 @@ final class SiteController
             }
         }
 
-        if ($stripeReturn) {
+        if ($stripeReturn || $euplatescReturn) {
             Cart::clear();
             unset($_SESSION['checkout_form']);
         }
@@ -1174,6 +1212,7 @@ final class SiteController
             'orderCurrency' => $orderCurrency,
             'orderEmail' => $orderEmail,
             'stripeReturn' => $stripeReturn,
+            'euplatescReturn' => $euplatescReturn,
         ]);
     }
 
@@ -4082,6 +4121,7 @@ HTML;
         return $this->renderPhpView('site/components/checkout-form', [
             'summary' => $summary,
             'values' => $values,
+            'cardMethods' => $this->metodeCardActive(),
             'fanCounties' => $fanCounties,
             'localitiesEndpoint' => self::FAN_LOCALITIES_API_ENDPOINT,
             'shippingQuoteEndpoint' => self::CHECKOUT_SHIPPING_QUOTE_API_ENDPOINT,
@@ -5187,6 +5227,206 @@ CSS;
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
+    /** Metodele de plată online: comanda se confirmă abia după încasare. */
+    private const METODE_CARD = ['stripe', 'euplatesc'];
+
+    /**
+     * Metodele de card oferite în checkout, în ordinea preferinței. EuPlătesc
+     * e procesatorul implicit; Stripe apare doar dacă e bifat explicit.
+     *
+     * @return string[]
+     */
+    public function metodeCardActive(?array $settings = null): array
+    {
+        if ($settings === null) {
+            $db = $this->db();
+            $settings = $db instanceof PDO ? $this->cachedSettings($db) : [];
+        }
+
+        $metode = [];
+        if (EuPlatescGateway::isEnabled($settings)) {
+            $metode[] = 'euplatesc';
+        }
+        if (
+            (string) ($settings['stripe_enabled'] ?? '0') === '1'
+            && trim((string) ($settings['stripe_secret_key'] ?? '')) !== ''
+        ) {
+            $metode[] = 'stripe';
+        }
+        return $metode;
+    }
+
+    /**
+     * Pornește plata EuPlătesc: construiește formularul semnat și îl afișează
+     * într-o pagină care se auto-trimite către gateway. (EuPlătesc nu are un
+     * URL de sesiune ca Stripe — cererea pleacă prin POST din browser.)
+     *
+     * @return array<string, string> câmpurile formularului
+     */
+    private function createEuPlatescRequest(
+        PDO $db,
+        int $orderId,
+        string $orderNumber,
+        array $summary,
+        array $billing
+    ): array {
+        $settings = Settings::all($db);
+        $appUrl = $this->appUrl();
+
+        $fields = EuPlatescGateway::buildRequest($settings, [
+            'order_number' => $orderNumber,
+            'amount' => (float) ($summary['total'] ?? 0),
+            'description' => 'Comanda ' . $orderNumber,
+            'first_name' => (string) ($billing['billing_first_name'] ?? ''),
+            'last_name' => (string) ($billing['billing_last_name'] ?? ''),
+            'address' => (string) ($billing['billing_address_line1'] ?? ''),
+            'city' => (string) ($billing['billing_city'] ?? ''),
+            'county' => (string) ($billing['billing_county'] ?? ''),
+            'zip' => (string) ($billing['billing_postcode'] ?? ''),
+            'phone' => (string) ($billing['billing_phone'] ?? ''),
+            'email' => (string) ($billing['billing_email'] ?? ''),
+            'success_url' => $appUrl . '/checkout/succes/' . rawurlencode($orderNumber) . '?euplatesc=1',
+            'failed_url' => $appUrl . '/checkout?euplatesc_failed=1',
+            'silent_url' => $appUrl . '/webhook/euplatesc',
+            'back_url' => $appUrl . '/checkout?euplatesc_cancelled=1',
+        ]);
+
+        $stmt = $db->prepare(
+            'UPDATE orders SET payment_error = NULL WHERE id = :id AND deleted_at IS NULL'
+        );
+        $stmt->execute(['id' => $orderId]);
+
+        return $fields;
+    }
+
+    /**
+     * Confirmarea EuPlătesc, venită fie pe silent URL (sursa de adevăr), fie
+     * odată cu întoarcerea clientului. Idempotentă: o comandă deja plătită nu
+     * retrimite emailul și nu repetă împingerea în ERP.
+     *
+     * @param array<string, mixed> $response
+     */
+    private function applyEuPlatescResult(PDO $db, array $response): bool
+    {
+        $orderNumber = trim((string) ($response['invoice_id'] ?? ''));
+        if ($orderNumber === '') {
+            return false;
+        }
+
+        $this->ensureStripeSchema($db);
+        $settings = Settings::all($db);
+        if (!EuPlatescGateway::verifyResponse($response, (string) ($settings['euplatesc_secret_key'] ?? ''))) {
+            return false;
+        }
+
+        $stmt = $db->prepare(
+            'SELECT id, payment_status, total FROM orders
+             WHERE order_number = :order_number AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['order_number' => $orderNumber]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            return false;
+        }
+        $orderId = (int) $order['id'];
+        $eraPlatita = strtolower((string) ($order['payment_status'] ?? '')) === 'paid';
+
+        $epId = substr(trim((string) ($response['ep_id'] ?? '')), 0, 64);
+        $approval = substr(trim((string) ($response['approval'] ?? '')), 0, 64);
+
+        if (!EuPlatescGateway::isApproved($response)) {
+            if ($eraPlatita) {
+                // O notificare de refuz nu poate anula o plată deja încasată.
+                return true;
+            }
+            $db->prepare(
+                "UPDATE orders
+                 SET payment_status = 'failed',
+                     status = CASE WHEN status IN ('pending_payment') THEN 'failed' ELSE status END,
+                     payment_error = :payment_error,
+                     euplatesc_ep_id = :ep_id
+                 WHERE id = :id"
+            )->execute([
+                'payment_error' => substr(EuPlatescGateway::errorMessage($response), 0, 1000),
+                'ep_id' => $epId !== '' ? $epId : null,
+                'id' => $orderId,
+            ]);
+            LoyaltyService::refundRedeemedPointsForOrder($db, $orderId);
+            LoyaltyService::reverseAwardedPointsForOrder($db, $orderId);
+            return true;
+        }
+
+        // Suma încasată trebuie să fie cea a comenzii; altfel marcăm și oprim.
+        $incasat = round((float) ($response['amount'] ?? 0), 2);
+        $datorat = round((float) ($order['total'] ?? 0), 2);
+        if (abs($incasat - $datorat) > 0.01) {
+            $db->prepare(
+                'UPDATE orders SET payment_error = :payment_error, euplatesc_ep_id = :ep_id WHERE id = :id'
+            )->execute([
+                'payment_error' => 'Suma încasată (' . number_format($incasat, 2) . ') diferă de totalul comenzii ('
+                    . number_format($datorat, 2) . '). Verifică în panoul EuPlătesc.',
+                'ep_id' => $epId !== '' ? $epId : null,
+                'id' => $orderId,
+            ]);
+            return true;
+        }
+
+        $db->prepare(
+            "UPDATE orders
+             SET payment_status = 'paid',
+                 status = CASE WHEN status IN ('pending_payment', 'failed') THEN 'pending' ELSE status END,
+                 paid_at = COALESCE(paid_at, NOW()),
+                 payment_error = NULL,
+                 euplatesc_ep_id = :ep_id,
+                 euplatesc_approval = :approval
+             WHERE id = :id"
+        )->execute([
+            'ep_id' => $epId !== '' ? $epId : null,
+            'approval' => $approval !== '' ? $approval : null,
+            'id' => $orderId,
+        ]);
+
+        if (!$eraPlatita) {
+            EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'new_order');
+            // Comanda pleacă spre ERP abia acum, după confirmarea încasării.
+            \App\Support\ErpSync::push($db, $orderId);
+        }
+        return true;
+    }
+
+    /**
+     * Silent URL-ul EuPlătesc: confirmarea server-to-server. E singura sursă
+     * de adevăr pentru plată — pagina de retur poate lipsi dacă clientul
+     * închide browserul.
+     */
+    public function euPlatescIpn(): void
+    {
+        header('Content-Type: text/plain; charset=utf-8');
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(500);
+            echo 'db_unavailable';
+            return;
+        }
+
+        $raspuns = $_POST !== [] ? $_POST : [];
+        if ($raspuns === []) {
+            http_response_code(400);
+            echo 'empty_payload';
+            return;
+        }
+
+        if (!$this->applyEuPlatescResult($db, $raspuns)) {
+            http_response_code(400);
+            echo 'invalid_signature_or_order';
+            return;
+        }
+
+        echo 'ok';
+    }
+
     private function createStripeCheckoutSession(
         PDO $db,
         int $orderId,
@@ -5253,7 +5493,8 @@ CSS;
         return $session;
     }
 
-    private function markOrderStripeFailed(PDO $db, int $orderId, string $message): void
+    /** Inițializarea plății a eșuat (orice procesator): comanda rămâne eșuată. */
+    private function markOrderPaymentFailed(PDO $db, int $orderId, string $message): void
     {
         $stmt = $db->prepare(
             'UPDATE orders
@@ -5889,6 +6130,18 @@ CSS;
 
         try {
             $db->exec('ALTER TABLE orders ADD COLUMN payment_error TEXT DEFAULT NULL AFTER paid_at');
+        } catch (Throwable) {
+        }
+
+        // EuPlătesc: identificatorul tranzacției lor și codul de autorizare,
+        // ca plata să poată fi regăsită în panoul procesatorului.
+        try {
+            $db->exec('ALTER TABLE orders ADD COLUMN euplatesc_ep_id VARCHAR(64) DEFAULT NULL AFTER payment_error');
+        } catch (Throwable) {
+        }
+
+        try {
+            $db->exec('ALTER TABLE orders ADD COLUMN euplatesc_approval VARCHAR(64) DEFAULT NULL AFTER euplatesc_ep_id');
         } catch (Throwable) {
         }
     }
@@ -6740,11 +6993,14 @@ CSS;
             'billing_company_tax_id' => $isCompany ? $companyTaxId : '',
             'billing_company_registration_no' => $isCompany ? $companyRegNo : '',
             'notes' => trim($_POST['notes'] ?? ''),
-            'payment_method' => trim($_POST['payment_method'] ?? 'stripe'),
+            'payment_method' => trim($_POST['payment_method'] ?? ''),
         ];
 
-        if (!in_array($data['payment_method'], ['stripe', 'cod'], true)) {
-            $data['payment_method'] = 'stripe';
+        // Metodele de card disponibile depind de ce e configurat în admin;
+        // dacă niciuna nu e activă, rămâne rambursul.
+        $metodePermise = array_merge($this->metodeCardActive(), ['cod']);
+        if (!in_array($data['payment_method'], $metodePermise, true)) {
+            $data['payment_method'] = $metodePermise[0] ?? 'cod';
         }
 
         // Adresă de livrare: implicit aceeași cu facturarea; dacă e diferită, se
