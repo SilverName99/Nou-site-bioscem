@@ -5317,6 +5317,11 @@ CSS;
         $this->ensureStripeSchema($db);
         $settings = Settings::all($db);
         if (!EuPlatescGateway::verifyResponse($response, (string) ($settings['euplatesc_secret_key'] ?? ''))) {
+            // Un răspuns nesemnat corect nu are voie să schimbe starea plății,
+            // dar tăcerea completă ar lăsa comanda blocată în „în așteptare"
+            // fără nicio urmă. Lăsăm doar o notă de diagnostic.
+            $this->noteazaRaspunsEuPlatescNevalidat($db, $orderNumber);
+
             return false;
         }
 
@@ -5497,6 +5502,32 @@ CSS;
         ]);
 
         return $session;
+    }
+
+    /**
+     * Notează că a venit un răspuns EuPlătesc a cărui semnătură nu se verifică.
+     * Nu atinge starea plății: mesajul e neautentificat, deci nu are voie să
+     * decidă nimic. Scrie doar pe comenzile care încă așteaptă plata, ca o
+     * cerere trimisă la întâmplare să nu poată murdări comenzi încheiate.
+     */
+    private function noteazaRaspunsEuPlatescNevalidat(PDO $db, string $orderNumber): void
+    {
+        try {
+            $db->prepare(
+                "UPDATE orders
+                    SET payment_error = :payment_error
+                  WHERE order_number = :order_number
+                    AND deleted_at IS NULL
+                    AND payment_status <> 'paid'
+                    AND status = 'pending_payment'"
+            )->execute([
+                'payment_error' => 'Am primit un răspuns de la EuPlătesc a cărui semnătură nu se verifică. '
+                    . 'Cel mai probabil cheia secretă din Setări plăți nu este cea din contul EuPlătesc.',
+                'order_number' => $orderNumber,
+            ]);
+        } catch (Throwable) {
+            // Diagnosticul nu are voie să întrerupă procesarea notificării.
+        }
     }
 
     /** Inițializarea plății a eșuat (orice procesator): comanda rămâne eșuată. */

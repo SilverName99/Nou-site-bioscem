@@ -204,15 +204,73 @@ final class EuPlatescGateway
         return trim((string) ($response['action'] ?? '')) === '0';
     }
 
+    /**
+     * Motivele de refuz vin de la banca emitentă, în engleză, prin EuPlătesc.
+     * Le traducem pe cele uzuale; textul original rămâne alături, pentru că e
+     * ce se cere la telefon când suni la procesator.
+     *
+     * Ordinea contează: prima potrivire câștigă, deci variantele specifice
+     * stau înaintea celor generale.
+     *
+     * @var array<string, string>
+     */
+    private const TRADUCERI_REFUZ = [
+        'insufficient funds' => 'Fonduri insuficiente pe card.',
+        'not sufficient funds' => 'Fonduri insuficiente pe card.',
+        'exceeds' => 'Suma depășește limita permisă pe card.',
+        'do not honor' => 'Banca emitentă a refuzat tranzacția, fără un motiv detaliat.',
+        'do not honour' => 'Banca emitentă a refuzat tranzacția, fără un motiv detaliat.',
+        'expired card' => 'Card expirat.',
+        'invalid card' => 'Datele cardului sunt greșite.',
+        'incorrect card' => 'Datele cardului sunt greșite.',
+        'invalid cvv' => 'Codul CVV este greșit.',
+        'incorrect cvv' => 'Codul CVV este greșit.',
+        'invalid cvc' => 'Codul CVV este greșit.',
+        'transaction not permitted' => 'Tranzacție nepermisă pentru acest card.',
+        'not permitted' => 'Tranzacție nepermisă pentru acest card.',
+        'restricted card' => 'Card restricționat de banca emitentă.',
+        'lost card' => 'Card declarat pierdut.',
+        'stolen card' => 'Card declarat furat.',
+        'suspected fraud' => 'Tranzacție oprită de sistemul antifraudă.',
+        'authentication' => 'Autentificarea 3-D Secure nu a reușit.',
+        'cancel' => 'Plata a fost anulată.',
+        'timeout' => 'Banca nu a răspuns la timp.',
+        'declined' => 'Tranzacție refuzată de banca emitentă.',
+    ];
+
     /** Mesajul de afișat/înregistrat pentru o tranzacție neaprobată. */
     public static function errorMessage(array $response): string
     {
         $message = trim((string) ($response['message'] ?? ''));
         $action = trim((string) ($response['action'] ?? ''));
-        if ($message === '') {
-            $message = 'Plata a fost respinsă de procesator.';
+
+        $tradus = self::traduRefuz($message);
+        if ($tradus === '') {
+            $tradus = $message !== '' ? $message : 'Plata a fost respinsă, fără un mesaj de la procesator.';
+        } elseif ($message !== '') {
+            $tradus .= ' (' . $message . ')';
         }
-        return $action !== '' ? $message . ' (cod ' . $action . ')' : $message;
+
+        $rezultat = 'EuPlătesc: ' . $tradus;
+
+        return $action !== '' ? $rezultat . ' [cod ' . $action . ']' : $rezultat;
+    }
+
+    /** Traducerea unui motiv de refuz; șir gol dacă nu-l recunoaștem. */
+    public static function traduRefuz(string $message): string
+    {
+        $normalizat = strtolower(trim($message));
+        if ($normalizat === '') {
+            return '';
+        }
+
+        foreach (self::TRADUCERI_REFUZ as $cheie => $traducere) {
+            if (str_contains($normalizat, $cheie)) {
+                return $traducere;
+            }
+        }
+
+        return '';
     }
 
     /** Configurarea minimă e completă? */
