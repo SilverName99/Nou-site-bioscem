@@ -14,6 +14,7 @@ use App\Support\Flash;
 use App\Support\LoyaltyService;
 use App\Support\NewsletterService;
 use App\Support\OrderMailer;
+use App\Support\OrderNumber;
 use App\Support\Settings;
 use App\Support\EuPlatescGateway;
 use App\Support\StripeGateway;
@@ -892,7 +893,7 @@ final class SiteController
             return;
         }
 
-        $orderNumber = $this->generateOrderNumber();
+        $orderNumber = $this->generateOrderNumber($db, $settings);
         $status = in_array($billing['payment_method'], self::METODE_CARD, true)
             ? 'pending_payment'
             : 'pending';
@@ -7102,9 +7103,9 @@ CSS;
         return $data;
     }
 
-    private function generateOrderNumber(): string
+    private function generateOrderNumber(?PDO $db = null, array $settings = []): string
     {
-        return 'BV' . date('YmdHis') . random_int(100, 999);
+        return OrderNumber::urmatorul($db, $settings);
     }
 
     private function normalizeProduct(array $product): array

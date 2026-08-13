@@ -21,7 +21,12 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
         $applyFloatingCart = (string) ($settings['store_quantity_apply_floating_cart'] ?? '0') === '1';
         $applyCartPage = (string) ($settings['store_quantity_apply_cart_page'] ?? '0') === '1';
         $bbdSidebarEnabled = (string) ($settings['store_bbd_sidebar_enabled'] ?? '1') !== '0';
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance'];
+        $orderNumberMode = trim((string) ($settings['order_number_mode'] ?? \App\Support\OrderNumber::MOD_SECVENTIAL));
+        if (!in_array($orderNumberMode, [\App\Support\OrderNumber::MOD_SECVENTIAL, \App\Support\OrderNumber::MOD_VECHI], true)) {
+            $orderNumberMode = \App\Support\OrderNumber::MOD_SECVENTIAL;
+        }
+        $orderNumberNext = (int) ($orderNumberNext ?? \App\Support\OrderNumber::normalizeazaStart($settings['order_number_next'] ?? null));
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare'];
         $defaultStoreTab = trim((string) ($_GET['tab'] ?? 'pages'));
         if (!in_array($defaultStoreTab, $availableStoreTabs, true)) {
             $defaultStoreTab = 'pages';
@@ -61,6 +66,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'seo' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="seo">SEO Google</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'clarity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="clarity">Microsoft Clarity</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'maintenance' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="maintenance">Mentenanță</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'numerotare' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="numerotare">Numerotare comenzi</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'quantity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="quantity">Control cantitate</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
@@ -288,6 +294,35 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                     <button class="btn btn-secondary" type="submit">Generează o cheie nouă</button>
                 </form>
             </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="numerotare" <?= $defaultStoreTab !== 'numerotare' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <h3 style="margin-top:0;">Numerotare comenzi</h3>
+            <p style="margin:0 0 10px;color:#64748b;">
+                Numărul comenzii este cel văzut de client, cel trimis în ERP și cel
+                trimis la EuPlătesc. Comenzile deja emise nu se renumerotează.
+            </p>
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_order_numbering">
+                <div class="field" style="max-width:420px;">
+                    <label for="order_number_mode">Format</label>
+                    <select id="order_number_mode" name="order_number_mode">
+                        <option value="<?= \App\Support\OrderNumber::MOD_SECVENTIAL ?>" <?= $orderNumberMode === \App\Support\OrderNumber::MOD_SECVENTIAL ? 'selected' : '' ?>>Numere consecutive (203800, 203801, …)</option>
+                        <option value="<?= \App\Support\OrderNumber::MOD_VECHI ?>" <?= $orderNumberMode === \App\Support\OrderNumber::MOD_VECHI ? 'selected' : '' ?>>Format vechi (BV + dată + aleator)</option>
+                    </select>
+                </div>
+                <div class="field" style="max-width:420px;margin-top:10px;">
+                    <label for="order_number_next">Numărul următoarei comenzi</label>
+                    <input id="order_number_next" name="order_number_next" type="number" min="1" step="1" value="<?= htmlspecialchars((string) $orderNumberNext, ENT_QUOTES) ?>">
+                    <p style="margin:6px 0 0;color:#64748b;font-size:13px;">
+                        Următoarea comandă primește exact acest număr, apoi contorul crește singur.
+                        Dacă pui un număr deja folosit, sistemul îl sare până găsește unul liber.
+                    </p>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn" type="submit">Salvează numerotarea</button>
+                </div>
+            </form>
         </article>
 
         <article class="panel store-settings-panel" data-store-settings-panel="quantity" <?= $defaultStoreTab !== 'quantity' ? 'hidden' : '' ?> style="margin:12px 0;">

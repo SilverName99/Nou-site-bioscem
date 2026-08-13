@@ -6524,6 +6524,25 @@ final class AdminController
             header('Location: /admin/settings/store?tab=maintenance');
             return;
         }
+        if ($action === 'save_order_numbering') {
+            $mod = trim((string) ($_POST['order_number_mode'] ?? \App\Support\OrderNumber::MOD_SECVENTIAL));
+            if (!in_array($mod, [\App\Support\OrderNumber::MOD_SECVENTIAL, \App\Support\OrderNumber::MOD_VECHI], true)) {
+                $mod = \App\Support\OrderNumber::MOD_SECVENTIAL;
+            }
+            $urmator = \App\Support\OrderNumber::normalizeazaStart($_POST['order_number_next'] ?? null);
+            Settings::save($db, [
+                'order_number_mode' => $mod,
+                'order_number_next' => (string) $urmator,
+            ]);
+            Flash::set(
+                'success',
+                $mod === \App\Support\OrderNumber::MOD_SECVENTIAL
+                    ? 'Numerotare salvată. Următoarea comandă va primi numărul ' . $urmator . '.'
+                    : 'Numerotare salvată. Comenzile revin la formatul vechi (BV + dată).'
+            );
+            header('Location: /admin/settings/store?tab=numerotare');
+            return;
+        }
         if ($action === 'regenerate_maintenance_key') {
             Settings::save($db, ['maintenance_key' => \App\Support\Maintenance::cheieNoua()]);
             Flash::set('success', 'Cheie nouă generată. Linkurile trimise anterior nu mai funcționează.');
