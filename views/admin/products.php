@@ -11,6 +11,21 @@
         </div>
     </div>
 
+    <div class="product-search">
+        <div class="product-search__field">
+            <span class="product-search__icon" aria-hidden="true">🔎</span>
+            <input
+                type="search"
+                id="product-search-input"
+                placeholder="Caută după denumire, SKU sau categorie…"
+                autocomplete="off"
+                aria-label="Caută produs"
+            >
+            <button type="button" class="product-search__clear" id="product-search-clear" aria-label="Golește căutarea" hidden>×</button>
+        </div>
+        <span class="product-search__count" id="product-search-count"><?= count($products) ?> produse</span>
+    </div>
+
     <div class="product-table-head">
         <span>Imagine</span>
         <span>Produs</span>
@@ -23,7 +38,15 @@
 
     <div class="product-list">
         <?php foreach ($products as $product): ?>
-            <article class="product-row">
+            <?php
+                $cautare = implode(' ', array_filter([
+                    (string) ($product['name'] ?? ''),
+                    (string) ($product['sku'] ?? ''),
+                    (string) ($product['category_name'] ?? ''),
+                    (string) ($product['category'] ?? ''),
+                ], static fn (string $bucata): bool => trim($bucata) !== ''));
+            ?>
+            <article class="product-row" data-search="<?= htmlspecialchars($cautare, ENT_QUOTES) ?>">
                 <div class="col-image">
                     <div class="product-image-thumb-wrap">
                         <?php if ((int) ($product['badge_popular'] ?? 0) === 1): ?>
@@ -85,6 +108,9 @@
                 </div>
             </article>
         <?php endforeach; ?>
+        <p class="product-search__empty" id="product-search-empty" hidden>
+            Niciun produs nu se potrivește cu ce ai căutat.
+        </p>
     </div>
 </section>
 
@@ -461,6 +487,73 @@
 
 <script>
 (() => {
+    // Căutarea filtrează rândurile deja încărcate: rezultatul apare pe măsură
+    // ce scrii, fără reîncărcarea paginii.
+    const searchInput = document.getElementById('product-search-input');
+    const searchClear = document.getElementById('product-search-clear');
+    const searchCount = document.getElementById('product-search-count');
+    const searchEmpty = document.getElementById('product-search-empty');
+    const searchRows = Array.from(document.querySelectorAll('.product-row[data-search]'));
+
+    if (searchInput && searchRows.length > 0) {
+        // „Căști" trebuie găsit și scriind „casti".
+        const faraDiacritice = (text) => text
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const indexate = searchRows.map((rand) => ({
+            rand,
+            text: faraDiacritice(rand.getAttribute('data-search') || ''),
+        }));
+        const total = indexate.length;
+
+        const filtreaza = () => {
+            const interogare = faraDiacritice(searchInput.value);
+            // Fiecare cuvânt trebuie să apară, în orice ordine.
+            const cuvinte = interogare.split(/\s+/).filter(Boolean);
+            let vizibile = 0;
+
+            indexate.forEach(({ rand, text }) => {
+                const potrivit = cuvinte.every((cuvant) => text.includes(cuvant));
+                rand.hidden = !potrivit;
+                if (potrivit) {
+                    vizibile++;
+                }
+            });
+
+            if (searchCount) {
+                searchCount.textContent = cuvinte.length === 0
+                    ? `${total} produse`
+                    : `${vizibile} din ${total} produse`;
+            }
+            if (searchEmpty) {
+                searchEmpty.hidden = vizibile > 0;
+            }
+            if (searchClear) {
+                searchClear.hidden = searchInput.value === '';
+            }
+        };
+
+        searchInput.addEventListener('input', filtreaza);
+        searchInput.addEventListener('search', filtreaza);
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                filtreaza();
+                searchInput.focus();
+            });
+        }
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && searchInput.value !== '') {
+                event.stopPropagation();
+                searchInput.value = '';
+                filtreaza();
+            }
+        });
+    }
+
     // Cota de TVA pentru produsele noi, setată în Setări magazin → TVA.
     const COTA_TVA_IMPLICITA = '<?= htmlspecialchars(number_format((float) ($defaultVat ?? 19), 2, '.', ''), ENT_QUOTES) ?>';
     const modal = document.getElementById('product-modal');

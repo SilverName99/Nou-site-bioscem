@@ -3709,6 +3709,87 @@ body > main.container {
     transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
+/* Rândurile ascunse de căutare: `display: grid` bate [hidden] implicit. */
+.product-row[hidden] {
+    display: none;
+}
+
+/* Bara de căutare din lista de produse. */
+.product-search {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 4px 0 14px;
+}
+
+.product-search__field {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+    max-width: 460px;
+}
+
+.product-search__field input {
+    width: 100%;
+    padding: 10px 34px 10px 36px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    font-size: 14px;
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.product-search__field input:focus {
+    outline: none;
+    border-color: #0f766e;
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+}
+
+.product-search__field input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.product-search__icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    opacity: .55;
+    pointer-events: none;
+}
+
+.product-search__clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.product-search__clear:hover {
+    color: #0f172a;
+}
+
+.product-search__count {
+    color: #64748b;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.product-search__empty {
+    margin: 18px 0;
+    text-align: center;
+    color: #64748b;
+}
+
 .product-row:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 16px rgba(15, 23, 42, .06);
