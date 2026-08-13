@@ -234,6 +234,8 @@ final class ErpSync
     /** Liniile comenzii, cu SKU-ul și cota de TVA luate din fișa produsului. */
     private static function buildLines(PDO $db, int $orderId): array
     {
+        $cotaImplicita = round((float) (Settings::all($db)['default_vat_percent'] ?? 19), 2);
+
         try {
             $stmt = $db->prepare(
                 'SELECT oi.product_id, oi.product_name, oi.quantity, oi.unit_price,
@@ -246,16 +248,17 @@ final class ErpSync
             $stmt->execute(['order_id' => $orderId]);
             $rows = $stmt->fetchAll() ?: [];
         } catch (Throwable) {
-            // Schemă fără coloanele de TVA pe produs.
+            // Schemă fără coloanele de TVA pe produs: cădem pe cota implicită
+            // configurată în Setări magazin, nu pe una scrisă în cod.
             $stmt = $db->prepare(
                 'SELECT oi.product_id, oi.product_name, oi.quantity, oi.unit_price,
-                        p.sku, 19.00 AS vat_percent, 1 AS vat_included
+                        p.sku, :cota_implicita AS vat_percent, 1 AS vat_included
                  FROM order_items oi
                  LEFT JOIN products p ON p.id = oi.product_id
                  WHERE oi.order_id = :order_id
                  ORDER BY oi.id ASC'
             );
-            $stmt->execute(['order_id' => $orderId]);
+            $stmt->execute(['order_id' => $orderId, 'cota_implicita' => $cotaImplicita]);
             $rows = $stmt->fetchAll() ?: [];
         }
 
@@ -273,7 +276,7 @@ final class ErpSync
                 'cantitate' => max(1, (int) ($row['quantity'] ?? 1)),
                 'pretUnitar' => round((float) ($row['unit_price'] ?? 0), 4),
                 'tvaInclus' => ((int) ($row['vat_included'] ?? 1)) === 1,
-                'cotaTva' => round((float) ($row['vat_percent'] ?? 21), 2),
+                'cotaTva' => round((float) ($row['vat_percent'] ?? $cotaImplicita), 2),
             ];
         }
         return $lines;

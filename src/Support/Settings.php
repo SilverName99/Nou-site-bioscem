@@ -41,6 +41,7 @@ final class Settings
         'fan_parcel_length_cm' => '',
         'fan_parcel_width_cm' => '',
         'fan_parcel_height_cm' => '',
+        'default_vat_percent' => '19',
         'order_number_mode' => 'sequential',
         'order_number_next' => '203800',
         'email_delivery_method' => 'smtp',

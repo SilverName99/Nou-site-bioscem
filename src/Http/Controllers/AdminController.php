@@ -1092,6 +1092,9 @@ final class AdminController
         }
 
         $categories = $this->categoriesList();
+        $defaultVat = $db instanceof PDO
+            ? (string) (Settings::all($db)['default_vat_percent'] ?? '19')
+            : '19';
         View::render('admin/products', [
             'title' => 'Produse',
             'products' => $products,
@@ -1099,6 +1102,7 @@ final class AdminController
             'galleryImages' => $galleryImages,
             'extraFields' => $extraFields,
             'productTemplates' => $productTemplates,
+            'defaultVat' => $defaultVat,
         ], 'admin/layout');
     }
 
@@ -3680,7 +3684,8 @@ final class AdminController
             $category = $fallbackCategory !== '' ? $fallbackCategory : null;
         }
         $price = (float) ($_POST['price'] ?? 0);
-        $vatPercentRaw = str_replace(',', '.', trim((string) ($_POST['vat_percent'] ?? '19')));
+        $vatImplicit = (string) (Settings::all($db)['default_vat_percent'] ?? '19');
+        $vatPercentRaw = str_replace(',', '.', trim((string) ($_POST['vat_percent'] ?? $vatImplicit)));
         $vatPercent = (float) $vatPercentRaw;
         if (!is_finite($vatPercent) || $vatPercent < 0) {
             $vatPercent = 0.0;
@@ -3816,7 +3821,8 @@ final class AdminController
         $bbdEntriesJson = $this->normalizeProductBbdEntriesJson($_POST['bbd_entries_json'] ?? '[]');
         $postCartNoteEnabled = isset($_POST['post_cart_note_enabled']) ? 1 : 0;
         $postCartNoteText = trim((string) ($_POST['post_cart_note_text'] ?? ''));
-        $vatPercentRaw = str_replace(',', '.', trim((string) ($_POST['vat_percent'] ?? '19')));
+        $vatImplicit = (string) (Settings::all($db)['default_vat_percent'] ?? '19');
+        $vatPercentRaw = str_replace(',', '.', trim((string) ($_POST['vat_percent'] ?? $vatImplicit)));
         $vatPercent = (float) $vatPercentRaw;
         if (!is_finite($vatPercent) || $vatPercent < 0) {
             $vatPercent = 0.0;
@@ -6366,6 +6372,7 @@ final class AdminController
             'appUrl' => $appUrl,
             'storeSettingsTab' => trim((string) ($_GET['tab'] ?? 'pages')),
             'cacheStats' => ResponseCache::pageCacheStats(),
+            'vatSumar' => $db instanceof PDO ? $this->tvaProduseSumar($db) : [],
         ], 'admin/layout');
     }
 
@@ -6445,6 +6452,178 @@ final class AdminController
 
         Flash::set('success', 'Setările pentru Coș flotant au fost salvate.');
         header('Location: /admin/settings/floating-cart');
+    }
+
+    /**
+     * Câte produse are fiecare cotă de TVA, ca operatorul să vadă înainte de
+     * schimbare pe ce anume apasă.
+     *
+     * @return array<int, array{cota: float, total: int}>
+     */
+    private function tvaProduseSumar(PDO $db): array
+    {
+        try {
+            $rows = $db->query(
+                'SELECT vat_percent AS cota, COUNT(*) AS total
+                   FROM products
+                  WHERE deleted_at IS NULL
+                  GROUP BY vat_percent
+                  ORDER BY vat_percent ASC'
+            )->fetchAll() ?: [];
+        } catch (Throwable) {
+            return [];
+        }
+
+        $sumar = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $sumar[] = [
+                'cota' => round((float) ($row['cota'] ?? 0), 2),
+                'total' => (int) ($row['total'] ?? 0),
+            ];
+        }
+
+        return $sumar;
+    }
+
+    /**
+     * Schimbă cota de TVA pe toate produsele care o au pe cea veche.
+     *
+     * „pastreaza_pret": prețul de raft rămâne neatins, se schimbă doar
+     * împărțirea lui între net și TVA — magazinul absoarbe diferența.
+     * „pastreaza_net": prețurile cu TVA cresc, ca suma rămasă magazinului
+     * după TVA să fie aceeași ca înainte.
+     *
+     * @return array{produse: int, preturi: int}
+     */
+    private function schimbaTvaProduse(PDO $db, float $deLa, float $la, string $mod): array
+    {
+        $rezultat = ['produse' => 0, 'preturi' => 0];
+
+        if ($mod !== 'pastreaza_net') {
+            $stmt = $db->prepare(
+                'UPDATE products SET vat_percent = :la
+                  WHERE vat_percent = :de_la AND deleted_at IS NULL'
+            );
+            $stmt->execute(['la' => $la, 'de_la' => $deLa]);
+            $rezultat['produse'] = $stmt->rowCount();
+
+            return $rezultat;
+        }
+
+        $factor = (1.0 + ($la / 100.0)) / (1.0 + ($deLa / 100.0));
+
+        $citire = $db->prepare(
+            'SELECT id, price, sale_price, sale_price_periods_json, bbd_entries_json, vat_included
+               FROM products
+              WHERE vat_percent = :de_la AND deleted_at IS NULL'
+        );
+        $citire->execute(['de_la' => $deLa]);
+        $produse = $citire->fetchAll() ?: [];
+
+        $scriere = $db->prepare(
+            'UPDATE products
+                SET vat_percent = :vat_percent,
+                    price = :price,
+                    sale_price = :sale_price,
+                    sale_price_periods_json = :periods,
+                    bbd_entries_json = :bbd
+              WHERE id = :id'
+        );
+
+        $db->beginTransaction();
+        try {
+            foreach ($produse as $produs) {
+                if (!is_array($produs)) {
+                    continue;
+                }
+                $id = (int) ($produs['id'] ?? 0);
+                if ($id <= 0) {
+                    continue;
+                }
+
+                // La prețurile fără TVA, valoarea stocată e deja cea netă:
+                // se schimbă doar cota, nu și prețul.
+                $areTva = ((int) ($produs['vat_included'] ?? 1)) === 1;
+
+                $pret = max(0.0, (float) ($produs['price'] ?? 0.0));
+                $pretNou = $areTva ? round($pret * $factor, 2) : $pret;
+
+                $saleRaw = $produs['sale_price'] ?? null;
+                $saleNou = null;
+                if ($saleRaw !== null && $saleRaw !== '') {
+                    $sale = max(0.0, (float) $saleRaw);
+                    $saleNou = $areTva ? round($sale * $factor, 2) : $sale;
+                }
+
+                $periods = $areTva
+                    ? $this->recalculeazaPreturiJson((string) ($produs['sale_price_periods_json'] ?? ''), 'sale_price', $factor)
+                    : ($produs['sale_price_periods_json'] ?? null);
+                $bbd = $areTva
+                    ? $this->recalculeazaPreturiJson((string) ($produs['bbd_entries_json'] ?? ''), 'reduced_price', $factor)
+                    : ($produs['bbd_entries_json'] ?? null);
+
+                $scriere->execute([
+                    'vat_percent' => $la,
+                    'price' => $pretNou,
+                    'sale_price' => $saleNou,
+                    'periods' => $periods,
+                    'bbd' => $bbd,
+                    'id' => $id,
+                ]);
+                $rezultat['produse']++;
+                if ($areTva) {
+                    $rezultat['preturi']++;
+                }
+            }
+            $db->commit();
+        } catch (Throwable $exception) {
+            $db->rollBack();
+            throw $exception;
+        }
+
+        return $rezultat;
+    }
+
+    /**
+     * Înmulțește cu un factor prețurile dintr-o listă JSON de produs
+     * (perioade de reducere, intrări BBD). Un JSON pe care nu-l putem citi
+     * rămâne neatins — mai bine nemodificat decât stricat.
+     */
+    private function recalculeazaPreturiJson(string $json, string $cheiePret, float $factor): ?string
+    {
+        $curat = trim($json);
+        if ($curat === '') {
+            return $json === '' ? null : $json;
+        }
+
+        $decodat = json_decode($curat, true);
+        if (!is_array($decodat)) {
+            return $json;
+        }
+
+        $modificat = false;
+        foreach ($decodat as $index => $intrare) {
+            if (!is_array($intrare) || !isset($intrare[$cheiePret])) {
+                continue;
+            }
+            $valoare = $intrare[$cheiePret];
+            if ($valoare === null || $valoare === '' || !is_numeric((string) $valoare)) {
+                continue;
+            }
+            $decodat[$index][$cheiePret] = round(((float) $valoare) * $factor, 2);
+            $modificat = true;
+        }
+
+        if (!$modificat) {
+            return $json;
+        }
+
+        $reincodat = json_encode($decodat, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $reincodat === false ? $json : $reincodat;
     }
 
     public function storeSettingsSave(): void
@@ -6531,6 +6710,50 @@ final class AdminController
                     : 'Modul mentenanță a fost dezactivat. Site-ul este public.'
             );
             header('Location: /admin/settings/store?tab=maintenance');
+            return;
+        }
+        if ($action === 'save_vat_bulk') {
+            $deLa = round((float) str_replace(',', '.', trim((string) ($_POST['vat_from'] ?? ''))), 2);
+            $la = round((float) str_replace(',', '.', trim((string) ($_POST['vat_to'] ?? ''))), 2);
+            $mod = (string) ($_POST['vat_mode'] ?? 'pastreaza_pret') === 'pastreaza_net'
+                ? 'pastreaza_net'
+                : 'pastreaza_pret';
+
+            if ($deLa < 0 || $deLa > 100 || $la < 0 || $la > 100) {
+                Flash::set('error', 'Cotele de TVA trebuie să fie între 0 și 100.');
+                header('Location: /admin/settings/store?tab=tva');
+                return;
+            }
+            if (abs($deLa - $la) < 0.001) {
+                Flash::set('error', 'Cota nouă este identică cu cea veche; nu am schimbat nimic.');
+                header('Location: /admin/settings/store?tab=tva');
+                return;
+            }
+
+            try {
+                $rezultat = $this->schimbaTvaProduse($db, $deLa, $la, $mod);
+            } catch (Throwable) {
+                Flash::set('error', 'Schimbarea TVA a eșuat; nu s-a modificat niciun produs.');
+                header('Location: /admin/settings/store?tab=tva');
+                return;
+            }
+
+            if (isset($_POST['vat_set_default'])) {
+                Settings::save($db, ['default_vat_percent' => (string) $la]);
+            }
+
+            $this->refreshCacheAfterPublicContentChange();
+
+            $mesaj = 'Am trecut ' . $rezultat['produse'] . ' produse de la '
+                . rtrim(rtrim(number_format($deLa, 2, '.', ''), '0'), '.') . '% la '
+                . rtrim(rtrim(number_format($la, 2, '.', ''), '0'), '.') . '%.';
+            $mesaj .= $mod === 'pastreaza_net'
+                ? ' Prețurile afișate au fost recalculate pentru ' . $rezultat['preturi'] . ' produse.'
+                : ' Prețurile afișate au rămas neschimbate.';
+            Flash::set($rezultat['produse'] > 0 ? 'success' : 'error', $rezultat['produse'] > 0
+                ? $mesaj
+                : 'Niciun produs nu avea cota ' . rtrim(rtrim(number_format($deLa, 2, '.', ''), '0'), '.') . '%.');
+            header('Location: /admin/settings/store?tab=tva');
             return;
         }
         if ($action === 'save_order_numbering') {

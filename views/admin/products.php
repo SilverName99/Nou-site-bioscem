@@ -141,7 +141,7 @@
                             </div>
                             <div class="field">
                                 <label>TVA (%)</label>
-                                <input type="number" min="0" max="100" step="0.01" name="vat_percent" id="p_vat_percent" value="19.00">
+                                <input type="number" min="0" max="100" step="0.01" name="vat_percent" id="p_vat_percent" value="<?= htmlspecialchars(number_format((float) ($defaultVat ?? 19), 2, '.', ''), ENT_QUOTES) ?>">
                             </div>
                             <div class="field">
                                 <label>TVA în preț</label>
@@ -461,6 +461,8 @@
 
 <script>
 (() => {
+    // Cota de TVA pentru produsele noi, setată în Setări magazin → TVA.
+    const COTA_TVA_IMPLICITA = '<?= htmlspecialchars(number_format((float) ($defaultVat ?? 19), 2, '.', ''), ENT_QUOTES) ?>';
     const modal = document.getElementById('product-modal');
     const imageModal = document.getElementById('product-image-modal');
     const addBtn = document.getElementById('add-product-btn');
@@ -870,7 +872,7 @@
         title.textContent = 'Adaugă produs';
         document.getElementById('p_is_active').checked = true;
         document.getElementById('p_product_template_id').value = '';
-        document.getElementById('p_vat_percent').value = '19.00';
+        document.getElementById('p_vat_percent').value = COTA_TVA_IMPLICITA;
         document.getElementById('p_vat_included').value = '1';
         if (outOfStockInput instanceof HTMLInputElement) {
             outOfStockInput.checked = false;
@@ -955,7 +957,7 @@
             document.getElementById('p_price').value = basePriceValue === null ? '' : String(basePriceValue);
             const vatInput = document.getElementById('p_vat_percent');
             if (vatInput instanceof HTMLInputElement) {
-                const vatRaw = Number(product.vat_percent ?? 19);
+                const vatRaw = Number(product.vat_percent ?? COTA_TVA_IMPLICITA);
                 const vatValue = Number.isFinite(vatRaw) ? vatRaw : 19;
                 vatInput.value = String(vatValue.toFixed(2));
             }

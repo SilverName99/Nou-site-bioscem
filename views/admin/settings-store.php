@@ -26,7 +26,18 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             $orderNumberMode = \App\Support\OrderNumber::MOD_SECVENTIAL;
         }
         $orderNumberNext = (int) ($orderNumberNext ?? \App\Support\OrderNumber::normalizeazaStart($settings['order_number_next'] ?? null));
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare'];
+        $vatSumar = is_array($vatSumar ?? null) ? $vatSumar : [];
+        $vatImplicit = trim((string) ($settings['default_vat_percent'] ?? '19'));
+        // Cota cea mai folosită e cea de la care va vrea sa plece, cel mai probabil.
+        $vatCotaDominanta = $vatImplicit;
+        $vatMaxProduse = -1;
+        foreach ($vatSumar as $vatRand) {
+            if ((int) ($vatRand['total'] ?? 0) > $vatMaxProduse) {
+                $vatMaxProduse = (int) ($vatRand['total'] ?? 0);
+                $vatCotaDominanta = rtrim(rtrim(number_format((float) ($vatRand['cota'] ?? 0), 2, '.', ''), '0'), '.');
+            }
+        }
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva'];
         $defaultStoreTab = trim((string) ($_GET['tab'] ?? 'pages'));
         if (!in_array($defaultStoreTab, $availableStoreTabs, true)) {
             $defaultStoreTab = 'pages';
@@ -67,6 +78,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'clarity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="clarity">Microsoft Clarity</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'maintenance' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="maintenance">Mentenanță</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'numerotare' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="numerotare">Numerotare comenzi</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'tva' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="tva">TVA</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'quantity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="quantity">Control cantitate</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
@@ -294,6 +306,67 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                     <button class="btn btn-secondary" type="submit">Generează o cheie nouă</button>
                 </form>
             </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="tva" <?= $defaultStoreTab !== 'tva' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <h3 style="margin-top:0;">Cota de TVA</h3>
+            <?php if ($vatSumar !== []): ?>
+                <p style="margin:0 0 10px;color:#64748b;">
+                    Acum în catalog:
+                    <?php foreach ($vatSumar as $vatRand): ?>
+                        <strong><?= htmlspecialchars(rtrim(rtrim(number_format((float) ($vatRand['cota'] ?? 0), 2, '.', ''), '0'), '.'), ENT_QUOTES) ?>%</strong>
+                        — <?= (int) ($vatRand['total'] ?? 0) ?> produse&nbsp;&nbsp;
+                    <?php endforeach; ?>
+                </p>
+            <?php endif; ?>
+            <form method="post" action="/admin/settings/store" onsubmit="return confirm('Sigur schimbi cota de TVA pe toate produsele care o au pe cea veche? Operația nu se poate anula din interfață.');">
+                <input type="hidden" name="action" value="save_vat_bulk">
+                <div style="display:flex;gap:12px;flex-wrap:wrap;max-width:520px;">
+                    <div class="field" style="flex:1;min-width:150px;">
+                        <label for="vat_from">Schimbă produsele cu cota</label>
+                        <input id="vat_from" name="vat_from" type="number" min="0" max="100" step="0.01" value="<?= htmlspecialchars($vatCotaDominanta, ENT_QUOTES) ?>" required>
+                    </div>
+                    <div class="field" style="flex:1;min-width:150px;">
+                        <label for="vat_to">în cota</label>
+                        <input id="vat_to" name="vat_to" type="number" min="0" max="100" step="0.01" value="21" required>
+                    </div>
+                </div>
+                <div style="display:grid;gap:10px;margin-top:14px;max-width:640px;">
+                    <label style="display:flex;gap:8px;align-items:flex-start;">
+                        <input type="radio" name="vat_mode" value="pastreaza_pret" checked style="margin-top:3px;">
+                        <span>
+                            <strong>Păstrează prețurile afișate</strong><br>
+                            <span style="color:#64748b;font-size:13px;">
+                                Clientul plătește exact cât plătea și ieri. Se schimbă doar cât din preț
+                                este TVA, deci magazinul încasează mai puțin net. Nimic altceva nu se atinge.
+                            </span>
+                        </span>
+                    </label>
+                    <label style="display:flex;gap:8px;align-items:flex-start;">
+                        <input type="radio" name="vat_mode" value="pastreaza_net" style="margin-top:3px;">
+                        <span>
+                            <strong>Păstrează suma fără TVA (crește prețurile afișate)</strong><br>
+                            <span style="color:#64748b;font-size:13px;">
+                                Magazinul rămâne cu aceeași sumă după TVA, deci prețurile de raft cresc
+                                (de la 19% la 21% înseamnă +1,68%). Se recalculează prețul de bază,
+                                prețul redus, perioadele de reducere programate și prețurile BBD.
+                                Prețurile rezultate pot ieși nerotunde.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+                    <input type="checkbox" name="vat_set_default" value="1" checked>
+                    Folosește cota nouă și pentru produsele adăugate de acum înainte
+                </label>
+                <p style="margin:12px 0 0;color:#b45309;font-size:13px;max-width:640px;">
+                    Comenzile deja plasate nu se ating: ele păstrează cota din momentul vânzării.
+                    Fă o copie a bazei de date înainte, operația nu are buton de anulare.
+                </p>
+                <div style="margin-top:10px;">
+                    <button class="btn" type="submit">Schimbă TVA pe produse</button>
+                </div>
+            </form>
         </article>
 
         <article class="panel store-settings-panel" data-store-settings-panel="numerotare" <?= $defaultStoreTab !== 'numerotare' ? 'hidden' : '' ?> style="margin:12px 0;">
