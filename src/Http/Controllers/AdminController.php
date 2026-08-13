@@ -4249,6 +4249,15 @@ final class AdminController
             }
 
             $orderBySql = $this->ordersSortSql($filters['sort_by'], $filters['sort_dir']);
+            // Coloanele de plată sunt adăugate prin ALTER la nevoie; le cerem
+            // doar dacă există, ca lista să nu crape pe o bază mai veche.
+            $coloanePlata = [];
+            foreach (['payment_error', 'euplatesc_ep_id', 'paid_at'] as $coloanaPlata) {
+                if ($this->tableHasColumn($db, 'orders', $coloanaPlata)) {
+                    $coloanePlata[] = $coloanaPlata;
+                }
+            }
+            $selectPlata = $coloanePlata === [] ? '' : ', ' . implode(', ', $coloanePlata);
             $stmt = $db->prepare(
                 'SELECT id, order_number, status, payment_method, payment_status, total, shipping_cost, subtotal, discount_total,
                         coupon_code,
@@ -4263,7 +4272,7 @@ final class AdminController
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
                         notes,
                         erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
-                        erp_factura_numar
+                        erp_factura_numar' . $selectPlata . '
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
                  ORDER BY ' . $orderBySql . '

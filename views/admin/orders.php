@@ -238,6 +238,13 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 ];
                             }
                         }
+                        // Motivul respingerii plății, salvat de procesator la eșec.
+                        $paymentError = trim((string) ($order['payment_error'] ?? ''));
+                        $paymentErrorScurt = $paymentError === ''
+                            ? ''
+                            : (function_exists('mb_strimwidth')
+                                ? mb_strimwidth($paymentError, 0, 64, '…', 'UTF-8')
+                                : substr($paymentError, 0, 64));
                         $pointsAwarded = (int) ($order['loyalty_points_awarded'] ?? 0);
                         $orderId = (int) ($order['id'] ?? 0);
                         $customerName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
@@ -296,6 +303,11 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                           title="<?= htmlspecialchars($erpError !== '' ? $erpError : ($erpProblems !== '' ? 'De rezolvat în ERP: ' . $erpProblems : ''), ENT_QUOTES) ?>">
                                         <?= htmlspecialchars((string) ($erpLabels[$erpStatus] ?? $erpStatus), ENT_QUOTES) ?>
                                     </span>
+                                <?php endif; ?>
+                                <?php if ($paymentError !== ''): ?>
+                                    <small class="orders-payment-error" title="<?= htmlspecialchars($paymentError, ENT_QUOTES) ?>">
+                                        Motiv: <?= htmlspecialchars($paymentErrorScurt, ENT_QUOTES) ?>
+                                    </small>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -664,9 +676,17 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             const shippingCost = toAmount(order.shipping_cost || 0);
             const shippingLabel = shippingCost <= 0.004 ? 'GRATUIT' : formatRon(shippingCost);
             const paymentMethodValue = String(order.payment_method || '').trim().toLowerCase();
+            const paymentErrorValue = String(order.payment_error || '').trim();
+            const euplatescId = String(order.euplatesc_ep_id || '').trim();
             const paymentStatusHtml = paymentMethodValue === 'cod'
                 ? ''
-                : `<div><small>Status plată</small><p>${esc(order.payment_status || 'unpaid')}</p></div>`;
+                : `<div><small>Status plată</small><p>${esc(order.payment_status || 'unpaid')}</p></div>`
+                  + (paymentErrorValue !== ''
+                        ? `<div><small>Motiv eșec plată</small><p style="color:#b91c1c;">${esc(paymentErrorValue)}</p></div>`
+                        : '')
+                  + (euplatescId !== ''
+                        ? `<div><small>ID tranzacție EuPlătesc</small><p>${esc(euplatescId)}</p></div>`
+                        : '');
             let totalsHtml = `
                     <p><span>Subtotal (fără TVA)</span><strong>${formatRon(subtotalWithoutVat)}</strong></p>
                     <p><span>TVA</span><strong>${formatRon(vatTotal)}</strong></p>

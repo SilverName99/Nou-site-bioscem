@@ -4541,6 +4541,16 @@ body > main.container {
     gap: 6px;
 }
 
+/* Motivul respingerii plății, sub pastilele de status. */
+.orders-payment-error {
+    flex-basis: 100%;
+    max-width: 280px;
+    color: #b91c1c;
+    font-size: 12px;
+    line-height: 1.35;
+    cursor: help;
+}
+
 .orders-table__check {
     width: 44px;
 }

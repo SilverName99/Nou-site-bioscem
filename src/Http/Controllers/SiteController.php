@@ -5550,7 +5550,7 @@ CSS;
                    status = CASE WHEN payment_status = 'paid' THEN status WHEN status IN ('pending_payment') THEN 'failed' ELSE status END,
                    stripe_session_id = :session_id,
                    stripe_payment_intent_id = :payment_intent_id,
-                   payment_error = 'Payment failed or session expired'
+                   payment_error = 'Plata nu a fost finalizată: card refuzat sau sesiune expirată.'
                WHERE $where";
 
         $stmt = $db->prepare($sql);
@@ -5602,7 +5602,7 @@ CSS;
                SET payment_status = CASE WHEN payment_status = 'paid' THEN payment_status ELSE 'failed' END,
                    status = CASE WHEN payment_status = 'paid' THEN status WHEN status IN ('pending_payment') THEN 'failed' ELSE status END,
                    stripe_payment_intent_id = :payment_intent_id,
-                   payment_error = 'Payment failed or session expired'
+                   payment_error = 'Plata nu a fost finalizată: card refuzat sau sesiune expirată.'
                WHERE $where";
 
         $stmt = $db->prepare($sql);
