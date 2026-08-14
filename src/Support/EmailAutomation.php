@@ -222,9 +222,10 @@ final class EmailAutomation
             'order_summary' => $orderSummaryText,
             'order_items_html' => $orderSummaryRows,
             'order_summary_rows' => $orderSummaryRows,
-            'order_action_url' => $templateType === 'new_order'
-                ? '/admin/orders'
-                : ($templateType === 'cancelled' ? '/contact' : '/contul-meu?section=orders'),
+            // Clientul primește linkuri publice; nimeni nu e trimis în /admin.
+            'order_action_url' => $templateType === 'cancelled'
+                ? '/contact'
+                : '/contul-meu?section=orders',
         ];
 
         $sentCount = 0;

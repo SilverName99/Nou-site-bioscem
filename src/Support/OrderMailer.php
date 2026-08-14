@@ -926,7 +926,7 @@ HTML;
         $safeCustomerName = htmlspecialchars($customerName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeOrderNumber = htmlspecialchars($orderNumber, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeAwb = htmlspecialchars($awb, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeTrackingUrl = htmlspecialchars($trackingUrlRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeTrackingUrl = htmlspecialchars(AppUrl::absolut($trackingUrlRaw), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         // Comanda poate pleca în mai multe colete (din depozite diferite):
         // {{tracking_link}} devine câte un buton pentru fiecare AWB.
@@ -978,7 +978,7 @@ HTML;
         if ($cartActionUrlRaw === '') {
             $cartActionUrlRaw = '/cos';
         }
-        $safeCartActionUrl = htmlspecialchars($cartActionUrlRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeCartActionUrl = htmlspecialchars(AppUrl::absolut($cartActionUrlRaw), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         $estimatedDelivery = trim((string) ($context['estimated_delivery'] ?? ''));
         if ($estimatedDelivery === '') {
@@ -1019,7 +1019,7 @@ HTML;
             $orderItemsHtml = '<p style="margin:0;color:#64748b;">Produsele comenzii nu sunt disponibile momentan.</p>';
         }
         $orderActionUrl = trim((string) ($context['order_action_url'] ?? $trackingUrlRaw));
-        $safeOrderActionUrl = htmlspecialchars($orderActionUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeOrderActionUrl = htmlspecialchars(AppUrl::absolut($orderActionUrl), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $year = trim((string) ($context['year'] ?? date('Y')));
         if ($year === '') {
             $year = date('Y');
