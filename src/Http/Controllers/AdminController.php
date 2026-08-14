@@ -13826,6 +13826,11 @@ HTML;
                 'html' => '<h1>Blog</h1><p>{{blog_posts}}</p>',
             ],
             [
+                'title' => 'Contul meu',
+                'slug' => 'contul-meu',
+                'html' => '<div class="account-page-dynamic">{{account_section}}</div>',
+            ],
+            [
                 'title' => 'Contact',
                 'slug' => 'contact',
                 'html' => '<h1>Contact</h1><p>Completează această pagină din admin cu informațiile de contact, hartă, program și formular.</p>',

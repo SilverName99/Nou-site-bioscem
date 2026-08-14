@@ -3966,6 +3966,7 @@ HTML;
         ];
 
         return $this->renderPhpView('site/components/account-section', [
+            'loyaltyEnabled' => !empty($state['loyalty_enabled']),
             'customer' => $state['customer'] ?? null,
             'orders' => $orders,
             'addresses' => $addresses,
@@ -4003,11 +4004,13 @@ HTML;
             'avatar_initials' => 'CL',
             'account_section' => 'profile',
             'profile_edit' => false,
+            'loyalty_enabled' => true,
         ];
         if (!$db instanceof PDO) {
             return $state;
         }
         $this->ensureCustomerSchema($db);
+        $state['loyalty_enabled'] = !empty(LoyaltyService::config(Settings::all($db))['enabled']);
 
         $customer = CustomerAuth::user($db);
         if (!is_array($customer)) {

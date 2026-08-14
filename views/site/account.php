@@ -49,7 +49,7 @@ $gender = is_array($customer) ? (string) ($customer['gender'] ?? '') : '';
 $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : '';
 ?>
 
-<section class="panel customer-account-page">
+<section class="panel customer-account-page" style="max-width:1160px;margin-left:auto;margin-right:auto;">
     <h1 style="margin-top:0;">Contul meu</h1>
 
     <?php if (!$dbReady): ?>

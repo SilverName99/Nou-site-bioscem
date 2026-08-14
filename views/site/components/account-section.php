@@ -5,6 +5,11 @@ $addresses = is_array($addresses ?? null) ? $addresses : [];
 $pointsHistory = is_array($pointsHistory ?? null) ? $pointsHistory : [];
 $settingsCardRows = is_array($settingsCardRows ?? null) ? $settingsCardRows : [];
 $accountSection = in_array((string) ($accountSection ?? 'profile'), ['profile', 'orders', 'addresses', 'points', 'settings'], true) ? (string) $accountSection : 'profile';
+// Sistemul de puncte oprit din admin → secțiunea dispare din cont.
+$loyaltyEnabled = !isset($loyaltyEnabled) || !empty($loyaltyEnabled);
+if (!$loyaltyEnabled && $accountSection === 'points') {
+    $accountSection = 'profile';
+}
 $ordersCount = max(0, (int) ($ordersCount ?? count($orders)));
 $loyaltyPoints = max(0, (int) ($loyaltyPoints ?? ($customer['loyalty_points'] ?? 0)));
 $latestOrderDateLabel = trim((string) ($latestOrderDateLabel ?? '-'));
@@ -43,6 +48,9 @@ $menuItems = [
     'points' => 'Punctele mele',
     'settings' => 'Setări',
 ];
+if (!$loyaltyEnabled) {
+    unset($menuItems['points']);
+}
 $menuIcons = [
     'profile' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5Zm0 2c-4.42 0-8 2.01-8 4.5V21h16v-2.5C20 16.01 16.42 14 12 14Z"/></svg>',
     'orders' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7l8 4 8-4-8-4Zm-8 6 8 4v8l-8-4V9Zm16 0-8 4v8l8-4V9Z"/></svg>',
@@ -52,7 +60,7 @@ $menuIcons = [
 ];
 $logoutIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M18 12H9"/></svg>';
 ?>
-<section class="account-section-v2" data-account-section-token="1">
+<section class="account-section-v2" data-account-section-token="1" style="max-width:1160px;margin-left:auto;margin-right:auto;">
     <?php if (!$isPreviewMode): ?>
         <div class="account-section-v2__shell" data-account-shell>
             <aside class="account-section-v2__side">
@@ -140,10 +148,12 @@ $logoutIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 
                             <strong><?= count($addresses) ?></strong>
                             <span>Adrese</span>
                         </article>
-                        <article class="account-section-v2__card">
-                            <strong><?= $loyaltyPoints ?></strong>
-                            <span>Puncte</span>
-                        </article>
+                        <?php if ($loyaltyEnabled): ?>
+                            <article class="account-section-v2__card">
+                                <strong><?= $loyaltyPoints ?></strong>
+                                <span>Puncte</span>
+                            </article>
+                        <?php endif; ?>
                         <article class="account-section-v2__card">
                             <strong><?= htmlspecialchars($latestOrderDateLabel, ENT_QUOTES) ?></strong>
                             <span>Ultima comandă</span>
@@ -214,6 +224,7 @@ $logoutIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 
                     </article>
                 </section>
 
+                <?php if ($loyaltyEnabled): ?>
                 <section class="account-section-v2__panel <?= $accountSection === 'points' ? 'is-active' : '' ?>" data-account-panel="points">
                     <article class="account-section-v2__section-card">
                         <div class="account-section-v2__profile-head">
@@ -248,6 +259,7 @@ $logoutIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 
                         </article>
                     </article>
                 </section>
+                <?php endif; ?>
 
                 <section class="account-section-v2__panel <?= $accountSection === 'settings' ? 'is-active' : '' ?>" data-account-panel="settings">
                     <article class="account-section-v2__section-card">
