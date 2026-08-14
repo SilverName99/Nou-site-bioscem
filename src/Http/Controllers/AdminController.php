@@ -304,10 +304,10 @@ final class AdminController
 
         $db = $this->db();
         $settings = [
-            'customer_registration_field_first_name' => '1',
-            'customer_registration_field_last_name' => '1',
+            'customer_registration_field_first_name' => '0',
+            'customer_registration_field_last_name' => '0',
             'customer_registration_field_email' => '1',
-            'customer_registration_field_phone' => '1',
+            'customer_registration_field_phone' => '0',
             'customer_registration_field_birth_date' => '0',
             'customer_registration_field_gender' => '0',
             'customer_registration_field_password' => '1',

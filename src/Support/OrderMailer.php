@@ -107,6 +107,17 @@ final class OrderMailer
                 'default_subject' => 'Comandă anulată {{order_number}}',
                 'default_body' => $cancelledDefaultBody,
             ],
+            'account_created' => [
+                'label' => 'Bun venit (cont nou)',
+                'subject_key' => 'email_template_account_created_subject',
+                'body_key' => 'email_template_account_created_body',
+                'active_key' => 'email_template_account_created_active',
+                'recipient_mode_key' => 'email_template_account_created_recipient_mode',
+                'admin_recipients_key' => 'email_template_account_created_admin_recipients',
+                'default_recipient_mode' => 'client',
+                'default_subject' => 'Bine ai venit la {{store_name}}! 🌿',
+                'default_body' => self::accountCreatedAdvancedDefaultBody(),
+            ],
             'abandoned_cart' => [
                 'label' => 'Abandon coș',
                 'subject_key' => 'email_template_abandoned_cart_subject',
@@ -911,6 +922,30 @@ HTML;
             '{{order_action_url}}' => $safeOrderActionUrl,
             '{{year}}' => htmlspecialchars($year, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
         ];
+    }
+
+    /** Emailul de bun venit la crearea contului, în stilul template-urilor avansate. */
+    private static function accountCreatedAdvancedDefaultBody(): string
+    {
+        return '<div style="text-align:center;padding-top:8px;">'
+            . '<div style="margin:0 auto 12px;color:#2f8d5b;font-size:56px;line-height:1;">🌿</div>'
+            . '<h2 style="margin:0;font-family:Georgia,\'Times New Roman\',serif;font-size:42px;line-height:1.05;color:#0f172a;font-weight:700;">{{store_name}}</h2>'
+            . '</div>'
+            . '<p style="margin:28px 0 10px;font-size:34px;line-height:1.1;color:#0f172a;font-weight:700;">Bine ai venit, {{customer_name}}! 🎉</p>'
+            . '<p style="margin:0 0 18px;color:#4f6b66;font-size:16px;line-height:1.55;">'
+            . 'Contul tău a fost creat cu succes. De acum îți poți urmări comenzile și livrările, '
+            . 'aduni puncte de fidelitate la fiecare comandă și primești recomandări potrivite nevoilor tale.'
+            . '</p>'
+            . '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;background:#f4f7f4;border-radius:14px;padding:16px 18px;margin:0 0 22px;">'
+            . '<tr><td style="padding:6px 8px;color:#536f69;font-size:15px;">Contul tău</td>'
+            . '<td style="padding:6px 8px;color:#0f172a;font-size:15px;font-weight:600;text-align:right;">{{customer_email}}</td></tr>'
+            . '</table>'
+            . '<p style="margin:0 0 24px;text-align:center;">'
+            . '<a href="{{order_action_url}}" style="display:inline-block;min-width:260px;padding:14px 22px;border-radius:14px;background:#2f8d5b;color:#ffffff;text-decoration:none;font-weight:700;font-size:18px;line-height:1.2;">Intră în contul tău →</a>'
+            . '</p>'
+            . '<hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0 16px;">'
+            . '<p style="margin:0 0 6px;text-align:center;color:#5b6f69;font-size:14px;line-height:1.5;">© {{year}} {{store_name}}. Toate drepturile rezervate.</p>'
+            . '<p style="margin:0;text-align:center;color:#7b8b86;font-size:14px;line-height:1.5;">Acest email a fost trimis la {{customer_email}}</p>';
     }
 
     private static function newOrderLegacyBodyCandidates(): array

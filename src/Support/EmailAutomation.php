@@ -52,6 +52,65 @@ final class EmailAutomation
         }
     }
 
+    /**
+     * Emailul de bun venit la crearea contului. Best-effort: dacă trimiterea
+     * eșuează, contul rămâne creat — clientul nu are voie să vadă o eroare.
+     */
+    public static function sendAccountWelcome(
+        PDO $db,
+        array $settings,
+        string $email,
+        string $customerName = ''
+    ): void {
+        $email = trim($email);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+        // Adresele interne generate când formularul nu cere email nu primesc nimic.
+        if (str_ends_with(strtolower($email), '@local.invalid')) {
+            return;
+        }
+        if (!OrderMailer::isTemplateActive('account_created', $settings)) {
+            return;
+        }
+
+        $recipients = OrderMailer::resolveTemplateRecipients('account_created', $settings, $email);
+        if ($recipients === []) {
+            return;
+        }
+
+        $customerName = trim($customerName);
+        if ($customerName === '' || strcasecmp($customerName, 'Client Nou') === 0) {
+            // Fără nume real, folosim partea locală a emailului, nu „Client Nou".
+            $customerName = ucfirst((string) strtok($email, '@'));
+        }
+        $storeName = trim((string) ($settings['order_email_from_name'] ?? 'Bioscem')) ?: 'Bioscem';
+
+        $context = [
+            'customer_name' => $customerName,
+            'customer_email' => $email,
+            'store_name' => $storeName,
+            'year' => date('Y'),
+            'order_action_url' => '/contul-meu',
+        ];
+
+        foreach ($recipients as $recipient) {
+            $contextWithRecipient = $context;
+            $contextWithRecipient['to'] = $recipient;
+            try {
+                OrderMailer::sendTemplate('account_created', $contextWithRecipient, $settings, $db, [
+                    'source' => 'account_automation',
+                    'meta' => [
+                        'automation_template' => 'account_created',
+                        'recipient_mode' => OrderMailer::templateRecipientMode('account_created', $settings),
+                    ],
+                ]);
+            } catch (Throwable) {
+                // Emailul de bun venit nu blochează niciodată înregistrarea.
+            }
+        }
+    }
+
     public static function sendOrderTemplateById(PDO $db, array $settings, int $orderId, string $templateType): void
     {
         if ($orderId <= 0) {

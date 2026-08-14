@@ -33,6 +33,11 @@ $loyaltyConfig = is_array($loyaltyConfig ?? null) ? $loyaltyConfig : [
     'promo_weekend_enabled' => false,
     'promo_weekend_multiplier' => 1,
 ];
+// Sistemul de puncte oprit din admin → secțiunea și numărătoarea dispar din cont.
+$loyaltyEnabled = !empty($loyaltyConfig['enabled']);
+if (!$loyaltyEnabled && $accountSection === 'points') {
+    $accountSection = 'profile';
+}
 $fullName = is_array($customer) ? trim((string) ($customer['first_name'] ?? '') . ' ' . (string) ($customer['last_name'] ?? '')) : '';
 $avatarInitials = '';
 if (is_array($customer)) {
@@ -44,7 +49,7 @@ $gender = is_array($customer) ? (string) ($customer['gender'] ?? '') : '';
 $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : '';
 ?>
 
-<section class="panel">
+<section class="panel customer-account-page">
     <h1 style="margin-top:0;">Contul meu</h1>
 
     <?php if (!$dbReady): ?>
@@ -65,10 +70,12 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                             <strong><?= number_format($ordersTotal, 0) ?> lei</strong>
                             <span>Total</span>
                         </article>
-                        <article>
-                            <strong><?= (int) ($customer['loyalty_points'] ?? 0) ?></strong>
-                            <span>Puncte</span>
-                        </article>
+                        <?php if ($loyaltyEnabled): ?>
+                            <article>
+                                <strong><?= (int) ($customer['loyalty_points'] ?? 0) ?></strong>
+                                <span>Puncte</span>
+                            </article>
+                        <?php endif; ?>
                     </div>
                 </article>
 
@@ -76,7 +83,9 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                     <a class="<?= $accountSection === 'profile' ? 'active' : '' ?>" href="/contul-meu?section=profile"><span>Profilul meu</span><span>›</span></a>
                     <a class="<?= $accountSection === 'orders' ? 'active' : '' ?>" href="/contul-meu?section=orders"><span>Comenzile mele</span><span>›</span></a>
                     <a class="<?= $accountSection === 'addresses' ? 'active' : '' ?>" href="/contul-meu?section=addresses"><span>Adrese</span><span>›</span></a>
-                    <a class="<?= $accountSection === 'points' ? 'active' : '' ?>" href="/contul-meu?section=points"><span>Punctele mele</span><span>›</span></a>
+                    <?php if ($loyaltyEnabled): ?>
+                        <a class="<?= $accountSection === 'points' ? 'active' : '' ?>" href="/contul-meu?section=points"><span>Punctele mele</span><span>›</span></a>
+                    <?php endif; ?>
                     <a class="<?= $accountSection === 'settings' ? 'active' : '' ?>" href="/contul-meu?section=settings"><span>Setări</span><span>›</span></a>
                 </nav>
                 <form method="post" action="/contul-meu/logout">
@@ -207,7 +216,7 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                             </div>
                         <?php endif; ?>
                     </article>
-                <?php elseif ($accountSection === 'points'): ?>
+                <?php elseif ($accountSection === 'points' && $loyaltyEnabled): ?>
                     <article class="panel" style="margin:0;">
                         <h2 style="margin-top:0;">Punctele mele</h2>
                         <p style="margin:0 0 12px;color:#64748b;">

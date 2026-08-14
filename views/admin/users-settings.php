@@ -1,9 +1,9 @@
 <?php
 $settings = is_array($settings ?? null) ? $settings : [];
-$firstNameEnabled = (string) ($settings['customer_registration_field_first_name'] ?? '1') !== '0';
-$lastNameEnabled = (string) ($settings['customer_registration_field_last_name'] ?? '1') !== '0';
+$firstNameEnabled = (string) ($settings['customer_registration_field_first_name'] ?? '0') === '1';
+$lastNameEnabled = (string) ($settings['customer_registration_field_last_name'] ?? '0') === '1';
 $emailEnabled = (string) ($settings['customer_registration_field_email'] ?? '1') !== '0';
-$phoneEnabled = (string) ($settings['customer_registration_field_phone'] ?? '1') !== '0';
+$phoneEnabled = (string) ($settings['customer_registration_field_phone'] ?? '0') === '1';
 $birthEnabled = (string) ($settings['customer_registration_field_birth_date'] ?? '0') === '1';
 $genderEnabled = (string) ($settings['customer_registration_field_gender'] ?? '0') === '1';
 $passwordEnabled = (string) ($settings['customer_registration_field_password'] ?? '1') !== '0';

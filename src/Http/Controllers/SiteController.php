@@ -2082,7 +2082,8 @@ final class SiteController
             header('Location: /register');
             return;
         }
-        $registrationFields = $this->customerRegistrationFields(Settings::all($db));
+        $settings = Settings::all($db);
+        $registrationFields = $this->customerRegistrationFields($settings);
 
         $firstName = $registrationFields['first_name'] ? trim((string) ($_POST['first_name'] ?? '')) : 'Client';
         $lastName = $registrationFields['last_name'] ? trim((string) ($_POST['last_name'] ?? '')) : 'Nou';
@@ -2171,6 +2172,7 @@ final class SiteController
 
         $userId = (int) $db->lastInsertId();
         CustomerAuth::login($userId);
+        EmailAutomation::sendAccountWelcome($db, $settings, $email, trim($firstName . ' ' . $lastName));
         $claimedPoints = $this->claimPendingLoyaltyPointsForUser($db, $userId);
         $successMessage = 'Cont creat cu succes. Bine ai venit!';
         if ($claimedPoints > 0) {
@@ -5945,6 +5947,13 @@ CSS;
             throw new RuntimeException('Contul Google nu a putut fi creat.');
         }
 
+        EmailAutomation::sendAccountWelcome(
+            $db,
+            Settings::all($db),
+            $email,
+            trim($firstName . ' ' . $lastName)
+        );
+
         return $newUserId;
     }
 
@@ -6725,11 +6734,12 @@ CSS;
     private function customerRegistrationFields(array $settings): array
     {
         $passwordEnabled = (string) ($settings['customer_registration_field_password'] ?? '1') !== '0';
+        // Implicit cerem minimul: email + parolă. Restul se activează din admin.
         return [
-            'first_name' => (string) ($settings['customer_registration_field_first_name'] ?? '1') !== '0',
-            'last_name' => (string) ($settings['customer_registration_field_last_name'] ?? '1') !== '0',
+            'first_name' => (string) ($settings['customer_registration_field_first_name'] ?? '0') === '1',
+            'last_name' => (string) ($settings['customer_registration_field_last_name'] ?? '0') === '1',
             'email' => (string) ($settings['customer_registration_field_email'] ?? '1') !== '0',
-            'phone' => (string) ($settings['customer_registration_field_phone'] ?? '1') !== '0',
+            'phone' => (string) ($settings['customer_registration_field_phone'] ?? '0') === '1',
             'birth_date' => (string) ($settings['customer_registration_field_birth_date'] ?? '0') === '1',
             'gender' => (string) ($settings['customer_registration_field_gender'] ?? '0') === '1',
             'password' => $passwordEnabled,

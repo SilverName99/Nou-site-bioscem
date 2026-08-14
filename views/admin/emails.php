@@ -249,6 +249,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
     }
 
     $ecommerceOrder = [
+        'account_created' => 'Bun venit (cont nou)',
         'new_order' => 'Comandă nouă',
         'processing' => 'Comandă în procesare',
         'shipped' => 'Comandă expediată',
