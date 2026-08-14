@@ -577,7 +577,133 @@ HTML;
             return;
         }
 
+        // SMTP autentificat când e configurat; mail() rămâne doar rezervă
+        // pentru instalările fără SMTP (pe Hostinger mail() e aruncat tăcut).
+        $smtpHost = trim((string) ($settings['smtp_host'] ?? ''));
+        if ($deliveryMethod === 'smtp' && $smtpHost !== '') {
+            self::sendWithSmtp($to, $subject, $html, $fromName, $fromAddress, $settings);
+            return;
+        }
+
         self::sendWithPhpMail($to, $subject, $html, $fromName, $fromAddress);
+    }
+
+    /**
+     * Client SMTP propriu (EHLO, STARTTLS/SSL, AUTH LOGIN, MAIL/RCPT/DATA).
+     * Orice răspuns neașteptat al serverului devine o excepție cu textul
+     * serverului — ca eșecurile să fie vizibile, nu „succes" fals ca la mail().
+     */
+    private static function sendWithSmtp(
+        string $to,
+        string $subject,
+        string $html,
+        string $fromName,
+        string $fromAddress,
+        array $settings
+    ): void {
+        $host = trim((string) ($settings['smtp_host'] ?? ''));
+        $port = (int) ($settings['smtp_port'] ?? 587);
+        if ($port <= 0) {
+            $port = 587;
+        }
+        $criptare = strtolower(trim((string) ($settings['smtp_encryption'] ?? 'tls')));
+        $utilizator = trim((string) ($settings['smtp_username'] ?? ''));
+        $parola = (string) ($settings['smtp_password'] ?? '');
+
+        // Portul 465 vorbește TLS de la primul octet; 587 pornește în clar și urcă prin STARTTLS.
+        $sslDirect = $criptare === 'ssl' || $port === 465;
+        $adresa = ($sslDirect ? 'ssl://' : 'tcp://') . $host . ':' . $port;
+
+        $context = stream_context_create([
+            'ssl' => [
+                'SNI_enabled' => true,
+                'peer_name' => $host,
+            ],
+        ]);
+        $fp = @stream_socket_client($adresa, $errno, $errstr, 20, STREAM_CLIENT_CONNECT, $context);
+        if (!is_resource($fp)) {
+            throw new RuntimeException("Nu m-am putut conecta la serverul SMTP {$host}:{$port} ({$errstr}).");
+        }
+        stream_set_timeout($fp, 20);
+
+        $citeste = static function () use ($fp): string {
+            $raspuns = '';
+            while (($linie = fgets($fp, 2048)) !== false) {
+                $raspuns .= $linie;
+                // Ultima linie a unui răspuns SMTP are spațiu după cod („250 "), nu liniuță („250-").
+                if (strlen($linie) < 4 || $linie[3] !== '-') {
+                    break;
+                }
+            }
+            return $raspuns;
+        };
+        $trimite = static function (string $comanda, array $coduriOk) use ($fp, $citeste): string {
+            fwrite($fp, $comanda . "\r\n");
+            $raspuns = $citeste();
+            $cod = (int) substr($raspuns, 0, 3);
+            if (!in_array($cod, $coduriOk, true)) {
+                fclose($fp);
+                $curat = trim(preg_replace('/\s+/', ' ', $raspuns) ?? $raspuns);
+                throw new RuntimeException("SMTP a refuzat comanda (" . strtok($comanda, ' ') . "): {$curat}");
+            }
+            return $raspuns;
+        };
+
+        try {
+            $salut = $citeste();
+            if ((int) substr($salut, 0, 3) !== 220) {
+                throw new RuntimeException('SMTP: serverul nu a salutat (' . trim($salut) . ').');
+            }
+
+            $ehloHost = preg_replace('/[^a-zA-Z0-9.-]/', '', (string) ($_SERVER['SERVER_NAME'] ?? 'localhost')) ?: 'localhost';
+            $trimite('EHLO ' . $ehloHost, [250]);
+
+            if (!$sslDirect && $criptare === 'tls') {
+                $trimite('STARTTLS', [220]);
+                if (!stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    throw new RuntimeException('SMTP: negocierea STARTTLS a eșuat.');
+                }
+                $trimite('EHLO ' . $ehloHost, [250]);
+            }
+
+            if ($utilizator !== '') {
+                $trimite('AUTH LOGIN', [334]);
+                $trimite(base64_encode($utilizator), [334]);
+                $trimite(base64_encode($parola), [235]);
+            }
+
+            // Plicul: expeditorul real e contul SMTP, ca SPF/DKIM să se alinieze.
+            $expeditorPlic = filter_var($utilizator, FILTER_VALIDATE_EMAIL) ? $utilizator : $fromAddress;
+            $trimite('MAIL FROM:<' . $expeditorPlic . '>', [250]);
+            $trimite('RCPT TO:<' . $to . '>', [250, 251]);
+            $trimite('DATA', [354]);
+
+            $subiectCodat = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+            $numeCodat = '=?UTF-8?B?' . base64_encode($fromName) . '?=';
+            $anteturi = [
+                'Date: ' . date('r'),
+                'From: ' . $numeCodat . ' <' . $expeditorPlic . '>',
+                'Reply-To: ' . $fromAddress,
+                'To: <' . $to . '>',
+                'Subject: ' . $subiectCodat,
+                'MIME-Version: 1.0',
+                'Content-Type: text/html; charset=UTF-8',
+                'Content-Transfer-Encoding: base64',
+                'Message-ID: <' . bin2hex(random_bytes(16)) . '@' . $ehloHost . '>',
+            ];
+            $corp = chunk_split(base64_encode($html), 76, "\r\n");
+            fwrite($fp, implode("\r\n", $anteturi) . "\r\n\r\n" . $corp . "\r\n.\r\n");
+            $raspunsData = $citeste();
+            if ((int) substr($raspunsData, 0, 3) !== 250) {
+                throw new RuntimeException('SMTP a refuzat mesajul: ' . trim($raspunsData));
+            }
+
+            fwrite($fp, "QUIT\r\n");
+        } finally {
+            if (is_resource($fp)) {
+                fclose($fp);
+            }
+        }
     }
 
     private static function sendWithPhpMail(
