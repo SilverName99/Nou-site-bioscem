@@ -8081,7 +8081,8 @@ CSS;
             $quantityControlStyle,
             $applyQuantityOnProductTemplate,
             (int) ($product['out_of_stock'] ?? 0) === 1,
-            $requiresBbdSelection
+            $requiresBbdSelection,
+            $this->limitaStocProdus($product)
         );
         if ($requiresBbdSelection && !$templateHasBbdPlaceholder && $productBbdSelectorHtml !== '') {
             // Keep BBD selector close to quantity/add-to-cart controls, not at top of template.
@@ -8203,21 +8204,36 @@ CSS;
         ];
     }
 
-    private function buildProductQuantityInputHtml(string $controlStyle, bool $enabled, bool $isOutOfStock = false, bool $requiresBbdSelection = false): string
-    {
+    private function buildProductQuantityInputHtml(
+        string $controlStyle,
+        bool $enabled,
+        bool $isOutOfStock = false,
+        bool $requiresBbdSelection = false,
+        ?int $stocMaxim = null
+    ): string {
         if ($isOutOfStock) {
             return '';
         }
         $disabledAttr = $requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '';
+        // Limita de stoc merge în HTML, ca butonul „+" și tastarea să se
+        // oprească la ea fără să mai întrebe serverul.
+        $limitaAttr = $stocMaxim !== null && $stocMaxim > 0
+            ? ' max="' . $stocMaxim . '" data-stoc-maxim="' . $stocMaxim . '"'
+            : '';
+        $noteHtml = $stocMaxim !== null && $stocMaxim > 0
+            ? '<p class="qty-stoc-note" data-stoc-note hidden>Cantitate maximă în stoc</p>'
+            : '';
         if (!$enabled || $controlStyle !== 'stepper') {
-            return '<input id="quantity" name="quantity" type="number" min="1" value="1" data-product-main-quantity="1"' . $disabledAttr . ' style="width:90px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">';
+            return $noteHtml
+                . '<input id="quantity" name="quantity" type="number" min="1" value="1" data-product-main-quantity="1"' . $limitaAttr . $disabledAttr . ' style="width:90px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">';
         }
 
         // Grilă fixă (buton | câmp | buton): rămâne aliniat indiferent de
         // lățimea coloanei în care este pus și de stilurile temei.
-        return '<div class="qty-stepper" style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:0;width:100%;max-width:170px;box-sizing:border-box;border:1px solid #d1d9e3;border-radius:12px;background:#fff;padding:3px;height:48px;vertical-align:middle;">'
+        return $noteHtml
+            . '<div class="qty-stepper" style="display:grid;grid-template-columns:40px minmax(0,1fr) 40px;align-items:center;gap:0;width:100%;max-width:170px;box-sizing:border-box;border:1px solid #d1d9e3;border-radius:12px;background:#fff;padding:3px;height:48px;vertical-align:middle;">'
             . '<button type="button" class="qty-stepper__btn" data-role="qty-minus" aria-label="Scade cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:#eef4f4;border-radius:9px;width:100%;height:100%;line-height:1;font-size:20px;color:#0f3f46;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;">−</button>'
-            . '<input id="quantity" name="quantity" type="number" min="1" value="1" class="qty-stepper__input" data-product-main-quantity="1"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="width:100%;min-width:0;border:0;background:transparent;text-align:center;font-size:16px;font-weight:700;color:#0f172a;padding:0;margin:0;outline:none;line-height:1;height:100%;display:block;box-sizing:border-box;-moz-appearance:textfield;">'
+            . '<input id="quantity" name="quantity" type="number" min="1" value="1" class="qty-stepper__input" data-product-main-quantity="1"' . $limitaAttr . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="width:100%;min-width:0;border:0;background:transparent;text-align:center;font-size:16px;font-weight:700;color:#0f172a;padding:0;margin:0;outline:none;line-height:1;height:100%;display:block;box-sizing:border-box;-moz-appearance:textfield;">'
             . '<button type="button" class="qty-stepper__btn" data-role="qty-plus" aria-label="Crește cantitatea"' . ($requiresBbdSelection ? ' disabled data-requires-bbd="1"' : '') . ' style="border:0;background:#eef4f4;border-radius:9px;width:100%;height:100%;line-height:1;font-size:20px;color:#0f3f46;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;">+</button>'
             . '</div>';
     }

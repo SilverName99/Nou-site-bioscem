@@ -3716,6 +3716,19 @@ body > main.container {
     transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
+/* Nota „Cantitate maximă în stoc", deasupra selectorului de cantitate. */
+.qty-stoc-note {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #b45309;
+    line-height: 1.3;
+}
+
+.qty-stoc-note[hidden] {
+    display: none;
+}
+
 /* Categoriile suplimentare din formularul de produs. */
 .extra-categories {
     margin-top: 8px;

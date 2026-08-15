@@ -160,7 +160,15 @@ if ($galleryUrls === []) {
                 <?php endif; ?>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <label for="quantity">Cantitate</label>
-                    <input id="quantity" name="quantity" type="number" min="1" value="1"<?= $requiresBbdSelection ? ' data-requires-bbd="1" disabled' : '' ?> style="width:90px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
+                    <?php
+                    $stocMaximProdus = ((int) ($product['stock_from_erp'] ?? 0) === 1)
+                        ? max(0, (int) ($product['stock'] ?? 0))
+                        : null;
+                    ?>
+                    <?php if ($stocMaximProdus !== null && $stocMaximProdus > 0): ?>
+                        <p class="qty-stoc-note" data-stoc-note hidden>Cantitate maximă în stoc</p>
+                    <?php endif; ?>
+                    <input id="quantity" name="quantity" type="number" min="1" value="1"<?= $stocMaximProdus !== null && $stocMaximProdus > 0 ? ' max="' . $stocMaximProdus . '" data-stoc-maxim="' . $stocMaximProdus . '"' : '' ?><?= $requiresBbdSelection ? ' data-requires-bbd="1" disabled' : '' ?> style="width:90px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
                     <button class="btn" type="submit"<?= $requiresBbdSelection ? ' data-product-requires-bbd="1" disabled title="Alege oferta dorită"' : '' ?>>Adaugă în coș</button>
                 </div>
                 <?php if ($postCartNoteEnabled && $postCartNoteText !== ''): ?>

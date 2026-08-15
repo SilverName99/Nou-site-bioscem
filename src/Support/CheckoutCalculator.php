@@ -131,6 +131,10 @@ final class CheckoutCalculator
                 'slug' => (string) $product['slug'],
                 'category_id' => max(0, (int) ($product['category_id'] ?? 0)),
                 'extra_category_ids' => array_map('intval', (array) ($product['extra_category_ids'] ?? [])),
+                // Plafonul de vânzare; null când stocul nu vine din ERP.
+                'stoc_maxim' => ((int) ($product['stock_from_erp'] ?? 0) === 1)
+                    ? max(0, (int) ($product['stock'] ?? 0))
+                    : null,
                 'short_description' => trim((string) ($product['short_description'] ?? '')),
                 'bbd_key' => (string) ($bbdSelection['key'] ?? ''),
                 'bbd_date' => (string) ($bbdSelection['date'] ?? ''),
@@ -243,6 +247,8 @@ final class CheckoutCalculator
         }
 
         $produse = $stmt->fetchAll();
+        // Disponibilul real din gestiune, pentru plafonarea cantității în coș.
+        ErpStock::applyToProducts($db, $produse);
         // Categoriile suplimentare, pentru cupoanele restrânse pe categorii.
         $extraIds = ProductCategories::idsForProducts($db, $safeIds);
         foreach ($produse as &$produs) {

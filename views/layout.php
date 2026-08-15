@@ -965,7 +965,9 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     ], static fn (string $part): bool => trim($part) !== '')));
     $designJs = str_replace('</script>', '<\/script>', $designJs);
     $floatingCartJsVersion = @filemtime(__DIR__ . '/../public/assets/js/floating-cart.js') ?: time();
+    $qtyStocJsVersion = @filemtime(__DIR__ . '/../public/assets/js/qty-stoc.js') ?: time();
     ?>
+    <script src="/assets/js/qty-stoc.js?v=<?= $qtyStocJsVersion ?><?= $assetVersionQuery ?>" defer></script>
     <?php if ($floatingCartEnabled): ?>
         <script>
             window.floatingCartConfig = <?= json_encode($floatingCartConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;

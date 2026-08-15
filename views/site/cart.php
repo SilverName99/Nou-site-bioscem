@@ -170,15 +170,23 @@ foreach ($lines as $line) {
                                         </p>
                                     </div>
                                 </a>
+                                <?php
+                                $stocMaximLinie = isset($line['stoc_maxim']) && $line['stoc_maxim'] !== null
+                                    ? max(0, (int) $line['stoc_maxim'])
+                                    : null;
+                                if ($stocMaximLinie !== null && $stocMaximLinie <= 0) {
+                                    $stocMaximLinie = null;
+                                }
+                                ?>
                                 <div class="bv-cart-v2__qty-cell">
                                     <?php if ($applyStepperInCart): ?>
                                         <div class="qty-stepper bv-cart-v2__qty cart-qty">
                                             <button type="button" class="qty-stepper__btn" data-role="qty-minus" data-qty-action="decrease" aria-label="Scade cantitatea">−</button>
-                                            <input type="number" min="0" name="quantities[<?= htmlspecialchars((string) ($line['cart_item_key'] ?? $line['id'] ?? ''), ENT_QUOTES) ?>]" value="<?= (int) ($line['quantity'] ?? 1) ?>" class="qty-stepper__input">
+                                            <input type="number" min="0"<?= $stocMaximLinie !== null ? ' max="' . $stocMaximLinie . '" data-stoc-maxim="' . $stocMaximLinie . '"' : '' ?> name="quantities[<?= htmlspecialchars((string) ($line['cart_item_key'] ?? $line['id'] ?? ''), ENT_QUOTES) ?>]" value="<?= (int) ($line['quantity'] ?? 1) ?>" class="qty-stepper__input">
                                             <button type="button" class="qty-stepper__btn" data-role="qty-plus" data-qty-action="increase" aria-label="Crește cantitatea">+</button>
                                         </div>
                                     <?php else: ?>
-                                        <input class="bv-cart-v2__qty-input" type="number" min="0" name="quantities[<?= htmlspecialchars((string) ($line['cart_item_key'] ?? $line['id'] ?? ''), ENT_QUOTES) ?>]" value="<?= (int) ($line['quantity'] ?? 1) ?>">
+                                        <input class="bv-cart-v2__qty-input" type="number" min="0"<?= $stocMaximLinie !== null ? ' max="' . $stocMaximLinie . '" data-stoc-maxim="' . $stocMaximLinie . '"' : '' ?> name="quantities[<?= htmlspecialchars((string) ($line['cart_item_key'] ?? $line['id'] ?? ''), ENT_QUOTES) ?>]" value="<?= (int) ($line['quantity'] ?? 1) ?>">
                                     <?php endif; ?>
                                 </div>
                                 <?php
