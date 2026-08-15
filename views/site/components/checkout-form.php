@@ -579,11 +579,19 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         const initialShippingText = shippingValueEl instanceof HTMLElement ? shippingValueEl.textContent : '';
         const initialTotalText = totalValueEl instanceof HTMLElement ? totalValueEl.textContent : '';
         const parseMoney = (value) => {
-            const normalized = String(value || '')
+            // Totalurile sunt formatate „3,900.00 lei" — virgula e separator de
+            // mii, nu zecimal. Ultimul dintre „." și „," e cel zecimal.
+            let normalized = String(value || '')
                 .replace(/lei/gi, '')
-                .replace(',', '.')
-                .replace(/[^\d.-]/g, '')
+                .replace(/[^\d.,-]/g, '')
                 .trim();
+            const lastComma = normalized.lastIndexOf(',');
+            const lastDot = normalized.lastIndexOf('.');
+            if (lastComma > lastDot) {
+                normalized = normalized.replace(/\./g, '').replace(',', '.');
+            } else {
+                normalized = normalized.replace(/,/g, '');
+            }
             const amount = Number(normalized);
             return Number.isFinite(amount) ? amount : 0;
         };

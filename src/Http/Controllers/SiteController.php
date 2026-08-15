@@ -893,6 +893,22 @@ final class SiteController
             return;
         }
 
+        // Ultima verificare de stoc înainte de a scrie comanda: între adăugarea
+        // în coș și plasare, altcineva putea cumpăra ultimele bucăți.
+        foreach ($summary['lines'] as $linie) {
+            $produsStoc = $this->findProductById((int) ($linie['id'] ?? 0));
+            $limitaStoc = is_array($produsStoc) ? $this->limitaStocProdus($produsStoc) : null;
+            if ($limitaStoc !== null && (int) ($linie['quantity'] ?? 0) > $limitaStoc) {
+                Flash::set(
+                    'error',
+                    trim((string) ($linie['name'] ?? 'Un produs')) . ': ' . $this->mesajStocInsuficient($limitaStoc)
+                        . ' Ajustează cantitatea din coș.'
+                );
+                header('Location: /cos');
+                return;
+            }
+        }
+
         $orderNumber = $this->generateOrderNumber($db, $settings);
         $status = in_array($billing['payment_method'], self::METODE_CARD, true)
             ? 'pending_payment'
@@ -1524,6 +1540,15 @@ final class SiteController
             return;
         }
 
+        $limitaStoc = $this->limitaStocProdus($product);
+        if ($limitaStoc !== null && $this->cantitateInCos($productId) + $quantity > $limitaStoc) {
+            $this->jsonResponse([
+                'ok' => false,
+                'message' => $this->mesajStocInsuficient($limitaStoc),
+            ], 422);
+            return;
+        }
+
         Cart::add($productId, $quantity, (string) ($selectedBbd['key'] ?? ''));
         $db = $this->db();
         $response = $this->buildFloatingCartPayload($db);
@@ -1553,6 +1578,19 @@ final class SiteController
                 $this->jsonResponse([
                     'ok' => false,
                     'message' => 'Oferta selectată nu mai are stoc disponibil.',
+                ], 422);
+                return;
+            }
+        }
+
+        if ($quantity > 0) {
+            $limitaStoc = $this->limitaStocProdus($product);
+            $inAlteVariante = $this->cantitateInCos($productId)
+                - max(0, (int) (Cart::items()[$itemKey] ?? 0));
+            if ($limitaStoc !== null && $inAlteVariante + $quantity > $limitaStoc) {
+                $this->jsonResponse([
+                    'ok' => false,
+                    'message' => $this->mesajStocInsuficient($limitaStoc),
                 ], 422);
                 return;
             }
@@ -1654,6 +1692,12 @@ final class SiteController
             header('Location: /produs/' . rawurlencode((string) ($product['slug'] ?? '')));
             return;
         }
+        $limitaStoc = $this->limitaStocProdus($product);
+        if ($limitaStoc !== null && $this->cantitateInCos($productId) + $quantity > $limitaStoc) {
+            Flash::set('error', $this->mesajStocInsuficient($limitaStoc));
+            header('Location: /produs/' . rawurlencode((string) ($product['slug'] ?? '')));
+            return;
+        }
 
         Cart::add($productId, $quantity, (string) ($selectedBbd['key'] ?? ''));
         Flash::set('success', 'Produs adăugat în coș.');
@@ -1680,6 +1724,20 @@ final class SiteController
                     $selectedBbd = is_array($product) ? $this->resolveRequestedBbdSelection($product, $bbdKey) : [];
                     if ($selectedBbd === [] || !$this->bbdSelectionHasAvailableStock($selectedBbd, $safeQuantity)) {
                         Flash::set('error', 'Una dintre ofertele selectate nu mai are stoc disponibil.');
+                        header('Location: /cos');
+                        return;
+                    }
+                }
+                if ($productId > 0) {
+                    $produsStoc = $this->findProductById($productId);
+                    $limitaStoc = is_array($produsStoc) ? $this->limitaStocProdus($produsStoc) : null;
+                    $inAlteVariante = $this->cantitateInCos($productId)
+                        - max(0, (int) (Cart::items()[$safeItemKey] ?? 0));
+                    if ($limitaStoc !== null && $inAlteVariante + $safeQuantity > $limitaStoc) {
+                        Flash::set(
+                            'error',
+                            trim((string) ($produsStoc['name'] ?? 'Un produs')) . ': ' . $this->mesajStocInsuficient($limitaStoc)
+                        );
                         header('Location: /cos');
                         return;
                     }
@@ -4965,7 +5023,7 @@ CSS;
             return null;
         }
 
-        $stmt = $db->prepare('SELECT id, name, slug, out_of_stock, bbd_enabled, bbd_entries_json FROM products WHERE id = :id AND is_active = 1 AND deleted_at IS NULL LIMIT 1');
+        $stmt = $db->prepare('SELECT id, name, slug, stock, out_of_stock, bbd_enabled, bbd_entries_json FROM products WHERE id = :id AND is_active = 1 AND deleted_at IS NULL LIMIT 1');
         $stmt->execute(['id' => $id]);
         $product = $stmt->fetch() ?: null;
         if (!is_array($product)) {
@@ -4973,6 +5031,8 @@ CSS;
         }
 
         $product = $this->normalizeProduct($product);
+        // Disponibilitatea reală vine din gestiunea ERP (stoc minus rezervări).
+        $product = \App\Support\ErpStock::applyToProduct($db, $product);
         $product['bbd_entries'] = $this->decorateProductBbdEntriesWithAvailability($product);
         return $product;
     }
@@ -7503,6 +7563,48 @@ CSS;
             return $entry;
         }
         return [];
+    }
+
+    /**
+     * Câte bucăți se pot vinde din produs. null = nelimitat (stocul nu e
+     * urmărit prin ERP; fișa de pe site nu e destul de de încredere ca să
+     * blocheze vânzări).
+     */
+    private function limitaStocProdus(array $product): ?int
+    {
+        if ((int) ($product['stock_from_erp'] ?? 0) !== 1) {
+            return null;
+        }
+
+        return max(0, (int) ($product['stock'] ?? 0));
+    }
+
+    /** Cantitatea totală din coș pentru un produs, cu toate variantele lui. */
+    private function cantitateInCos(int $productId): int
+    {
+        if ($productId <= 0) {
+            return 0;
+        }
+        $total = 0;
+        foreach (Cart::items() as $itemKey => $quantity) {
+            $parsed = Cart::parseItemKey((string) $itemKey);
+            if ((int) ($parsed['product_id'] ?? 0) === $productId) {
+                $total += max(0, (int) $quantity);
+            }
+        }
+
+        return $total;
+    }
+
+    private function mesajStocInsuficient(int $limita): string
+    {
+        if ($limita <= 0) {
+            return 'Produsul este epuizat momentan.';
+        }
+
+        return $limita === 1
+            ? 'Mai este o singură bucată în stoc.'
+            : "Mai sunt doar {$limita} bucăți în stoc.";
     }
 
     private function cartQuantityForProductBbd(int $productId, string $bbdKey): int
