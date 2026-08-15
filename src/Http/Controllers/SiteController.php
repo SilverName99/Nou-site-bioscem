@@ -1358,10 +1358,10 @@ final class SiteController
         }
         $categoryFilter = $this->normalizeShopCategoryFilter($categoryFilter, $categories);
         if ($categoryFilter !== '') {
-            $products = array_values(array_filter($products, static function (array $product) use ($categoryFilter): bool {
-                $productCategory = trim((string) ($product['category'] ?? ''));
-                return mb_strtolower($productCategory) === mb_strtolower($categoryFilter);
-            }));
+            $products = array_values(array_filter(
+                $products,
+                static fn (array $product): bool => \App\Support\ProductCategories::matchesName($product, $categoryFilter)
+            ));
         }
         $products = $this->applyShopCatalogSort($products, $sort);
         $items = array_map(static function (array $product): array {
@@ -3341,10 +3341,10 @@ final class SiteController
         }
         $categoryFilter = $this->normalizeShopCategoryFilter($categoryFilter, $categories);
         if ($categoryFilter !== '') {
-            $products = array_values(array_filter($products, function (array $product) use ($categoryFilter): bool {
-                $productCategory = trim((string) ($product['category'] ?? ''));
-                return mb_strtolower($productCategory) === mb_strtolower($categoryFilter);
-            }));
+            $products = array_values(array_filter(
+                $products,
+                static fn (array $product): bool => \App\Support\ProductCategories::matchesName($product, $categoryFilter)
+            ));
         }
         $products = $this->applyShopCatalogSort($products, $sort);
         return $this->renderPhpView('site/components/shop-catalog', [
@@ -4543,6 +4543,34 @@ CSS;
                     'count' => max(0, (int) ($row['products_count'] ?? 0)),
                 ];
             }
+            // Produsele legate suplimentar se adaugă la numărătoarea categoriei.
+            try {
+                $extraStmt = $db->query(
+                    'SELECT TRIM(pc.name) AS category_name, COUNT(*) AS products_count
+                     FROM product_category_links l
+                     INNER JOIN product_categories pc ON pc.id = l.category_id
+                     INNER JOIN products p ON p.id = l.product_id AND p.deleted_at IS NULL
+                     WHERE TRIM(COALESCE(pc.name, "")) <> ""
+                       AND LOWER(TRIM(COALESCE(p.category, ""))) <> LOWER(TRIM(pc.name))
+                     GROUP BY TRIM(pc.name)'
+                );
+                foreach (($extraStmt ? ($extraStmt->fetchAll() ?: []) : []) as $row) {
+                    if (!is_array($row)) {
+                        continue;
+                    }
+                    $name = trim((string) ($row['category_name'] ?? ''));
+                    if ($name === '') {
+                        continue;
+                    }
+                    $key = mb_strtolower($name);
+                    if (!isset($counts[$key])) {
+                        $counts[$key] = ['value' => $name, 'label' => $name, 'count' => 0];
+                    }
+                    $counts[$key]['count'] += max(0, (int) ($row['products_count'] ?? 0));
+                }
+            } catch (Throwable) {
+                // Fără tabela de legături, numărătoarea rămâne pe categoria principală.
+            }
         } catch (Throwable) {
         }
 
@@ -4832,12 +4860,18 @@ CSS;
 
         if ($db instanceof PDO) {
             $this->ensureProductCustomSchema($db);
+            \App\Support\ProductCategories::ensureSchema($db);
             $limitSql = $limit > 0 ? (' LIMIT ' . $limit) : '';
             $whereSql = 'deleted_at IS NULL';
             $params = [];
             if ($categoryFilter !== '') {
-                $whereSql .= ' AND LOWER(TRIM(COALESCE(category, ""))) = LOWER(TRIM(:category_filter))';
+                // Categoria principală sau oricare dintre categoriile suplimentare.
+                $whereSql .= ' AND (LOWER(TRIM(COALESCE(category, ""))) = LOWER(TRIM(:category_filter))'
+                    . ' OR id IN (SELECT l.product_id FROM product_category_links l'
+                    . ' INNER JOIN product_categories pc ON pc.id = l.category_id'
+                    . ' WHERE LOWER(TRIM(pc.name)) = LOWER(TRIM(:category_filter2))))';
                 $params['category_filter'] = $categoryFilter;
+                $params['category_filter2'] = $categoryFilter;
             }
             try {
                 $sql = 'SELECT id, name, slug, short_description, product_highlights, category, price, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, out_of_stock, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal FROM products WHERE ' . $whereSql . ' ORDER BY id DESC' . $limitSql;
@@ -4860,6 +4894,15 @@ CSS;
 
             $rows = is_array($rows) ? $rows : [];
             $rows = array_map(fn (array $row): array => $this->normalizeProduct($row), $rows);
+            // Numele categoriilor suplimentare, pentru filtrarea din catalog.
+            $extraNume = \App\Support\ProductCategories::namesForProducts(
+                $db,
+                array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $rows)
+            );
+            foreach ($rows as &$row) {
+                $row['extra_categories'] = $extraNume[(int) ($row['id'] ?? 0)] ?? [];
+            }
+            unset($row);
             // Cu ERP-ul conectat, disponibilitatea vine din gestiune — pentru toate
             // listele construite din aici (acasă, produse similare, widget-uri).
             \App\Support\ErpStock::applyToProducts($db, $rows);

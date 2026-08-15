@@ -130,6 +130,14 @@ CREATE TABLE IF NOT EXISTS product_extra_field_values (
     UNIQUE KEY uniq_product_field (product_id, field_id)
 );
 
+CREATE TABLE IF NOT EXISTS product_category_links (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    product_id INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+    UNIQUE KEY uniq_product_category (product_id, category_id),
+    KEY idx_pcl_category (category_id)
+);
+
 CREATE TABLE IF NOT EXISTS coupons (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(190) NOT NULL,

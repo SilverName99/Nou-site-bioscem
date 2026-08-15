@@ -153,6 +153,20 @@
                                         <option value="<?= (int) $category['id'] ?>"><?= htmlspecialchars((string) $category['name'], ENT_QUOTES) ?></option>
                                     <?php endforeach; ?>
                                 </select>
+                                <?php if ($categories !== []): ?>
+                                    <details class="extra-categories" id="p_extra_categories_wrap">
+                                        <summary>Apare și în alte categorii <span id="p_extra_categories_count"></span></summary>
+                                        <div class="extra-categories__list">
+                                            <?php foreach ($categories as $category): ?>
+                                                <label>
+                                                    <input type="checkbox" name="extra_category_ids[]" value="<?= (int) $category['id'] ?>" data-extra-category>
+                                                    <?= htmlspecialchars((string) $category['name'], ENT_QUOTES) ?>
+                                                </label>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <p class="extra-categories__hint">Produsul se afișează și în categoriile bifate, pe lângă cea principală.</p>
+                                    </details>
+                                <?php endif; ?>
                             </div>
                             <div class="field">
                                 <label>Template produs</label>
@@ -553,6 +567,28 @@
             }
         });
     }
+
+    // Categoriile suplimentare din formular: bifare + contor pe titlu.
+    const setExtraCategories = (ids) => {
+        const dorite = new Set((ids || []).map((v) => String(v)));
+        let bifate = 0;
+        document.querySelectorAll('[data-extra-category]').forEach((cb) => {
+            cb.checked = dorite.has(String(cb.value));
+            if (cb.checked) bifate++;
+        });
+        actualizeazaContorCategorii(bifate);
+        const wrap = document.getElementById('p_extra_categories_wrap');
+        if (wrap) wrap.open = bifate > 0;
+    };
+    const actualizeazaContorCategorii = (bifate) => {
+        const contor = document.getElementById('p_extra_categories_count');
+        if (contor) contor.textContent = bifate > 0 ? `(${bifate})` : '';
+    };
+    document.querySelectorAll('[data-extra-category]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+            actualizeazaContorCategorii(document.querySelectorAll('[data-extra-category]:checked').length);
+        });
+    });
 
     // Cota de TVA pentru produsele noi, setată în Setări magazin → TVA.
     const COTA_TVA_IMPLICITA = '<?= htmlspecialchars(number_format((float) ($defaultVat ?? 19), 2, '.', ''), ENT_QUOTES) ?>';
@@ -966,6 +1002,7 @@
         document.getElementById('p_is_active').checked = true;
         document.getElementById('p_product_template_id').value = '';
         document.getElementById('p_vat_percent').value = COTA_TVA_IMPLICITA;
+        setExtraCategories([]);
         document.getElementById('p_vat_included').value = '1';
         if (outOfStockInput instanceof HTMLInputElement) {
             outOfStockInput.checked = false;
@@ -1039,6 +1076,7 @@
             document.getElementById('p_sku').value = product.sku || '';
             document.getElementById('p_slug').value = product.slug || '';
             document.getElementById('p_category_id').value = product.category_id || '';
+            setExtraCategories(product.extra_category_ids || []);
             const templateSelect = document.getElementById('p_product_template_id');
             if (templateSelect instanceof HTMLSelectElement) {
                 const rawTemplateId = product.product_template_id;

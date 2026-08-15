@@ -1046,6 +1046,16 @@ final class AdminController
                     unset($product);
                 }
             }
+            // Categoriile suplimentare, pentru bifele din formularul de editare.
+            $extraCategoryMap = \App\Support\ProductCategories::idsForProducts(
+                $db,
+                array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), array_filter($products, 'is_array'))
+            );
+            foreach ($products as &$product) {
+                $product['extra_category_ids'] = $extraCategoryMap[(int) ($product['id'] ?? 0)] ?? [];
+            }
+            unset($product);
+
             $productSeoMap = [];
             if ($products !== []) {
                 $productSeoRefs = [];
@@ -3768,6 +3778,12 @@ final class AdminController
             'is_active' => $isActive,
         ]);
         $productId = (int) $db->lastInsertId();
+        \App\Support\ProductCategories::sync(
+            $db,
+            $productId,
+            is_array($_POST['extra_category_ids'] ?? null) ? (array) $_POST['extra_category_ids'] : [],
+            $categoryId
+        );
         $this->saveProductExtraFieldValues($db, $productId, $extraValues);
         if ($productId > 0) {
             $this->saveSeoSettings($db, 'product', (string) $productId, [
@@ -3923,6 +3939,12 @@ final class AdminController
             'badge_seasonal' => $badgeSeason,
             'is_active' => $isActive,
         ]);
+        \App\Support\ProductCategories::sync(
+            $db,
+            $id,
+            is_array($_POST['extra_category_ids'] ?? null) ? (array) $_POST['extra_category_ids'] : [],
+            $categoryIdFromPost
+        );
         $this->saveProductExtraFieldValues($db, $id, $extraValues);
         $this->saveSeoSettings($db, 'product', (string) $id, [
             'title' => $seoTitle,

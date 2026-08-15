@@ -130,6 +130,7 @@ final class CheckoutCalculator
                 'name' => (string) $product['name'],
                 'slug' => (string) $product['slug'],
                 'category_id' => max(0, (int) ($product['category_id'] ?? 0)),
+                'extra_category_ids' => array_map('intval', (array) ($product['extra_category_ids'] ?? [])),
                 'short_description' => trim((string) ($product['short_description'] ?? '')),
                 'bbd_key' => (string) ($bbdSelection['key'] ?? ''),
                 'bbd_date' => (string) ($bbdSelection['date'] ?? ''),
@@ -241,7 +242,17 @@ final class CheckoutCalculator
             $stmt->execute($safeIds);
         }
 
-        return $stmt->fetchAll();
+        $produse = $stmt->fetchAll();
+        // Categoriile suplimentare, pentru cupoanele restrânse pe categorii.
+        $extraIds = ProductCategories::idsForProducts($db, $safeIds);
+        foreach ($produse as &$produs) {
+            if (is_array($produs)) {
+                $produs['extra_category_ids'] = $extraIds[(int) ($produs['id'] ?? 0)] ?? [];
+            }
+        }
+        unset($produs);
+
+        return $produse;
     }
 
     private static bool $orderShippingSchemaEnsured = false;
@@ -720,6 +731,10 @@ final class CheckoutCalculator
                 'cart_item_key' => trim((string) ($line['cart_item_key'] ?? '')),
                 'product_id' => max(0, (int) ($line['id'] ?? 0)),
                 'category_id' => max(0, (int) ($line['category_id'] ?? 0)),
+                'all_category_ids' => ProductCategories::allCategoryIds(
+                    max(0, (int) ($line['category_id'] ?? 0)),
+                    (array) ($line['extra_category_ids'] ?? [])
+                ),
                 'quantity' => $qty,
                 'line_total' => max(0.0, (float) ($line['line_total'] ?? 0.0)),
                 'is_discounted' => !empty($line['is_discounted']),
@@ -771,9 +786,18 @@ final class CheckoutCalculator
         $eligibleSubtotal = 0.0;
         foreach ($cartRows as $row) {
             $productId = (int) ($row['product_id'] ?? 0);
-            $categoryId = (int) ($row['category_id'] ?? 0);
+            $categoriiRand = (array) ($row['all_category_ids'] ?? [(int) ($row['category_id'] ?? 0)]);
             $matchesProduct = !$hasProductRestriction || isset($allowedProductIds[$productId]);
-            $matchesCategory = !$hasCategoryRestriction || isset($allowedCategoryIds[$categoryId]);
+            // Un produs e eligibil dacă oricare dintre categoriile lui e pe listă.
+            $matchesCategory = !$hasCategoryRestriction;
+            if (!$matchesCategory) {
+                foreach ($categoriiRand as $categorieRand) {
+                    if (isset($allowedCategoryIds[(int) $categorieRand])) {
+                        $matchesCategory = true;
+                        break;
+                    }
+                }
+            }
             if ($matchesProduct && $matchesCategory) {
                 // Cupon fără cumulare: sare peste produsele deja la reducere.
                 if (!$stacksWithDiscounts && !empty($row['is_discounted'])) {

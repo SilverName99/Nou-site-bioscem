@@ -3716,6 +3716,47 @@ body > main.container {
     transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
+/* Categoriile suplimentare din formularul de produs. */
+.extra-categories {
+    margin-top: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 8px 12px;
+    background: #f8fafc;
+}
+
+.extra-categories summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f766e;
+    user-select: none;
+}
+
+.extra-categories__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 4px 12px;
+    margin-top: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.extra-categories__list label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #1f2937;
+}
+
+.extra-categories__hint {
+    margin: 8px 0 2px;
+    font-size: 12px;
+    color: #64748b;
+}
+
 /* Rândurile ascunse de căutare: `display: grid` bate [hidden] implicit. */
 .product-row[hidden] {
     display: none;
