@@ -215,11 +215,12 @@ final class Auth
             $roles = self::currentRoles();
         }
 
-        if ($path === '/admin') {
-            return true;
-        }
         if (in_array(self::ROLE_GENERAL, $roles, true)) {
             return true;
+        }
+        // Dashboard-ul arată date din toată aplicația: îl vede doar generalul.
+        if ($path === '/admin') {
+            return false;
         }
 
         foreach ($roles as $currentRole) {
@@ -234,25 +235,17 @@ final class Auth
     private static function canAccessPathForRole(string $path, string $role): bool
     {
         $allowedPrefixes = match ($role) {
+            // Exact intrările din tab-ul „Magazin" al meniului, nimic altceva.
             self::ROLE_STORE => [
-                '/admin/users/security',
                 '/admin/products',
                 '/admin/categories',
-                '/admin/coupons',
-                '/admin/orders',
-                '/admin/settings/store',
-                '/admin/settings/shipping',
-                '/admin/settings/payments',
-                '/admin/settings/floating-cart',
-                '/admin/settings/mannequin',
-                '/admin/settings/google',
                 '/admin/products/fields',
                 '/admin/products/templates',
                 '/admin/products/reviews',
-                '/admin/gallery',
-                '/admin/pages',
-                '/admin/design',
-                '/admin/emails',
+                '/admin/orders',
+                '/admin/coupons',
+                '/admin/promo-products',
+                '/admin/settings/floating-cart',
             ],
             self::ROLE_BLOG => [
                 '/admin/blog/posts',
@@ -272,9 +265,6 @@ final class Auth
 
         foreach ($allowedPrefixes as $prefix) {
             if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
-                if ($role === self::ROLE_STORE && str_starts_with($path, '/admin/emails/newsletters')) {
-                    return false;
-                }
                 if ($role === self::ROLE_BLOG && (
                     str_starts_with($path, '/admin/users')
                     || str_starts_with($path, '/admin/products')

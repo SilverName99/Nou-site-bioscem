@@ -97,10 +97,12 @@ if ($adminFavicon === '') {
                 </div>
 
                 <nav class="admin-nav">
+                    <?php if ($can('/admin')): ?>
                     <a class="<?= $isActive(['/admin']) && !$isActive(['/admin/users', '/admin/products', '/admin/categories', '/admin/orders', '/admin/settings', '/admin/pages', '/admin/gallery', '/admin/design', '/admin/emails']) ? 'active' : '' ?>" href="/admin">
                         <span class="nav-icon"><?= $icon('dashboard') ?></span>
                         Dashboard
                     </a>
+                    <?php endif; ?>
 
                     <?php if ($can('/admin/users')): ?>
                     <div class="admin-nav-group toggle-group <?= $usersOpen ? 'open' : '' ?>" data-toggle-group="utilizatori">

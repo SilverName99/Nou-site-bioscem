@@ -41,6 +41,13 @@ final class AdminController
 
     public function dashboard(): void
     {
+        // Conturile limitate (ex. administrator de magazin) nu au dashboard:
+        // le ducem direct în secțiunea lor, fără mesaj de eroare — „/admin" e
+        // adresa de bază a panoului, se ajunge aici și dintr-un simplu click pe logo.
+        if (Auth::check() && !Auth::canAccessPath('/admin')) {
+            header('Location: ' . Auth::defaultPathForRole());
+            return;
+        }
         if (!$this->guard()) {
             return;
         }
