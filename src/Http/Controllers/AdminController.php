@@ -4532,6 +4532,17 @@ final class AdminController
         $db->prepare('UPDATE orders SET ' . implode(', ', $sets) . ' WHERE id = :id AND deleted_at IS NULL')
            ->execute($binds);
 
+        // Adresa nouă pleacă și spre ERP, cât timp comanda mai e deschisă acolo.
+        $erpSync = null;
+        try {
+            $settings = Settings::all($db);
+            if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+                $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+            }
+        } catch (Throwable $e) {
+            $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+        }
+
         // Return updated order row so the UI can refresh
         $stmt = $db->prepare(
             'SELECT billing_first_name, billing_last_name, billing_email, billing_phone,
@@ -4543,7 +4554,7 @@ final class AdminController
         $row = $stmt->fetch() ?: [];
 
         header('Content-Type: application/json');
-        echo json_encode(['ok' => true, 'address' => $row]);
+        echo json_encode(['ok' => true, 'address' => $row, 'erp_sync' => $erpSync]);
     }
 
     /** Creează idempotent tabelele pentru produsele promoționale (nomenclator + per comandă). */
@@ -4841,11 +4852,18 @@ final class AdminController
         }
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
-        $os = $db->prepare('SELECT id, subtotal, discount_total, loyalty_points_discount, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $os = $db->prepare('SELECT id, status, subtotal, discount_total, loyalty_points_discount, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $os->execute(['id' => $orderId]);
         $order = $os->fetch();
         if (!is_array($order)) {
             echo json_encode(['ok' => false, 'error' => 'Comanda nu există.']);
+            return;
+        }
+        // După aprobare/facturare legătura cu ERP-ul se rupe: comanda nu se mai
+        // modifică nici pe site (ERP-ul ar refuza oricum propagarea).
+        $statusComanda = strtolower(trim((string) ($order['status'] ?? '')));
+        if (in_array($statusComanda, ['processing', 'completed', 'cancelled', 'refunded'], true)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda procesată nu mai poate fi modificată. Factura există deja în ERP.']);
             return;
         }
 
@@ -4933,6 +4951,17 @@ final class AdminController
             return;
         }
 
+        // Modificarea se propagă imediat în ERP; dacă ERP-ul nu răspunde acum,
+        // comanda rămâne marcată pentru reîncercare și o preia cronul.
+        $erpSync = null;
+        if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+            try {
+                $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+            } catch (Throwable $e) {
+                $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+            }
+        }
+
         echo json_encode([
             'ok' => true,
             'subtotal' => $subtotal,
@@ -4940,6 +4969,7 @@ final class AdminController
             'total' => $total,
             'discount_total' => $discountTotal,
             'loyalty_points_discount' => $pointsDiscount,
+            'erp_sync' => $erpSync,
             'items' => array_map(static fn(array $l): array => [
                 'product_id' => $l['pid'],
                 'product_name' => $l['name'],
@@ -6795,6 +6825,27 @@ final class AdminController
                     : 'Numerotare salvată. Comenzile revin la formatul vechi (BV + dată).'
             );
             header('Location: /admin/settings/store?tab=numerotare');
+            return;
+        }
+        if ($action === 'save_welcome_popup') {
+            $titluNou = trim((string) ($_POST['welcome_popup_title'] ?? ''));
+            $textNou = trim(str_replace("\r\n", "\n", (string) ($_POST['welcome_popup_body'] ?? '')));
+            $curente = Settings::all($db);
+            $versiune = max(1, (int) ($curente['welcome_popup_version'] ?? 1));
+            // Mesaj schimbat → versiune nouă, ca popup-ul să reapară și la
+            // vizitatorii care l-au închis pe cel vechi.
+            if ($titluNou !== trim((string) ($curente['welcome_popup_title'] ?? ''))
+                || $textNou !== trim(str_replace("\r\n", "\n", (string) ($curente['welcome_popup_body'] ?? '')))) {
+                $versiune++;
+            }
+            Settings::save($db, [
+                'welcome_popup_enabled' => isset($_POST['welcome_popup_enabled']) ? '1' : '0',
+                'welcome_popup_title' => $titluNou,
+                'welcome_popup_body' => $textNou,
+                'welcome_popup_version' => (string) $versiune,
+            ]);
+            Flash::set('success', 'Popup-ul de anunț a fost salvat.');
+            header('Location: /admin/settings/store?tab=popup');
             return;
         }
         if ($action === 'regenerate_maintenance_key') {

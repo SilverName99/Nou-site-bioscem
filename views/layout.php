@@ -859,7 +859,7 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
                         <a href="/checkout">Checkout</a>
                         <a href="/blog">Blog</a>
                         <?php if (is_array($currentCustomer)): ?>
-                            <a href="/contul-meu">Cont (<?= htmlspecialchars((string) ($currentCustomer['first_name'] ?? 'Client'), ENT_QUOTES) ?>)</a>
+                            <a href="/contul-meu">Cont (<?= htmlspecialchars(\App\Support\CustomerDisplay::nume((string) ($currentCustomer['first_name'] ?? ''), (string) ($currentCustomer['last_name'] ?? ''), (string) ($currentCustomer['email'] ?? '')), ENT_QUOTES) ?>)</a>
                         <?php else: ?>
                             <a href="/login">Contul meu</a>
                         <?php endif; ?>
@@ -967,6 +967,56 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     $floatingCartJsVersion = @filemtime(__DIR__ . '/../public/assets/js/floating-cart.js') ?: time();
     $qtyStocJsVersion = @filemtime(__DIR__ . '/../public/assets/js/qty-stoc.js') ?: time();
     ?>
+    <?php
+    // Popup de anunț la intrarea pe site (Admin → Setări magazin → Popup anunț).
+    // Stilurile stau inline pentru că CSS-ul site-ului poate fi servit din cache.
+    $popupActiv = (string) ($designSettings['welcome_popup_enabled'] ?? '0') === '1';
+    $popupTitlu = trim((string) ($designSettings['welcome_popup_title'] ?? ''));
+    $popupText = trim((string) ($designSettings['welcome_popup_body'] ?? ''));
+    $popupVersiune = trim((string) ($designSettings['welcome_popup_version'] ?? '1'));
+    ?>
+    <?php if ($popupActiv && $popupText !== ''): ?>
+        <div id="welcome-popup" hidden
+             style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55);">
+            <div role="dialog" aria-modal="true" aria-labelledby="welcome-popup-title"
+                 style="position:relative;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;background:#ffffff;border-radius:16px;box-shadow:0 24px 64px rgba(15,23,42,.35);padding:28px 26px 24px;">
+                <button type="button" data-welcome-popup-close aria-label="Închide"
+                        style="position:absolute;top:12px;right:12px;width:34px;height:34px;border:none;border-radius:50%;background:#f1f5f9;color:#334155;font-size:18px;line-height:1;cursor:pointer;">&times;</button>
+                <?php if ($popupTitlu !== ''): ?>
+                    <h2 id="welcome-popup-title" style="margin:0 0 14px;padding-right:36px;font-size:22px;line-height:1.25;color:#0f172a;"><?= htmlspecialchars($popupTitlu, ENT_QUOTES) ?></h2>
+                <?php endif; ?>
+                <div style="color:#334155;font-size:15px;line-height:1.6;">
+                    <?php foreach (preg_split('/\n{2,}/', str_replace("\r\n", "\n", $popupText)) ?: [] as $paragraf): ?>
+                        <p style="margin:0 0 12px;"><?= nl2br(htmlspecialchars(trim($paragraf), ENT_QUOTES)) ?></p>
+                    <?php endforeach; ?>
+                </div>
+                <div style="margin-top:18px;text-align:center;">
+                    <button type="button" data-welcome-popup-close
+                            style="display:inline-block;min-width:180px;padding:12px 22px;border:none;border-radius:12px;background:#2f8d5b;color:#ffffff;font-size:15px;font-weight:700;cursor:pointer;">Am înțeles</button>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function () {
+                'use strict';
+                var CHEIE = 'bioscem_welcome_popup_inchis';
+                var versiune = <?= json_encode($popupVersiune) ?>;
+                var popup = document.getElementById('welcome-popup');
+                if (!popup) { return; }
+                try {
+                    if (window.localStorage.getItem(CHEIE) === versiune) { return; }
+                } catch (e) { /* localStorage indisponibil → arătăm popup-ul */ }
+                popup.hidden = false;
+                function inchide() {
+                    popup.hidden = true;
+                    try { window.localStorage.setItem(CHEIE, versiune); } catch (e) { /* ignorăm */ }
+                }
+                popup.querySelectorAll('[data-welcome-popup-close]').forEach(function (buton) {
+                    buton.addEventListener('click', inchide);
+                });
+            })();
+        </script>
+    <?php endif; ?>
     <script src="/assets/js/qty-stoc.js?v=<?= $qtyStocJsVersion ?><?= $assetVersionQuery ?>" defer></script>
     <?php if ($floatingCartEnabled): ?>
         <script>

@@ -711,12 +711,22 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 ? `<p><small>Adresă livrare</small><br>Identică cu adresa de facturare</p>`
                 : `<p><small>Adresă livrare</small><br>${shipName ? esc(shipName) + ' — ' : ''}${shipParts.length ? shipParts.map(esc).join(', ') : '-'}${String(order.shipping_phone || '').trim() ? ' — tel: ' + esc(order.shipping_phone) : ''}</p>`;
 
+            // După aprobare/facturare în ERP, comanda nu se mai modifică (nici produsele).
+            const comandaBlocata = ['processing', 'completed', 'cancelled', 'refunded']
+                .includes(String(order.status || '').toLowerCase());
             const itemsHtml = items.map((it) => {
                 const qty = Math.max(1, Number(it.quantity || 1) || 1);
                 const lineTotal = toAmount(it.line_total || 0);
                 let unitPrice = toAmount(it.unit_price || 0);
                 if (unitPrice <= 0.0 && qty > 0) {
                     unitPrice = lineTotal / qty;
+                }
+                if (comandaBlocata) {
+                    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                        <span style="flex:1;">${esc(it.product_name || '')}</span>
+                        <span style="width:60px;text-align:center;">${qty}</span>
+                        <span style="min-width:92px;text-align:right;font-weight:600;">${orderMoney(unitPrice * qty)}</span>
+                    </div>`;
                 }
                 return orderItemRowHtml(Number(it.product_id || 0), it.product_name || '', qty, unitPrice);
             }).join('');
@@ -783,11 +793,13 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 <p><small>Observații</small><br>${orderNotes !== '' ? esc(orderNotes) : '-'}</p>
                 <div class="order-items-box">
                     <div id="order-items-${order.id}">${itemsHtml}</div>
-                    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                    ${comandaBlocata
+                        ? `<p style="margin:8px 0 0;padding:8px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:13px;">🔒 Comanda e procesată — factura există deja în ERP, produsele nu se mai pot modifica.</p>`
+                        : `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
                         <button type="button" onclick="addOrderItemRow(${order.id})" style="padding:6px 12px;background:#f1f5f9;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;">+ Adaugă produs</button>
                         <button type="button" onclick="saveOrderItems(${order.id})" style="padding:6px 14px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Recalculează și salvează</button>
                         <span id="order-items-status-${order.id}" style="font-size:13px;"></span>
-                    </div>
+                    </div>`}
                 </div>
                 ${promoHtml}
                 <div class="order-totals">
@@ -821,6 +833,9 @@ function saveOrderAddress(orderId) {
         .then(r => r.json())
         .then(data => {
             if (!data.ok) { alert(data.error || 'Eroare la salvare.'); return; }
+            if (data.erp_sync && !data.erp_sync.ok) {
+                alert('Adresa a fost salvată pe site, dar nu s-a propagat în ERP: ' + (data.erp_sync.message || 'se reîncearcă automat.'));
+            }
             const a = data.address || {};
             const parts = [a.billing_address_line1, a.billing_address_line2, a.billing_city, a.billing_postcode, a.billing_county].filter(Boolean);
             const display = document.getElementById('order-address-display-' + orderId);
@@ -913,8 +928,19 @@ function saveOrderItems(orderId){
         .then((r) => r.json())
         .then((data) => {
             if (!data.ok) { if(status){status.style.color='#dc2626';status.textContent=data.error||'Eroare';} return; }
-            if (status) { status.style.color='#16a34a'; status.textContent='Salvat ✓ (subtotal ' + orderMoney(data.subtotal) + ', transport ' + orderMoney(data.shipping) + ', total ' + orderMoney(data.total) + '). Se reîncarcă...'; }
-            setTimeout(() => { window.location.reload(); }, 1200);
+            const erp = data.erp_sync;
+            let mesaj = 'Salvat ✓ (subtotal ' + orderMoney(data.subtotal) + ', transport ' + orderMoney(data.shipping) + ', total ' + orderMoney(data.total) + ').';
+            let culoare = '#16a34a';
+            let intarziere = 1500;
+            if (erp && erp.ok) {
+                mesaj += ' ' + (erp.message || 'Propagat în ERP.');
+            } else if (erp && !erp.ok) {
+                culoare = '#b45309';
+                mesaj += ' ⚠ ERP: ' + (erp.message || 'nu s-a propagat acum; se reîncearcă automat.');
+                intarziere = 4000;
+            }
+            if (status) { status.style.color = culoare; status.textContent = mesaj + ' Se reîncarcă...'; }
+            setTimeout(() => { window.location.reload(); }, intarziere);
         })
         .catch(() => { if(status){status.style.color='#dc2626';status.textContent='Eroare server';} });
 }

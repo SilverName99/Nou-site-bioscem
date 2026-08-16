@@ -79,11 +79,13 @@ final class EmailAutomation
             return;
         }
 
-        $customerName = trim($customerName);
-        if ($customerName === '' || strcasecmp($customerName, 'Client Nou') === 0) {
-            // Fără nume real, folosim partea locală a emailului, nu „Client Nou".
-            $customerName = ucfirst((string) strtok($email, '@'));
-        }
+        // Fără nume real, utilizatorul e adresa de email — o afișăm întreagă.
+        $parti = preg_split('/\s+/', trim($customerName), 2) ?: [];
+        $customerName = CustomerDisplay::nume(
+            (string) ($parti[0] ?? ''),
+            (string) ($parti[1] ?? ''),
+            $email
+        );
         $storeName = trim((string) ($settings['order_email_from_name'] ?? 'Bioscem')) ?: 'Bioscem';
 
         $context = [

@@ -37,7 +37,10 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 $vatCotaDominanta = rtrim(rtrim(number_format((float) ($vatRand['cota'] ?? 0), 2, '.', ''), '0'), '.');
             }
         }
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva'];
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva', 'popup'];
+        $popupEnabled = (string) ($settings['welcome_popup_enabled'] ?? '0') === '1';
+        $popupTitle = (string) ($settings['welcome_popup_title'] ?? '');
+        $popupBody = (string) ($settings['welcome_popup_body'] ?? '');
         $defaultStoreTab = trim((string) ($_GET['tab'] ?? 'pages'));
         if (!in_array($defaultStoreTab, $availableStoreTabs, true)) {
             $defaultStoreTab = 'pages';
@@ -82,6 +85,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'quantity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="quantity">Control cantitate</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'popup' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="popup">Popup anunț</button>
         </div>
 
         <article class="panel store-settings-panel" data-store-settings-panel="pages" <?= $defaultStoreTab !== 'pages' ? 'hidden' : '' ?> style="margin:12px 0;">
@@ -608,6 +612,37 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                     </div>
                 </div>
             </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="popup" <?= $defaultStoreTab !== 'popup' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <h3 style="margin-top:0;">Popup anunț la intrarea pe site</h3>
+            <p style="margin:0 0 10px;color:#64748b;max-width:640px;">
+                Mesajul apare o singură dată, imediat ce un vizitator deschide site-ul.
+                După ce apasă pe „Am înțeles" (sau pe X), nu îi mai apare.
+                Dacă modifici textul, popup-ul reapare o dată pentru toată lumea, inclusiv
+                pentru cei care l-au închis pe cel vechi.
+            </p>
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_welcome_popup">
+                <label style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+                    <input type="checkbox" name="welcome_popup_enabled" value="1" <?= $popupEnabled ? 'checked' : '' ?>>
+                    Afișează popup-ul pe site
+                </label>
+                <div class="field" style="max-width:640px;">
+                    <label for="welcome_popup_title">Titlu</label>
+                    <input id="welcome_popup_title" name="welcome_popup_title" type="text" value="<?= htmlspecialchars($popupTitle, ENT_QUOTES) ?>">
+                </div>
+                <div class="field" style="max-width:640px;margin-top:10px;">
+                    <label for="welcome_popup_body">Mesaj</label>
+                    <textarea id="welcome_popup_body" name="welcome_popup_body" rows="12" style="width:100%;"><?= htmlspecialchars($popupBody, ENT_QUOTES) ?></textarea>
+                    <p style="margin:6px 0 0;color:#64748b;font-size:13px;">
+                        Text simplu; rândurile goale despart paragrafele.
+                    </p>
+                </div>
+                <div style="margin-top:12px;">
+                    <button class="btn" type="submit">Salvează popup-ul</button>
+                </div>
+            </form>
         </article>
     <?php endif; ?>
 </section>

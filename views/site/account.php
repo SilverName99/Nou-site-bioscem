@@ -38,12 +38,19 @@ $loyaltyEnabled = !empty($loyaltyConfig['enabled']);
 if (!$loyaltyEnabled && $accountSection === 'points') {
     $accountSection = 'profile';
 }
-$fullName = is_array($customer) ? trim((string) ($customer['first_name'] ?? '') . ' ' . (string) ($customer['last_name'] ?? '')) : '';
+$fullName = '';
 $avatarInitials = '';
 if (is_array($customer)) {
-    $first = strtoupper(substr((string) ($customer['first_name'] ?? ''), 0, 1));
-    $last = strtoupper(substr((string) ($customer['last_name'] ?? ''), 0, 1));
-    $avatarInitials = trim($first . $last);
+    $fullName = \App\Support\CustomerDisplay::nume(
+        (string) ($customer['first_name'] ?? ''),
+        (string) ($customer['last_name'] ?? ''),
+        (string) ($customer['email'] ?? '')
+    );
+    $avatarInitials = \App\Support\CustomerDisplay::initiale(
+        (string) ($customer['first_name'] ?? ''),
+        (string) ($customer['last_name'] ?? ''),
+        (string) ($customer['email'] ?? '')
+    );
 }
 $gender = is_array($customer) ? (string) ($customer['gender'] ?? '') : '';
 $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : '';

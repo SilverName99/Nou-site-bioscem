@@ -99,18 +99,33 @@ final class ErpSync
             }
         }
 
+        // Modificarea unei comenzi facturate/anulate în ERP e refuzată acolo;
+        // reținem motivul ca problemă vizibilă, nu ca eroare de reîncercat
+        // (un retry ar primi exact același refuz).
+        $motivRespins = trim((string) ($response['motivRespins'] ?? ''));
+        if ($motivRespins !== '') {
+            $probleme[] = $motivRespins;
+        }
+
         self::mark($db, $orderId, self::STATUS_SENT, [
             'attempt' => true,
             'erp_order_id' => (string) ($response['comandaId'] ?? ''),
             'problems' => $probleme,
         ]);
 
+        if ($motivRespins !== '') {
+            return ['ok' => false, 'message' => $motivRespins];
+        }
+
         $duplicat = (bool) ($response['duplicat'] ?? false);
+        $actualizat = (bool) ($response['actualizat'] ?? false);
         return [
             'ok' => true,
-            'message' => $duplicat
-                ? 'Comanda exista deja în ERP; am actualizat referința.'
-                : 'Comanda a fost trimisă în ERP.',
+            'message' => $actualizat
+                ? 'Modificarea comenzii a fost propagată în ERP.'
+                : ($duplicat
+                    ? 'Comanda exista deja în ERP; am actualizat referința.'
+                    : 'Comanda a fost trimisă în ERP.'),
         ];
     }
 

@@ -4098,7 +4098,8 @@ HTML;
 
         $firstName = trim((string) ($customer['first_name'] ?? ''));
         $lastName = trim((string) ($customer['last_name'] ?? ''));
-        $fullName = trim($firstName . ' ' . $lastName);
+        // Numele generat la înregistrarea doar cu email se afișează ca email.
+        $fullName = \App\Support\CustomerDisplay::nume($firstName, $lastName, $email);
         $state['orders'] = $orders;
         $state['addresses'] = $addresses;
         $state['loyalty_transactions'] = LoyaltyService::userTransactions($db, $userId, 120);
@@ -4111,10 +4112,7 @@ HTML;
         $state['full_name'] = $fullName;
         $state['email'] = $email;
         $state['phone'] = trim((string) ($customer['phone'] ?? ''));
-        $firstInitial = mb_strtoupper(mb_substr($firstName, 0, 1));
-        $lastInitial = mb_strtoupper(mb_substr($lastName, 0, 1));
-        $initials = trim($firstInitial . $lastInitial);
-        $state['avatar_initials'] = $initials !== '' ? $initials : 'CL';
+        $state['avatar_initials'] = \App\Support\CustomerDisplay::initiale($firstName, $lastName, $email);
 
         $section = trim((string) ($_GET['section'] ?? 'profile'));
         if (!in_array($section, ['profile', 'orders', 'addresses', 'points', 'settings'], true)) {
