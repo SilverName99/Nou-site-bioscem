@@ -714,6 +714,14 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             // După aprobare/facturare în ERP, comanda nu se mai modifică (nici produsele).
             const comandaBlocata = ['processing', 'completed', 'cancelled', 'refunded']
                 .includes(String(order.status || '').toLowerCase());
+            // Plătită cu cardul, dar totalul a crescut ulterior → diferență de încasat.
+            const platitCard = String(order.payment_status || '').toLowerCase() === 'paid';
+            const sumaIncasata = order.paid_amount === null || order.paid_amount === undefined || order.paid_amount === ''
+                ? toAmount(order.total || 0)
+                : toAmount(order.paid_amount);
+            const restDeIncasat = platitCard
+                ? Math.max(0, Math.round((toAmount(order.total || 0) - sumaIncasata) * 100) / 100)
+                : 0;
             const itemsHtml = items.map((it) => {
                 const qty = Math.max(1, Number(it.quantity || 1) || 1);
                 const lineTotal = toAmount(it.line_total || 0);
@@ -793,6 +801,16 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 <p><small>Observații</small><br>${orderNotes !== '' ? esc(orderNotes) : '-'}</p>
                 <div class="order-items-box">
                     <div id="order-items-${order.id}">${itemsHtml}</div>
+                    ${restDeIncasat > 0
+                        ? `<div style="margin:8px 0 0;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;">
+                        <p style="margin:0 0 8px;color:#92400e;font-size:13px;">
+                            Comanda a fost plătită cu cardul, dar totalul a crescut între timp.
+                            Rest de încasat: <strong>${orderMoney(restDeIncasat)}</strong>.
+                        </p>
+                        <button type="button" onclick="sendPaymentLink(${order.id})" style="padding:6px 12px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Trimite link de plată pentru diferență</button>
+                        <span id="payment-link-status-${order.id}" style="font-size:13px;margin-left:8px;"></span>
+                    </div>`
+                        : ''}
                     ${comandaBlocata
                         ? `<p style="margin:8px 0 0;padding:8px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:13px;">🔒 Comanda e procesată — factura există deja în ERP, produsele nu se mai pot modifica.</p>`
                         : `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
@@ -949,6 +967,27 @@ function saveOrderItems(orderId){
             setTimeout(() => { window.location.reload(); }, intarziere);
         })
         .catch(() => { if(status){status.style.color='#dc2626';status.textContent='Eroare server';} });
+}
+
+/* --- Link de plată pentru diferența rămasă --- */
+function sendPaymentLink(orderId){
+    const status = document.getElementById('payment-link-status-' + orderId);
+    if (status) { status.style.color = '#6b7280'; status.textContent = 'Se trimite...'; }
+    fetch('/admin/orders/' + orderId + '/payment-link', {method:'POST'})
+        .then((r) => r.json())
+        .then((data) => {
+            if (!status) return;
+            if (data.ok) {
+                status.style.color = '#16a34a';
+                status.textContent = 'Link trimis pe ' + (data.email || 'emailul clientului') + ' ✓';
+                return;
+            }
+            status.style.color = '#dc2626';
+            status.textContent = data.error || 'Eroare';
+            // Emailul a picat, dar linkul există: îl poate trimite manual.
+            if (data.url) { window.prompt('Trimite manual acest link clientului:', data.url); }
+        })
+        .catch(() => { if (status) { status.style.color = '#dc2626'; status.textContent = 'Eroare server'; } });
 }
 
 /* --- Produse promoționale (intern) --- */

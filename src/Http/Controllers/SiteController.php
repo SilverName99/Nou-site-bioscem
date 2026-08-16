@@ -5427,6 +5427,154 @@ CSS;
     }
 
     /**
+     * Confirmarea unei plăți de diferență. Adaugă suma la `paid_amount` și
+     * retrimite comanda în ERP, ca încasarea de acolo să fie la zi.
+     *
+     * @param array<string, mixed> $response
+     * @param array<string, mixed> $settings
+     */
+    private function aplicaPlataLink(PDO $db, array $response, string $referinta, array $settings): bool
+    {
+        if (!EuPlatescGateway::verifyResponse($response, (string) ($settings['euplatesc_secret_key'] ?? ''))) {
+            return false;
+        }
+        $link = \App\Support\PaymentLink::dupaReferinta($db, $referinta);
+        if ($link === null) {
+            return false;
+        }
+        if (!EuPlatescGateway::isApproved($response)) {
+            return true; // Refuz de card: linkul rămâne valabil pentru o nouă încercare.
+        }
+
+        // Suma încasată trebuie să fie exact cea cerută pe link.
+        $incasat = round((float) ($response['amount'] ?? 0), 2);
+        $cerut = round((float) ($link['amount'] ?? 0), 2);
+        if (abs($incasat - $cerut) > 0.01) {
+            return false;
+        }
+
+        $prima = \App\Support\PaymentLink::confirmaPlata(
+            $db,
+            $link,
+            (string) ($response['ep_id'] ?? ''),
+            (string) ($response['approval'] ?? '')
+        );
+        if ($prima) {
+            // ERP-ul trebuie să afle noua sumă încasată pe aceeași comandă.
+            try {
+                \App\Support\ErpSync::push($db, (int) $link['order_id'], true);
+            } catch (Throwable) {
+                // Cronul reîncearcă; banii sunt deja înregistrați pe site.
+            }
+        }
+        return true;
+    }
+
+    /** Pagina pe care o deschide clientul din emailul cu diferența de plată. */
+    public function paymentLinkPage(array $params): void
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            $this->renderPagina404('Linkul de plată nu este disponibil', 'Încearcă din nou peste câteva minute.');
+            return;
+        }
+        [$link, $order, $eroare] = $this->incarcaLinkPlata($db, (string) ($params['token'] ?? ''));
+        if ($link === null) {
+            $this->renderPagina404('Link de plată invalid', $eroare, $db);
+            return;
+        }
+
+        View::render('site/payment-link', [
+            'title' => 'Plata diferenței — comanda ' . (string) ($order['order_number'] ?? ''),
+            'link' => $link,
+            'order' => $order,
+            'esteplatit' => (string) ($link['status'] ?? '') === \App\Support\PaymentLink::STATUS_PLATIT,
+        ]);
+    }
+
+    /** Pornește plata cu cardul pentru diferența de pe link. */
+    public function paymentLinkStart(array $params): void
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            $this->renderPagina404('Linkul de plată nu este disponibil', 'Încearcă din nou peste câteva minute.');
+            return;
+        }
+        [$link, $order, $eroare] = $this->incarcaLinkPlata($db, (string) ($params['token'] ?? ''));
+        if ($link === null || (string) ($link['status'] ?? '') !== \App\Support\PaymentLink::STATUS_ASTEPTARE) {
+            $this->renderPagina404('Link de plată invalid', $eroare !== '' ? $eroare : 'Plata a fost deja făcută.', $db);
+            return;
+        }
+
+        $settings = Settings::all($db);
+        $appUrl = $this->appUrl();
+        $numarComanda = (string) ($order['order_number'] ?? '');
+        try {
+            $fields = EuPlatescGateway::buildRequest($settings, [
+                // Referința e unică per încercare; la întoarcere o recunoaștem
+                // ca aparținând comenzii.
+                'order_number' => (string) $link['referinta'],
+                'amount' => round((float) $link['amount'], 2),
+                'description' => 'Diferență comanda ' . $numarComanda,
+                'first_name' => (string) ($order['billing_first_name'] ?? ''),
+                'last_name' => (string) ($order['billing_last_name'] ?? ''),
+                'address' => (string) ($order['billing_address_line1'] ?? ''),
+                'city' => (string) ($order['billing_city'] ?? ''),
+                'county' => (string) ($order['billing_county'] ?? ''),
+                'zip' => (string) ($order['billing_postcode'] ?? ''),
+                'phone' => (string) ($order['billing_phone'] ?? ''),
+                'email' => (string) ($order['billing_email'] ?? ''),
+                'success_url' => $appUrl . '/plata/' . rawurlencode((string) $link['token']) . '?platit=1',
+                'failed_url' => $appUrl . '/plata/' . rawurlencode((string) $link['token']) . '?esuat=1',
+                'silent_url' => $appUrl . '/webhook/euplatesc',
+                'back_url' => $appUrl . '/plata/' . rawurlencode((string) $link['token']),
+            ]);
+        } catch (Throwable $e) {
+            $this->renderPagina404('Plata nu a putut fi pornită', $e->getMessage(), $db);
+            return;
+        }
+
+        View::render('site/euplatesc-redirect', [
+            'title' => 'Redirecționare către plată',
+            'gatewayUrl' => EuPlatescGateway::GATEWAY_URL,
+            'fields' => $fields,
+            'orderNumber' => $numarComanda,
+        ]);
+    }
+
+    /**
+     * Linkul de plată și comanda lui, validate.
+     *
+     * @return array{0: array<string, mixed>|null, 1: array<string, mixed>, 2: string}
+     */
+    private function incarcaLinkPlata(PDO $db, string $token): array
+    {
+        $link = \App\Support\PaymentLink::dupaToken($db, $token);
+        if ($link === null) {
+            return [null, [], 'Linkul nu există sau a fost înlocuit de unul mai nou.'];
+        }
+        if ((string) ($link['status'] ?? '') === \App\Support\PaymentLink::STATUS_ANULAT) {
+            return [null, [], 'Linkul a fost anulat. Cere-ne unul nou.'];
+        }
+        if (\App\Support\PaymentLink::esteExpirat($link)) {
+            return [null, [], 'Linkul a expirat. Cere-ne unul nou.'];
+        }
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, total, paid_amount, payment_status,
+                    billing_first_name, billing_last_name, billing_email, billing_phone,
+                    billing_address_line1, billing_city, billing_county, billing_postcode
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => (int) $link['order_id']]);
+        $order = $stmt->fetch();
+        if (!is_array($order)) {
+            return [null, [], 'Comanda asociată nu mai există.'];
+        }
+        return [$link, $order, ''];
+    }
+
+    /**
      * Confirmarea EuPlătesc, venită fie pe silent URL (sursa de adevăr), fie
      * odată cu întoarcerea clientului. Idempotentă: o comandă deja plătită nu
      * retrimite emailul și nu repetă împingerea în ERP.
@@ -5442,6 +5590,11 @@ CSS;
 
         $this->ensureStripeSchema($db);
         $settings = Settings::all($db);
+        // Plata unei diferențe („204026-P1") merge pe alt drum: adaugă suma la
+        // ce s-a încasat deja, fără să atingă starea comenzii.
+        if (\App\Support\PaymentLink::pareReferintaDeLink($orderNumber)) {
+            return $this->aplicaPlataLink($db, $response, $orderNumber, $settings);
+        }
         if (!EuPlatescGateway::verifyResponse($response, (string) ($settings['euplatesc_secret_key'] ?? ''))) {
             // Un răspuns nesemnat corect nu are voie să schimbe starea plății,
             // dar tăcerea completă ar lăsa comanda blocată în „în așteptare"

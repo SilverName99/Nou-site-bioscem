@@ -4300,7 +4300,7 @@ final class AdminController
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
                         notes,
                         erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
-                        erp_factura_numar' . $selectPlata . '
+                        erp_factura_numar, paid_amount' . $selectPlata . '
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
                  ORDER BY ' . $orderBySql . '
@@ -4989,6 +4989,114 @@ final class AdminController
                 'unit_price' => $l['unit'],
                 'line_total' => $l['total'],
             ], $lines),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Trimite clientului un link de plată pentru diferența rămasă pe comandă
+     * (produse adăugate după ce a plătit deja cu cardul).
+     */
+    public function orderPaymentLinkSend(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, total, paid_amount, payment_status, status,
+                    billing_first_name, billing_last_name, billing_email
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch();
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu există.']);
+            return;
+        }
+
+        $rest = \App\Support\PaymentLink::restDeIncasat($order);
+        if ($rest <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu are diferență de încasat.']);
+            return;
+        }
+
+        $settings = Settings::all($db);
+        if ((string) ($settings['euplatesc_enabled'] ?? '0') !== '1') {
+            echo json_encode(['ok' => false, 'error' => 'Plata cu cardul (EuPlătesc) nu este activată în Setări plăți.']);
+            return;
+        }
+
+        $email = trim((string) ($order['billing_email'] ?? ''));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu are o adresă de email validă.']);
+            return;
+        }
+
+        $link = \App\Support\PaymentLink::creeaza(
+            $db,
+            $orderId,
+            (string) ($order['order_number'] ?? ''),
+            $rest
+        );
+        if ($link === null) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut genera linkul de plată.']);
+            return;
+        }
+
+        $url = \App\Support\AppUrl::absolut('/plata/' . rawurlencode((string) $link['token']));
+        $numeClient = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
+        $numarComanda = (string) ($order['order_number'] ?? '');
+        $magazin = trim((string) ($settings['order_email_from_name'] ?? 'Bioscem')) ?: 'Bioscem';
+
+        $html = '<p>Bună' . ($numeClient !== '' ? ' ' . htmlspecialchars($numeClient, ENT_QUOTES) : '') . ',</p>'
+            . '<p>Pentru comanda <strong>' . htmlspecialchars($numarComanda, ENT_QUOTES) . '</strong> a rămas de achitat suma de <strong>'
+            . number_format($rest, 2, ',', '.') . ' lei</strong>, în urma produselor adăugate la cererea ta.</p>'
+            . '<p style="margin:22px 0;"><a href="' . htmlspecialchars($url, ENT_QUOTES) . '"'
+            . ' style="display:inline-block;padding:13px 24px;border-radius:10px;background:#2f8d5b;color:#ffffff;text-decoration:none;font-weight:700;">'
+            . 'Plătește ' . number_format($rest, 2, ',', '.') . ' lei</a></p>'
+            . '<p style="color:#64748b;font-size:14px;">Dacă butonul nu funcționează, deschide acest link:<br>'
+            . htmlspecialchars($url, ENT_QUOTES) . '</p>'
+            . '<p style="color:#64748b;font-size:14px;">Plata se face securizat, cu cardul. Linkul este valabil 30 de zile.</p>'
+            . '<p>Mulțumim,<br>Echipa ' . htmlspecialchars($magazin, ENT_QUOTES) . '</p>';
+
+        try {
+            OrderMailer::sendCustom(
+                $email,
+                'Diferență de plată pentru comanda ' . $numarComanda,
+                $html,
+                $settings,
+                $db,
+                [
+                    'email_type' => 'payment_link',
+                    'source' => 'admin_orders',
+                    'trigger' => 'payment_link_send',
+                    'order_id' => $orderId,
+                ]
+            );
+        } catch (Throwable $e) {
+            // Linkul rămâne valid; îl poate copia manual din răspuns.
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Linkul a fost creat, dar emailul nu a plecat: ' . $e->getMessage(),
+                'url' => $url,
+                'suma' => $rest,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'url' => $url,
+            'suma' => $rest,
+            'email' => $email,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

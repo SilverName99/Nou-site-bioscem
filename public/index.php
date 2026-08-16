@@ -138,6 +138,9 @@ $router->post('/api/cart/coupon/apply', [SiteController::class, 'cartApplyCoupon
 $router->post('/api/cart/coupon/clear', [SiteController::class, 'cartClearCouponApi']);
 $router->get('/checkout', [SiteController::class, 'checkout']);
 $router->post('/checkout', [SiteController::class, 'checkoutSubmit']);
+// Plata diferenței rămase pe o comandă, din linkul trimis clientului pe email.
+$router->get('/plata/{token}', [SiteController::class, 'paymentLinkPage']);
+$router->post('/plata/{token}', [SiteController::class, 'paymentLinkStart']);
 $router->get('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
 $router->post('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
 $router->post('/webhook/stripe', [SiteController::class, 'stripeWebhook']);
@@ -246,6 +249,7 @@ $router->post('/admin/orders/{id}/force-delete', [AdminController::class, 'force
 $router->post('/admin/orders/{id}/address', [AdminController::class, 'updateOrderAddress']);
 $router->post('/admin/orders/{id}/promo', [AdminController::class, 'orderPromoSave']);
 $router->post('/admin/orders/{id}/items', [AdminController::class, 'orderItemsSave']);
+$router->post('/admin/orders/{id}/payment-link', [AdminController::class, 'orderPaymentLinkSend']);
 $router->get('/admin/orders/{id}/client-promo', [AdminController::class, 'orderClientPromo']);
 $router->get('/admin/promo-products/search', [AdminController::class, 'promoClientSearchApi']);
 $router->get('/admin/promo-products/{id}/recipients', [AdminController::class, 'promoProductRecipientsApi']);
