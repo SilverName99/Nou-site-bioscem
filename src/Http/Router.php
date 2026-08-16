@@ -41,7 +41,12 @@ final class Router
             $params = [];
             foreach ($matches as $key => $value) {
                 if (!is_int($key)) {
-                    $params[$key] = $value;
+                    // Adresa vine percent-encodată de browser. Fără decodare,
+                    // un slug cu diacritice („kit-vacanță" → „kit-vacan%C8%9B%C4%83")
+                    // nu s-ar potrivi niciodată cu cel din baza de date.
+                    $decodat = rawurldecode($value);
+                    // Octeții nuli nu au ce căuta într-un parametru de rută.
+                    $params[$key] = str_replace("\0", '', $decodat);
                 }
             }
 

@@ -301,8 +301,18 @@ final class SiteController
         }
 
         if ($product === null) {
-            http_response_code(404);
-            echo 'Produsul nu a fost găsit.';
+            // Link vechi (site-ul anterior, Google, bookmark): dacă putem
+            // identifica fără dubiu produsul, trimitem clientul direct la el.
+            $potrivit = $this->gasesteProdusDupaSlugAproximativ($db, (string) $slug);
+            if ($potrivit !== null && trim((string) ($potrivit['slug'] ?? '')) !== '') {
+                header('Location: /produs/' . rawurlencode((string) $potrivit['slug']), true, 301);
+                return;
+            }
+            $this->renderPagina404(
+                'Produsul căutat nu mai există',
+                'Este posibil ca linkul să fie vechi sau produsul să nu mai fie disponibil. Caută-l după nume sau vezi toate produsele din magazin.',
+                $db
+            );
             return;
         }
 
@@ -385,8 +395,11 @@ final class SiteController
         $stmt->execute(['slug' => $slug]);
         $product = $stmt->fetch() ?: null;
         if (!is_array($product)) {
-            http_response_code(404);
-            echo 'Produsul nu a fost găsit.';
+            $this->renderPagina404(
+                'Produsul căutat nu mai există',
+                'Recenzia nu a putut fi salvată pentru că produsul nu mai este disponibil.',
+                $db
+            );
             return;
         }
 
@@ -2948,15 +2961,13 @@ final class SiteController
     {
         $slug = trim((string) ($params['slug'] ?? ''));
         if ($slug === '') {
-            http_response_code(404);
-            echo 'Pagina nu a fost găsită.';
+            $this->renderPagina404('Pagina nu a fost găsită', 'Linkul accesat nu există.');
             return;
         }
 
         $db = $this->db();
         if (!$db instanceof PDO) {
-            http_response_code(404);
-            echo 'Pagina nu a fost găsită.';
+            $this->renderPagina404('Pagina nu a fost găsită', 'Linkul accesat nu există.');
             return;
         }
         $this->ensureOptionalPageSchema($db);
@@ -2966,8 +2977,17 @@ final class SiteController
         if ($page === null) {
             $notFoundPage = $this->findPublishedPageBySlug('404');
             if (!is_array($notFoundPage)) {
-                http_response_code(404);
-                echo 'Pagina nu a fost găsită.';
+                // Poate fi un link vechi către un produs, fără /produs/ în față.
+                $potrivit = $this->gasesteProdusDupaSlugAproximativ($db, $slug);
+                if ($potrivit !== null && trim((string) ($potrivit['slug'] ?? '')) !== '') {
+                    header('Location: /produs/' . rawurlencode((string) $potrivit['slug']), true, 301);
+                    return;
+                }
+                $this->renderPagina404(
+                    'Pagina nu a fost găsită',
+                    'Este posibil ca linkul să fie vechi. Caută produsul dorit sau vezi tot magazinul.',
+                    $db
+                );
                 return;
             }
             http_response_code(404);
@@ -8777,6 +8797,106 @@ CSS;
             . '<div class="product-tabs__nav" data-tabs-nav="1">' . implode('', $tabsHtml) . '</div>'
             . '<div class="product-tabs__content">' . implode('', $panesHtml) . '</div>'
             . '</section>';
+    }
+
+    /**
+     * Pagina 404 a magazinului, cu design, căutare și câteva produse.
+     * Înlocuiește pagina albă pe care o vedea clientul venit pe un link vechi.
+     */
+    private function renderPagina404(string $titlu, string $mesaj, ?PDO $db = null): void
+    {
+        http_response_code(404);
+        $sugestii = [];
+        if ($db instanceof PDO) {
+            try {
+                $sugestii = $db->query(
+                    'SELECT slug, name FROM products
+                     WHERE deleted_at IS NULL AND is_active = 1 AND slug <> ""
+                     ORDER BY created_at DESC LIMIT 4'
+                )->fetchAll() ?: [];
+            } catch (Throwable) {
+                $sugestii = [];
+            }
+        }
+        View::render('site/not-found', [
+            'titlu404' => $titlu,
+            'mesaj404' => $mesaj,
+            'produseSugerate' => $sugestii,
+            'title' => $titlu,
+        ]);
+    }
+
+    /**
+     * Forma „de comparat" a unui slug: fără diacritice, doar litere și cifre.
+     * „Kit-Vacanță_2024" și „kit vacanta 2024" ajung la același rezultat.
+     */
+    private function slugComparabil(string $value): string
+    {
+        $value = mb_strtolower(trim(rawurldecode($value)));
+        $inlocuiri = [
+            'ă' => 'a', 'â' => 'a', 'á' => 'a', 'à' => 'a', 'ä' => 'a',
+            'î' => 'i', 'í' => 'i', 'ì' => 'i',
+            'ș' => 's', 'ş' => 's', 'š' => 's',
+            'ț' => 't', 'ţ' => 't',
+            'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+            'ç' => 'c', 'ñ' => 'n', 'ß' => 'ss',
+        ];
+        $value = strtr($value, $inlocuiri);
+        return (string) preg_replace('/[^a-z0-9]/', '', $value);
+    }
+
+    /**
+     * Produsul potrivit pentru un slug care nu s-a găsit exact — pentru
+     * linkurile rămase din site-ul vechi, din Google sau din bookmark-uri.
+     * Întoarce produsul doar dacă potrivirea e lipsită de ambiguitate.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function gasesteProdusDupaSlugAproximativ(?PDO $db, string $slug): ?array
+    {
+        $cautat = $this->slugComparabil($slug);
+        if (!$db instanceof PDO || $cautat === '' || strlen($cautat) < 4) {
+            return null;
+        }
+
+        try {
+            $randuri = $db->query(
+                'SELECT id, slug, name FROM products WHERE deleted_at IS NULL AND is_active = 1'
+            )->fetchAll() ?: [];
+        } catch (Throwable) {
+            return null;
+        }
+
+        $potriviriExacte = [];
+        $potriviriPartiale = [];
+        foreach ($randuri as $rand) {
+            $slugProdus = $this->slugComparabil((string) ($rand['slug'] ?? ''));
+            $numeProdus = $this->slugComparabil((string) ($rand['name'] ?? ''));
+            if ($slugProdus === '' && $numeProdus === '') {
+                continue;
+            }
+            if ($slugProdus === $cautat || $numeProdus === $cautat) {
+                $potriviriExacte[] = $rand;
+                continue;
+            }
+            // Linkuri vechi cu sufixe/prefixe („...-2", „produs-...").
+            $contineSlug = $slugProdus !== '' && (str_contains($slugProdus, $cautat) || str_contains($cautat, $slugProdus));
+            $contineNume = $numeProdus !== '' && (str_contains($numeProdus, $cautat) || str_contains($cautat, $numeProdus));
+            if ($contineSlug || $contineNume) {
+                $potriviriPartiale[] = $rand;
+            }
+        }
+
+        if (count($potriviriExacte) === 1) {
+            return $potriviriExacte[0];
+        }
+        // Ambiguu (mai multe candidate) → mai bine pagina de 404, decât produsul greșit.
+        if ($potriviriExacte === [] && count($potriviriPartiale) === 1) {
+            return $potriviriPartiale[0];
+        }
+        return null;
     }
 
     private function buildSimilarProductsForSite(array $products, array $currentProduct): array
