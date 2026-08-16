@@ -15,17 +15,19 @@ $designFooterCss = (string) ($designSettings['design_footer_css'] ?? '');
 $designFooterJs = (string) ($designSettings['design_footer_js'] ?? '');
 $designMenuCss = (string) ($designSettings['design_menu_css'] ?? '');
 $designMenuJs = (string) ($designSettings['design_menu_js'] ?? '');
-$clarityEnabled = (string) ($designSettings['microsoft_clarity_enabled'] ?? '0') === '1';
+// Fără consimțământ, niciun script de analiză/marketing nu ajunge în pagină.
+$acceptaUrmarire = \App\Support\CookieConsent::permiteUrmarire();
+$clarityEnabled = $acceptaUrmarire && (string) ($designSettings['microsoft_clarity_enabled'] ?? '0') === '1';
 $clarityProjectId = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) ($designSettings['microsoft_clarity_project_id'] ?? ''))) ?? '';
 $googleSiteVerification = preg_replace('/[^A-Za-z0-9_\-]/', '', trim((string) ($designSettings['google_site_verification'] ?? ''))) ?? '';
-$gaEnabled = (string) ($designSettings['google_analytics_enabled'] ?? '0') === '1';
+$gaEnabled = $acceptaUrmarire && (string) ($designSettings['google_analytics_enabled'] ?? '0') === '1';
 $gaId = preg_replace('/[^A-Za-z0-9\-]/', '', trim((string) ($designSettings['google_analytics_id'] ?? ''))) ?? '';
-$gtmEnabled = (string) ($designSettings['google_tag_manager_enabled'] ?? '0') === '1';
+$gtmEnabled = $acceptaUrmarire && (string) ($designSettings['google_tag_manager_enabled'] ?? '0') === '1';
 $gtmId = preg_replace('/[^A-Za-z0-9\-]/', '', trim((string) ($designSettings['google_tag_manager_id'] ?? ''))) ?? '';
 $gtmHeadCode = trim((string) ($designSettings['google_tag_manager_head_code'] ?? ''));
 $gtmBodyCode = trim((string) ($designSettings['google_tag_manager_body_code'] ?? ''));
 $gaCode = trim((string) ($designSettings['google_analytics_code'] ?? ''));
-$adsEnabled = (string) ($designSettings['google_ads_enabled'] ?? '0') === '1';
+$adsEnabled = $acceptaUrmarire && (string) ($designSettings['google_ads_enabled'] ?? '0') === '1';
 $adsConversionId = preg_replace('/[^A-Za-z0-9\-]/', '', trim((string) ($designSettings['google_ads_conversion_id'] ?? ''))) ?? '';
 $headerCartCount = \App\Support\Cart::countItems();
 $headerCustomerLoggedIn = is_array($currentCustomer);
@@ -967,6 +969,54 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     $floatingCartJsVersion = @filemtime(__DIR__ . '/../public/assets/js/floating-cart.js') ?: time();
     $qtyStocJsVersion = @filemtime(__DIR__ . '/../public/assets/js/qty-stoc.js') ?: time();
     ?>
+    <?php
+    // Banner de cookies (Admin → Setări magazin → Cookies). Apare cât timp
+    // vizitatorul nu a ales nimic; alegerea se ține 6 luni într-un cookie.
+    $bannerCookiesActiv = (string) ($designSettings['cookie_banner_enabled'] ?? '1') === '1'
+        && !\App\Support\CookieConsent::aRaspuns();
+    $textCookies = trim((string) ($designSettings['cookie_banner_text'] ?? ''));
+    $linkPolitica = trim((string) ($designSettings['cookie_banner_policy_url'] ?? ''));
+    ?>
+    <?php if ($bannerCookiesActiv && $textCookies !== ''): ?>
+        <div id="cookie-banner" role="region" aria-label="Setări cookies"
+             style="position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#ffffff;border-top:1px solid #e2e8f0;box-shadow:0 -8px 32px rgba(15,23,42,.16);padding:16px 20px;">
+            <div style="max-width:1160px;margin:0 auto;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;">
+                <p style="margin:0;flex:1 1 320px;min-width:260px;color:#334155;font-size:14px;line-height:1.55;">
+                    <?= htmlspecialchars($textCookies, ENT_QUOTES) ?>
+                    <?php if ($linkPolitica !== ''): ?>
+                        <a href="<?= htmlspecialchars($linkPolitica, ENT_QUOTES) ?>" style="color:#2f8d5b;text-decoration:underline;">Politica de confidențialitate</a>
+                    <?php endif; ?>
+                </p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button type="button" data-cookie-choice="necessary"
+                            style="padding:11px 18px;border:1px solid #cbd5e1;border-radius:10px;background:#ffffff;color:#334155;font-size:14px;font-weight:600;cursor:pointer;">Doar necesare</button>
+                    <button type="button" data-cookie-choice="all"
+                            style="padding:11px 22px;border:none;border-radius:10px;background:#2f8d5b;color:#ffffff;font-size:14px;font-weight:700;cursor:pointer;">Accept toate</button>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function () {
+                'use strict';
+                var banner = document.getElementById('cookie-banner');
+                if (!banner) { return; }
+                var DURATA_ZILE = <?= (int) round(\App\Support\CookieConsent::DURATA / 86400) ?>;
+                banner.addEventListener('click', function (e) {
+                    var buton = e.target.closest('[data-cookie-choice]');
+                    if (!buton) { return; }
+                    var alegere = buton.getAttribute('data-cookie-choice');
+                    var expira = new Date(Date.now() + DURATA_ZILE * 864e5).toUTCString();
+                    var securizat = location.protocol === 'https:' ? ';Secure' : '';
+                    document.cookie = <?= json_encode(\App\Support\CookieConsent::COOKIE) ?> + '=' + alegere +
+                        ';path=/;expires=' + expira + ';SameSite=Lax' + securizat;
+                    banner.style.display = 'none';
+                    // Reîncărcăm: abia acum serverul are voie să trimită
+                    // scripturile de analiză (dacă au fost acceptate).
+                    if (alegere === 'all') { location.reload(); }
+                });
+            })();
+        </script>
+    <?php endif; ?>
     <?php
     // Popup de anunț la intrarea pe site (Admin → Setări magazin → Popup anunț).
     // Stilurile stau inline pentru că CSS-ul site-ului poate fi servit din cache.

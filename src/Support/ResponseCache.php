@@ -65,7 +65,10 @@ final class ResponseCache
 
         $queryRaw = parse_url($requestUri, PHP_URL_QUERY);
         $query = self::canonicalizeQueryString(is_string($queryRaw) ? $queryRaw : '');
-        $cacheKey = sha1($path . '|' . $query);
+        // Consimțământul intră în cheie: paginile diferă prin scripturile de
+        // urmărire, iar o variantă „cu Analytics" nu are voie să ajungă la un
+        // vizitator care a refuzat.
+        $cacheKey = sha1($path . '|' . $query . '|' . CookieConsent::cheieCache());
         $cacheDir = self::cacheDirectory();
         $cacheFile = $cacheDir . '/' . $cacheKey . '.html';
         $metaFile = $cacheDir . '/' . $cacheKey . '.json';

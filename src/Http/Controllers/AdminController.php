@@ -6827,6 +6827,22 @@ final class AdminController
             header('Location: /admin/settings/store?tab=numerotare');
             return;
         }
+        if ($action === 'save_cookie_banner') {
+            $linkPolitica = trim((string) ($_POST['cookie_banner_policy_url'] ?? ''));
+            if ($linkPolitica !== '' && !preg_match('#^(https?://|/)#i', $linkPolitica)) {
+                $linkPolitica = '/' . ltrim($linkPolitica, '/');
+            }
+            Settings::save($db, [
+                'cookie_banner_enabled' => isset($_POST['cookie_banner_enabled']) ? '1' : '0',
+                'cookie_banner_text' => trim((string) ($_POST['cookie_banner_text'] ?? '')),
+                'cookie_banner_policy_url' => $linkPolitica,
+            ]);
+            // Paginile din cache conțin varianta veche a bannerului.
+            ResponseCache::purgePageCache();
+            Flash::set('success', 'Bannerul de cookies a fost salvat.');
+            header('Location: /admin/settings/store?tab=cookies');
+            return;
+        }
         if ($action === 'save_welcome_popup') {
             $titluNou = trim((string) ($_POST['welcome_popup_title'] ?? ''));
             $textNou = trim(str_replace("\r\n", "\n", (string) ($_POST['welcome_popup_body'] ?? '')));

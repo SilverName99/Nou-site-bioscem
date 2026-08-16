@@ -37,7 +37,14 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 $vatCotaDominanta = rtrim(rtrim(number_format((float) ($vatRand['cota'] ?? 0), 2, '.', ''), '0'), '.');
             }
         }
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva', 'popup'];
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva', 'popup', 'cookies'];
+        $cookieBannerEnabled = (string) ($settings['cookie_banner_enabled'] ?? '1') === '1';
+        $cookieBannerText = (string) ($settings['cookie_banner_text'] ?? '');
+        $cookiePolicyUrl = (string) ($settings['cookie_banner_policy_url'] ?? '');
+        $trackingActiv = (string) ($settings['google_analytics_enabled'] ?? '0') === '1'
+            || (string) ($settings['google_tag_manager_enabled'] ?? '0') === '1'
+            || (string) ($settings['google_ads_enabled'] ?? '0') === '1'
+            || (string) ($settings['microsoft_clarity_enabled'] ?? '0') === '1';
         $popupEnabled = (string) ($settings['welcome_popup_enabled'] ?? '0') === '1';
         $popupTitle = (string) ($settings['welcome_popup_title'] ?? '');
         $popupBody = (string) ($settings['welcome_popup_body'] ?? '');
@@ -86,6 +93,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'widgets' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="widgets">Sertar Oferte</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'caching' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="caching">Caching</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'popup' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="popup">Popup anunț</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'cookies' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="cookies">Cookies</button>
         </div>
 
         <article class="panel store-settings-panel" data-store-settings-panel="pages" <?= $defaultStoreTab !== 'pages' ? 'hidden' : '' ?> style="margin:12px 0;">
@@ -612,6 +620,47 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                     </div>
                 </div>
             </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="cookies" <?= $defaultStoreTab !== 'cookies' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <h3 style="margin-top:0;">Banner de cookies</h3>
+            <p style="margin:0 0 10px;color:#64748b;max-width:680px;">
+                Bannerul apare în partea de jos, până când vizitatorul alege „Accept toate" sau
+                „Doar necesare". Alegerea se ține minte 6 luni.
+            </p>
+            <?php if ($trackingActiv): ?>
+                <p style="margin:0 0 12px;padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;color:#065f46;font-size:13px;max-width:680px;">
+                    Ai activat instrumente de urmărire (Analytics / Tag Manager / Ads / Clarity).
+                    Codurile lor <strong>nu se încarcă deloc</strong> până când vizitatorul apasă
+                    „Accept toate" — exact cum cere legea. Ține bannerul pornit.
+                </p>
+            <?php else: ?>
+                <p style="margin:0 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;font-size:13px;max-width:680px;">
+                    Momentan nu ai activat niciun instrument de urmărire. Bannerul rămâne util
+                    pentru transparență și devine obligatoriu în clipa în care pornești Analytics.
+                </p>
+            <?php endif; ?>
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_cookie_banner">
+                <label style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+                    <input type="checkbox" name="cookie_banner_enabled" value="1" <?= $cookieBannerEnabled ? 'checked' : '' ?>>
+                    Afișează bannerul de cookies
+                </label>
+                <div class="field" style="max-width:680px;">
+                    <label for="cookie_banner_text">Text</label>
+                    <textarea id="cookie_banner_text" name="cookie_banner_text" rows="4" style="width:100%;"><?= htmlspecialchars($cookieBannerText, ENT_QUOTES) ?></textarea>
+                </div>
+                <div class="field" style="max-width:680px;margin-top:10px;">
+                    <label for="cookie_banner_policy_url">Link către politica de confidențialitate</label>
+                    <input id="cookie_banner_policy_url" name="cookie_banner_policy_url" type="text" value="<?= htmlspecialchars($cookiePolicyUrl, ENT_QUOTES) ?>" placeholder="/politica-de-confidentialitate">
+                    <p style="margin:6px 0 0;color:#64748b;font-size:13px;">
+                        Lasă gol dacă nu vrei link. Pagina se creează din Pagini.
+                    </p>
+                </div>
+                <div style="margin-top:12px;">
+                    <button class="btn" type="submit">Salvează bannerul</button>
+                </div>
+            </form>
         </article>
 
         <article class="panel store-settings-panel" data-store-settings-panel="popup" <?= $defaultStoreTab !== 'popup' ? 'hidden' : '' ?> style="margin:12px 0;">
