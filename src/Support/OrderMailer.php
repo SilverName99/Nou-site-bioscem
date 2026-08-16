@@ -655,7 +655,13 @@ HTML;
                 throw new RuntimeException('SMTP: serverul nu a salutat (' . trim($salut) . ').');
             }
 
-            $ehloHost = preg_replace('/[^a-zA-Z0-9.-]/', '', (string) ($_SERVER['SERVER_NAME'] ?? 'localhost')) ?: 'localhost';
+            // Domeniul expeditorului, nu al serverului: din cron nu există
+            // SERVER_NAME, iar un „localhost" în EHLO și în Message-ID e un
+            // semnal clasic de spam.
+            $domeniuExpeditor = self::domeniuDinEmail($fromAddress);
+            $ehloHost = $domeniuExpeditor !== ''
+                ? $domeniuExpeditor
+                : (preg_replace('/[^a-zA-Z0-9.-]/', '', (string) ($_SERVER['SERVER_NAME'] ?? 'localhost')) ?: 'localhost');
             $trimite('EHLO ' . $ehloHost, [250]);
 
             if (!$sslDirect && $criptare === 'tls') {
@@ -680,6 +686,9 @@ HTML;
 
             $subiectCodat = '=?UTF-8?B?' . base64_encode($subject) . '?=';
             $numeCodat = '=?UTF-8?B?' . base64_encode($fromName) . '?=';
+            // Mesajele doar-HTML sunt penalizate de filtrele antispam; trimitem
+            // și varianta text, în multipart/alternative.
+            $separator = 'bnd_' . bin2hex(random_bytes(12));
             $anteturi = [
                 'Date: ' . date('r'),
                 'From: ' . $numeCodat . ' <' . $expeditorPlic . '>',
@@ -687,11 +696,18 @@ HTML;
                 'To: <' . $to . '>',
                 'Subject: ' . $subiectCodat,
                 'MIME-Version: 1.0',
-                'Content-Type: text/html; charset=UTF-8',
-                'Content-Transfer-Encoding: base64',
+                'Content-Type: multipart/alternative; boundary="' . $separator . '"',
                 'Message-ID: <' . bin2hex(random_bytes(16)) . '@' . $ehloHost . '>',
             ];
-            $corp = chunk_split(base64_encode($html), 76, "\r\n");
+            $corp = '--' . $separator . "\r\n"
+                . "Content-Type: text/plain; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n\r\n"
+                . chunk_split(base64_encode(self::htmlInText($html)), 76, "\r\n")
+                . '--' . $separator . "\r\n"
+                . "Content-Type: text/html; charset=UTF-8\r\n"
+                . "Content-Transfer-Encoding: base64\r\n\r\n"
+                . chunk_split(base64_encode($html), 76, "\r\n")
+                . '--' . $separator . "--\r\n";
             fwrite($fp, implode("\r\n", $anteturi) . "\r\n\r\n" . $corp . "\r\n.\r\n");
             $raspunsData = $citeste();
             if ((int) substr($raspunsData, 0, 3) !== 250) {
@@ -704,6 +720,40 @@ HTML;
                 fclose($fp);
             }
         }
+    }
+
+    /** Domeniul dintr-o adresă de email („no-reply@bioscem.ro" → „bioscem.ro"). */
+    private static function domeniuDinEmail(string $email): string
+    {
+        $pozitie = strrpos($email, '@');
+        if ($pozitie === false) {
+            return '';
+        }
+        $domeniu = preg_replace('/[^a-zA-Z0-9.-]/', '', substr($email, $pozitie + 1)) ?? '';
+        // „localhost" nu e un domeniu real; mai bine cădem pe alternativă.
+        return $domeniu === 'localhost' ? '' : $domeniu;
+    }
+
+    /** Varianta text a unui email HTML, pentru partea text/plain. */
+    public static function htmlInText(string $html): string
+    {
+        // Linkurile devin „text (adresa)", ca să nu se piardă la citirea în text.
+        $text = preg_replace(
+            '/<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is',
+            '$2 ($1)',
+            $html
+        ) ?? $html;
+        $text = preg_replace('/<(script|style)\b[^>]*>.*?<\/\1>/is', '', $text) ?? $text;
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text) ?? $text;
+        $text = preg_replace('/<\/(p|div|tr|h[1-6]|li)>/i', "\n", $text) ?? $text;
+        $text = strip_tags($text);
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Curățăm spațiile și rândurile goale rămase din HTML.
+        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
+        $text = preg_replace('/ ?\n ?/', "\n", $text) ?? $text;
+        $text = preg_replace('/\n{3,}/', "\n\n", $text) ?? $text;
+        $text = trim($text);
+        return $text !== '' ? $text : 'Deschide acest mesaj într-un client de email care afișează HTML.';
     }
 
     private static function sendWithPhpMail(
