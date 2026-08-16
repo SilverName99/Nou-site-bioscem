@@ -932,6 +932,12 @@ function saveOrderItems(orderId){
             let mesaj = 'Salvat ✓ (subtotal ' + orderMoney(data.subtotal) + ', transport ' + orderMoney(data.shipping) + ', total ' + orderMoney(data.total) + ').';
             let culoare = '#16a34a';
             let intarziere = 1500;
+            const rest = Number(data.rest_de_incasat) || 0;
+            if (rest > 0) {
+                culoare = '#b45309';
+                mesaj += ' ⚠ Comanda era plătită cu cardul: mai sunt de încasat ' + orderMoney(rest) + '.';
+                intarziere = 5000;
+            }
             if (erp && erp.ok) {
                 mesaj += ' ' + (erp.message || 'Propagat în ERP.');
             } else if (erp && !erp.ok) {

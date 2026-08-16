@@ -4852,7 +4852,8 @@ final class AdminController
         }
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
-        $os = $db->prepare('SELECT id, status, subtotal, discount_total, loyalty_points_discount, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        \App\Support\ErpSync::ensureSchema($db);
+        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $os->execute(['id' => $orderId]);
         $order = $os->fetch();
         if (!is_array($order)) {
@@ -4962,6 +4963,16 @@ final class AdminController
             }
         }
 
+        // Comandă plătită cu cardul, al cărei total a crescut: diferența rămâne
+        // de încasat. O spunem explicit, ca să nu pară achitată integral.
+        $diferentaDeIncasat = 0.0;
+        if (strtolower((string) ($order['payment_status'] ?? '')) === 'paid') {
+            $incasat = $order['paid_amount'] !== null && $order['paid_amount'] !== ''
+                ? round((float) $order['paid_amount'], 2)
+                : round((float) ($order['total'] ?? 0), 2);
+            $diferentaDeIncasat = round(max(0.0, $total - $incasat), 2);
+        }
+
         echo json_encode([
             'ok' => true,
             'subtotal' => $subtotal,
@@ -4970,6 +4981,7 @@ final class AdminController
             'discount_total' => $discountTotal,
             'loyalty_points_discount' => $pointsDiscount,
             'erp_sync' => $erpSync,
+            'rest_de_incasat' => $diferentaDeIncasat,
             'items' => array_map(static fn(array $l): array => [
                 'product_id' => $l['pid'],
                 'product_name' => $l['name'],

@@ -240,10 +240,34 @@ final class ErpSync
 
             'metodaPlata' => $metoda === 'cod' ? 'ramburs' : 'card',
             'platit' => strtolower((string) ($order['payment_status'] ?? '')) === 'paid',
+            // Cât s-a încasat efectiv. Dacă operatorul a adăugat produse după
+            // plată, e mai mic decât totalul, iar diferența rămâne de încasat.
+            'sumaIncasata' => self::sumaIncasata($order),
             'observatii' => (string) ($order['notes'] ?? ''),
 
             'linii' => self::buildLines($db, $orderId),
         ];
+    }
+
+    /**
+     * Suma încasată prin card pentru o comandă.
+     *
+     * `paid_amount` se scrie la confirmarea plății și nu se mai schimbă. Pentru
+     * comenzile plătite înainte de introducerea coloanei, cădem pe totalul
+     * comenzii — ele nu fuseseră modificate după plată, fiindcă propagarea
+     * modificărilor a apărut odată cu această coloană.
+     */
+    private static function sumaIncasata(array $order): float
+    {
+        $platit = strtolower((string) ($order['payment_status'] ?? '')) === 'paid';
+        if (!$platit) {
+            return 0.0;
+        }
+        $incasat = $order['paid_amount'] ?? null;
+        if ($incasat === null || $incasat === '') {
+            return round((float) ($order['total'] ?? 0), 2);
+        }
+        return round((float) $incasat, 2);
     }
 
     /** Liniile comenzii, cu SKU-ul și cota de TVA luate din fișa produsului. */
@@ -434,6 +458,10 @@ final class ErpSync
             // Toate AWB-urile comenzii (JSON), când pleacă în mai multe colete
             // din depozite diferite; `fan_awb` rămâne primul colet.
             'fan_awb_list' => 'TEXT DEFAULT NULL',
+            // Suma chiar încasată prin card. Rămâne cea de la plată chiar dacă
+            // totalul comenzii crește ulterior (produse adăugate de operator),
+            // ca ERP-ul să nu înregistreze o încasare mai mare decât cea reală.
+            'paid_amount' => 'DECIMAL(10,2) DEFAULT NULL',
         ];
 
         foreach ($columns as $name => $definition) {

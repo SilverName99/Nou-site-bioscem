@@ -5509,16 +5509,21 @@ CSS;
             return true;
         }
 
+        \App\Support\ErpSync::ensureSchema($db);
         $db->prepare(
             "UPDATE orders
              SET payment_status = 'paid',
                  status = CASE WHEN status IN ('pending_payment', 'failed') THEN 'pending' ELSE status END,
                  paid_at = COALESCE(paid_at, NOW()),
                  payment_error = NULL,
+                 paid_amount = COALESCE(paid_amount, :incasat),
                  euplatesc_ep_id = :ep_id,
                  euplatesc_approval = :approval
              WHERE id = :id"
         )->execute([
+            // Suma reală de la procesator; rămâne neschimbată dacă totalul
+            // comenzii se modifică ulterior.
+            'incasat' => number_format($incasat, 2, '.', ''),
             'ep_id' => $epId !== '' ? $epId : null,
             'approval' => $approval !== '' ? $approval : null,
             'id' => $orderId,
@@ -5692,6 +5697,7 @@ CSS;
             return;
         }
 
+        \App\Support\ErpSync::ensureSchema($db);
         $where = $orderNumber !== '' ? 'order_number = :order_number AND deleted_at IS NULL' : 'id = :id AND deleted_at IS NULL';
         $sql = $paid
             ? "UPDATE orders
@@ -5700,7 +5706,8 @@ CSS;
                    stripe_session_id = :session_id,
                    stripe_payment_intent_id = :payment_intent_id,
                    paid_at = NOW(),
-                   payment_error = NULL
+                   payment_error = NULL,
+                   paid_amount = COALESCE(paid_amount, total)
                WHERE $where"
             : "UPDATE orders
                SET payment_status = CASE WHEN payment_status = 'paid' THEN payment_status ELSE 'failed' END,
