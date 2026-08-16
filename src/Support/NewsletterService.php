@@ -276,8 +276,17 @@ final class NewsletterService
         return $subscriberId;
     }
 
-    public static function renderHtmlFromBlocks(array $blocks, string $subject): string
-    {
+    /**
+     * @param bool $cuFooterDezabonare Emailurile tranzacționale (confirmare de
+     *   comandă, expediere) nu sunt newsletter: nu primesc subsol de
+     *   dezabonare. Fără el, subsolul ar afișa „Email de test", pentru că nu
+     *   există un link de dezabonare real.
+     */
+    public static function renderHtmlFromBlocks(
+        array $blocks,
+        string $subject,
+        bool $cuFooterDezabonare = true
+    ): string {
         $normalized = self::normalizeBlocks($blocks);
         $parts = [];
         foreach ($normalized as $block) {
@@ -312,7 +321,21 @@ final class NewsletterService
             . '</div>'
             . '</body></html>';
 
-        return self::withNewsletterFooter($html);
+        return $cuFooterDezabonare ? self::withNewsletterFooter($html) : $html;
+    }
+
+    /**
+     * Scoate subsolul de dezabonare dintr-un email deja salvat. Folosit pentru
+     * șabloanele de comandă salvate înainte de separarea de mai sus.
+     */
+    public static function faraFooterDezabonare(string $html): string
+    {
+        $pattern = '/'
+            . preg_quote(self::UNSUBSCRIBE_FOOTER_START, '/')
+            . '.*?'
+            . preg_quote(self::UNSUBSCRIBE_FOOTER_END, '/')
+            . '/si';
+        return preg_replace($pattern, '', $html) ?? $html;
     }
 
     public static function withNewsletterFooter(string $htmlContent, ?string $unsubscribeUrl = null, bool $isTest = false): string

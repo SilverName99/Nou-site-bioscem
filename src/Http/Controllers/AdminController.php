@@ -8410,7 +8410,8 @@ final class AdminController
         $normalized  = NewsletterService::normalizeBlocks($rawBlocks);
         $blocksJson  = (string) json_encode($normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $subject     = trim((string) ($_POST['builder_subject'] ?? ''));
-        $htmlContent = NewsletterService::renderHtmlFromBlocks($normalized, $subject);
+        // Emailurile de comandă nu sunt newsletter: fără subsol de dezabonare.
+        $htmlContent = NewsletterService::renderHtmlFromBlocks($normalized, $subject, $type !== 'ecommerce');
 
         if ($type === 'template') {
             $id       = (int) ($_POST['builder_id'] ?? 0);

@@ -336,6 +336,10 @@ final class OrderMailer
         if ($bodyTemplate === '') {
             $bodyTemplate = (string) $definition['default_body'];
         }
+        // Șabloanele salvate cu editorul vizual înainte de separarea de
+        // newsletter au rămas cu subsolul de dezabonare („Email de test…").
+        // Într-un email de comandă nu are ce căuta.
+        $bodyTemplate = NewsletterService::faraFooterDezabonare($bodyTemplate);
         if ($type === 'processing') {
             $legacySubjects = self::processingLegacySubjectCandidates();
             if (in_array(trim($subjectTemplate), $legacySubjects, true)) {
