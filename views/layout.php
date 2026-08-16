@@ -976,8 +976,10 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     $popupVersiune = trim((string) ($designSettings['welcome_popup_version'] ?? '1'));
     ?>
     <?php if ($popupActiv && $popupText !== ''): ?>
-        <div id="welcome-popup" hidden
-             style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55);">
+        <?php /* display:none inline — „hidden" singur nu ar ajunge, fiindcă un
+                 display din atributul style bate regula [hidden] din browser. */ ?>
+        <div id="welcome-popup"
+             style="position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.55);">
             <div role="dialog" aria-modal="true" aria-labelledby="welcome-popup-title"
                  style="position:relative;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;background:#ffffff;border-radius:16px;box-shadow:0 24px 64px rgba(15,23,42,.35);padding:28px 26px 24px;">
                 <button type="button" data-welcome-popup-close aria-label="Închide"
@@ -1006,13 +1008,22 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
                 try {
                     if (window.localStorage.getItem(CHEIE) === versiune) { return; }
                 } catch (e) { /* localStorage indisponibil → arătăm popup-ul */ }
-                popup.hidden = false;
+                popup.style.display = 'flex';
                 function inchide() {
-                    popup.hidden = true;
+                    popup.style.display = 'none';
                     try { window.localStorage.setItem(CHEIE, versiune); } catch (e) { /* ignorăm */ }
                 }
-                popup.querySelectorAll('[data-welcome-popup-close]').forEach(function (buton) {
-                    buton.addEventListener('click', inchide);
+                // Delegare: prinde click-ul și dacă se dă pe conținutul butonului.
+                popup.addEventListener('click', function (e) {
+                    if (e.target.closest('[data-welcome-popup-close]')) {
+                        e.preventDefault();
+                        inchide();
+                    }
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && popup.style.display !== 'none') {
+                        inchide();
+                    }
                 });
             })();
         </script>
