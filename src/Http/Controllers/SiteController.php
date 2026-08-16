@@ -8892,9 +8892,35 @@ CSS;
         if (count($potriviriExacte) === 1) {
             return $potriviriExacte[0];
         }
-        // Ambiguu (mai multe candidate) → mai bine pagina de 404, decât produsul greșit.
-        if ($potriviriExacte === [] && count($potriviriPartiale) === 1) {
+        if ($potriviriExacte !== []) {
+            // Mai multe potriviri exacte = date duble; nu ghicim.
+            return null;
+        }
+        if (count($potriviriPartiale) === 1) {
             return $potriviriPartiale[0];
+        }
+        // „harmony" se potrivește și cu „cmo-harmony", și cu „cmo-harmony-xl".
+        // Alegem produsul cu numele cel mai apropiat ca lungime — pentru un
+        // link scurt, produsul de bază, nu varianta cu sufix. Dacă două
+        // produse sunt la fel de apropiate, rămâne 404 (nu ghicim).
+        if ($potriviriPartiale !== []) {
+            $celMaiApropiat = null;
+            $diferentaMinima = PHP_INT_MAX;
+            $laEgalitate = 0;
+            foreach ($potriviriPartiale as $candidat) {
+                $lungimeSlug = strlen($this->slugComparabil((string) ($candidat['slug'] ?? '')));
+                $diferenta = abs($lungimeSlug - strlen($cautat));
+                if ($diferenta < $diferentaMinima) {
+                    $diferentaMinima = $diferenta;
+                    $celMaiApropiat = $candidat;
+                    $laEgalitate = 1;
+                } elseif ($diferenta === $diferentaMinima) {
+                    $laEgalitate++;
+                }
+            }
+            if ($laEgalitate === 1 && $celMaiApropiat !== null) {
+                return $celMaiApropiat;
+            }
         }
         return null;
     }
