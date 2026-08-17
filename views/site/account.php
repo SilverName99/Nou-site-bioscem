@@ -366,7 +366,7 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                     <input type="hidden" name="next" value="<?= htmlspecialchars($next, ENT_QUOTES) ?>">
                     <input type="hidden" name="register_form_token" value="<?= htmlspecialchars($registerAntiBotToken, ENT_QUOTES) ?>">
                     <input type="hidden" name="register_form_rendered_at" value="<?= $registerAntiBotRenderedAt > 0 ? $registerAntiBotRenderedAt : time() ?>">
-                    <div class="field" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;" aria-hidden="true">
+                    <div class="field" style="display:none;" aria-hidden="true">
                         <label for="register-hp-website">Website</label>
                         <input id="register-hp-website" type="text" name="register_hp_website" value="" tabindex="-1" autocomplete="off">
                     </div>

@@ -251,24 +251,20 @@ $customPageClass = 'custom-page-content' . (in_array($pageSlug, $narrowSlugs, tr
                 ensureHidden('register_form_token', token);
                 ensureHidden('register_form_rendered_at', String(renderedAt));
                 if (!(form.querySelector('input[name="register_hp_website"]') instanceof HTMLInputElement)) {
+                    // display:none, fără <label> — un câmp doar poziționat în
+                    // afara ecranului rămâne „vizibil" pentru completarea
+                    // automată din browser și blochează utilizatori reali.
                     const trapWrap = document.createElement('div');
-                    trapWrap.style.position = 'absolute';
-                    trapWrap.style.left = '-10000px';
-                    trapWrap.style.top = 'auto';
-                    trapWrap.style.width = '1px';
-                    trapWrap.style.height = '1px';
-                    trapWrap.style.overflow = 'hidden';
+                    trapWrap.style.display = 'none';
                     trapWrap.setAttribute('aria-hidden', 'true');
-                    const trapLabel = document.createElement('label');
-                    trapLabel.textContent = 'Website';
-                    trapLabel.htmlFor = 'register-hp-website-dynamic';
                     const trapInput = document.createElement('input');
                     trapInput.type = 'text';
                     trapInput.name = 'register_hp_website';
                     trapInput.id = 'register-hp-website-dynamic';
                     trapInput.autocomplete = 'off';
                     trapInput.tabIndex = -1;
-                    trapWrap.appendChild(trapLabel);
+                    trapInput.setAttribute('data-lpignore', 'true');
+                    trapInput.setAttribute('data-1p-ignore', '');
                     trapWrap.appendChild(trapInput);
                     form.appendChild(trapWrap);
                 }

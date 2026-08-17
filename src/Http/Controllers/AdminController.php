@@ -698,7 +698,7 @@ final class AdminController
             $source = 'all';
         }
         $status = trim((string) ($_GET['status'] ?? 'all'));
-        $allowedStatuses = ['all', 'allowed', 'bot_honeypot', 'invalid_payload', 'token_missing', 'too_fast', 'expired', 'timestamp_mismatch', 'rate_limited'];
+        $allowedStatuses = ['all', 'allowed', 'bot_honeypot', 'honeypot_legacy', 'invalid_payload', 'token_missing', 'too_fast', 'expired', 'timestamp_mismatch', 'rate_limited'];
         if (!in_array($status, $allowedStatuses, true)) {
             $status = 'all';
         }

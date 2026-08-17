@@ -71,7 +71,10 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         .bv-checkout-v3__checkbox input{width:16px;height:16px;accent-color:#1f8b57;}
         .bv-checkout-v3__company-fields{display:none;}
         .bv-checkout-v3__company-fields.is-visible{display:contents;}
-        .bv-checkout-v3__hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;}
+        /* display:none — browserele NU completează automat câmpurile ascunse
+           astfel; poziționarea în afara ecranului le lăsa vizibile pentru
+           autofill și bloca clienți reali. */
+        .bv-checkout-v3__hp{display:none;}
         .bv-checkout-v3__field input:focus,.bv-checkout-v3__field textarea:focus,.bv-checkout-v3__field select:focus{border-color:#3aa26f;box-shadow:0 0 0 3px rgba(42,140,89,.14);}
         .bv-checkout-v3__payment{margin:6px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
         .bv-checkout-v3__method{position:relative;}
@@ -147,14 +150,15 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     <input type="hidden" name="checkout_form_token" value="<?= htmlspecialchars($antiBotToken, ENT_QUOTES) ?>">
                     <input type="hidden" name="checkout_form_rendered_at" value="<?= $antiBotRenderedAt > 0 ? $antiBotRenderedAt : time() ?>">
                     <div class="bv-checkout-v3__hp" aria-hidden="true">
-                        <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-company-website">Website companie</label>
                         <input
-                            id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-company-website"
+                            id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-extra-ref"
                             type="text"
-                            name="company_website"
+                            name="<?= htmlspecialchars(\App\Http\Controllers\SiteController::CHECKOUT_HONEYPOT_FIELD, ENT_QUOTES) ?>"
                             value=""
                             tabindex="-1"
                             autocomplete="off"
+                            data-lpignore="true"
+                            data-1p-ignore
                         >
                     </div>
                     <div class="bv-checkout-v3__form-grid">

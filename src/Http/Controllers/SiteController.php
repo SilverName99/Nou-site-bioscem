@@ -37,7 +37,14 @@ final class SiteController
     private const FAN_LOCALITIES_API_ENDPOINT = '/api/fan/localities';
     private const CHECKOUT_SHIPPING_QUOTE_API_ENDPOINT = '/api/checkout/shipping-quote';
     private const CHECKOUT_ANTIBOT_SESSION_KEY = 'checkout_antibot_tokens';
-    private const CHECKOUT_ANTIBOT_MIN_SECONDS = 3;
+    /**
+     * Numele capcanei anti-bot. Nu trebuie să conțină cuvinte pe care le
+     * recunoaște completarea automată din browser („company”, „website”,
+     * „address”, „name”…), altfel Chrome/Safari o completează singur și
+     * clientul real e blocat.
+     */
+    public const CHECKOUT_HONEYPOT_FIELD = 'bv_extra_ref';
+    private const CHECKOUT_ANTIBOT_MIN_SECONDS = 2;
     private const CHECKOUT_ANTIBOT_MAX_AGE_SECONDS = 7200;
     private const CHECKOUT_ANTIBOT_MAX_ATTEMPTS_PER_15_MIN = 10;
     private const REGISTER_ANTIBOT_SESSION_KEY = 'register_antibot_tokens';
@@ -860,6 +867,11 @@ final class SiteController
         $this->ensureCheckoutAntiBotSchema($db);
         $this->ensureProductCustomSchema($db);
         CheckoutCalculator::ensureOrderShippingSchema($db);
+
+        // Datele completate se rețin ÎNAINTE de filtrul anti-bot: dacă filtrul
+        // respinge cererea, clientul se întoarce pe /checkout cu formularul
+        // completat, nu gol (altfel ar retasta toată adresa la fiecare eroare).
+        $this->rememberCheckoutInput();
 
         $antiBotError = $this->validateCheckoutAntiBot($db);
         if ($antiBotError !== null) {
@@ -6651,11 +6663,42 @@ CSS;
         ];
     }
 
+    /**
+     * Reține în sesiune ce a completat clientul, ca formularul să se repopuleze
+     * după orice redirect cu eroare. Nu validează nimic — validarea rămâne în
+     * validateCheckout(), care rescrie oricum aceleași chei.
+     */
+    private function rememberCheckoutInput(): void
+    {
+        $chei = [
+            'billing_first_name', 'billing_last_name', 'billing_email', 'billing_phone',
+            'billing_street', 'billing_street_no', 'billing_city', 'billing_county',
+            'billing_postcode', 'billing_company_name', 'billing_company_tax_id',
+            'billing_company_registration_no', 'notes', 'payment_method',
+            'shipping_first_name', 'shipping_last_name', 'shipping_phone',
+            'shipping_street', 'shipping_street_no', 'shipping_city',
+            'shipping_county', 'shipping_postcode',
+        ];
+
+        $values = is_array($_SESSION['checkout_form'] ?? null) ? (array) $_SESSION['checkout_form'] : [];
+        foreach ($chei as $cheie) {
+            if (isset($_POST[$cheie]) && is_scalar($_POST[$cheie])) {
+                $values[$cheie] = mb_substr(trim((string) $_POST[$cheie]), 0, 255);
+            }
+        }
+        $values['billing_is_company'] = isset($_POST['billing_is_company']) ? 1 : 0;
+        $hasShippingToggle = (string) ($_POST['has_shipping_toggle'] ?? '') === '1';
+        $values['shipping_same_as_billing'] =
+            ($hasShippingToggle ? isset($_POST['shipping_same_as_billing']) : true) ? 1 : 0;
+
+        $_SESSION['checkout_form'] = $values;
+    }
+
     private function validateCheckoutAntiBot(PDO $db): ?string
     {
         $ip = $this->checkoutClientIp();
         $userAgent = trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
-        $honeypot = trim((string) ($_POST['company_website'] ?? ''));
+        $honeypot = trim((string) ($_POST[self::CHECKOUT_HONEYPOT_FIELD] ?? ''));
         $token = trim((string) ($_POST['checkout_form_token'] ?? ''));
         $renderedAt = (int) ($_POST['checkout_form_rendered_at'] ?? 0);
         $now = time();
@@ -6665,9 +6708,17 @@ CSS;
             return 'Prea multe încercări de comandă. Încearcă din nou în câteva minute.';
         }
 
+        // Capcana veche se numea „company_website”, iar browserele (Chrome, în
+        // special) o completau automat din profilul de adresă pentru că numele
+        // conținea „company”. O mai citim, dar doar o marcăm în log — nu mai
+        // blocăm clientul din cauza ei.
+        if (trim((string) ($_POST['company_website'] ?? '')) !== '' && $honeypot === '') {
+            $this->logCheckoutSubmitAttempt($db, $ip, $userAgent, 'honeypot_legacy');
+        }
+
         if ($honeypot !== '') {
             $this->logCheckoutSubmitAttempt($db, $ip, $userAgent, 'bot_honeypot');
-            return 'Nu am putut valida cererea. Reîncarcă pagina checkout și încearcă din nou.';
+            return 'Nu am putut valida cererea (capcană anti-bot). Reîncarcă pagina checkout și încearcă din nou.';
         }
 
         if ($token === '' || strlen($token) < 20 || $renderedAt <= 0) {
@@ -6690,7 +6741,7 @@ CSS;
         $elapsed = $now - $issuedAt;
         if ($elapsed < self::CHECKOUT_ANTIBOT_MIN_SECONDS) {
             $this->logCheckoutSubmitAttempt($db, $ip, $userAgent, 'too_fast');
-            return 'Nu am putut valida cererea. Reîncarcă pagina checkout și încearcă din nou.';
+            return 'Comanda a fost trimisă prea repede după încărcarea paginii. Mai încearcă o dată.';
         }
         if ($elapsed > self::CHECKOUT_ANTIBOT_MAX_AGE_SECONDS) {
             $this->logCheckoutSubmitAttempt($db, $ip, $userAgent, 'expired');
