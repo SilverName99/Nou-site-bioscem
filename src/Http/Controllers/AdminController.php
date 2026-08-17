@@ -7663,6 +7663,7 @@ final class AdminController
             'shipping_fixed_base' => $this->sumaPozitiva($_POST['shipping_fixed_base'] ?? null),
             'shipping_fixed_extra_km' => $this->sumaPozitiva($_POST['shipping_fixed_extra_km'] ?? null),
             'shipping_fixed_fanbox' => $this->sumaPozitiva($_POST['shipping_fixed_fanbox'] ?? null),
+            'shipping_fixed_fanbox_enabled' => isset($_POST['shipping_fixed_fanbox_enabled']) ? '1' : '0',
             'fan_live_tariff_enabled' => isset($_POST['fan_live_tariff_enabled']) ? '1' : '0',
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
             'fan_service_type' => trim((string) ($_POST['fan_service_type'] ?? 'Standard')),

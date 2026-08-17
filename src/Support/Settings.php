@@ -20,6 +20,7 @@ final class Settings
         'shipping_fixed_base' => '0',
         'shipping_fixed_extra_km' => '0',
         'shipping_fixed_fanbox' => '0',
+        'shipping_fixed_fanbox_enabled' => '0',
         'fan_live_tariff_enabled' => '0',
         'fan_awb_auto' => '0',
         'fan_service_type' => 'Standard',

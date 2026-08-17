@@ -18,28 +18,20 @@ use Throwable;
  */
 final class ShippingPricing
 {
-    /** Codurile FAN care înseamnă livrare la automat (PickUp / DropOff FANbox). */
-    private const CODURI_FANBOX = ['V', 'W'];
-
     public static function esteActiv(array $settings): bool
     {
         return (string) ($settings['shipping_fixed_enabled'] ?? '0') === '1';
     }
 
-    /** Comanda pleacă spre un automat FANbox? (deocamdată, setare de magazin). */
+    /**
+     * Magazinul livrează la FANbox? Deocamdată e o decizie de magazin, luată
+     * explicit dintr-o bifă proprie — NU dedusă din „Opțiuni FAN", care e o
+     * setare tehnică pentru AWB și n-ar trebui să schimbe prețul pe tăcute.
+     * Când clientul va putea alege FANbox la checkout, aici intră alegerea lui.
+     */
     public static function livrareLaFanbox(array $settings): bool
     {
-        $raw = mb_strtoupper(trim((string) ($settings['fan_option_codes'] ?? '')));
-        if ($raw === '') {
-            return false;
-        }
-        $coduri = preg_split('/[\s,;]+/', $raw) ?: [];
-        foreach ($coduri as $cod) {
-            if (in_array(trim((string) $cod), self::CODURI_FANBOX, true)) {
-                return true;
-            }
-        }
-        return false;
+        return (string) ($settings['shipping_fixed_fanbox_enabled'] ?? '0') === '1';
     }
 
     /**
