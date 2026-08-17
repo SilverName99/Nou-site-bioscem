@@ -15111,6 +15111,17 @@ HTML;
 
         $cauta = $db->prepare('SELECT 1 FROM newsletter_subscribers WHERE email = :email LIMIT 1');
 
+        // Zeci de mii de abonați: fără tranzacție, fiecare inserare ar fi un
+        // commit separat, iar cererea web ar expira la jumătatea listei.
+        @set_time_limit(0);
+        $inTranzactie = false;
+        try {
+            $db->beginTransaction();
+            $inTranzactie = true;
+        } catch (Throwable) {
+            $inTranzactie = false;
+        }
+
         foreach ($bucati as $nume => $continut) {
             if (!is_string($continut) || $continut === '') {
                 continue;
@@ -15157,6 +15168,18 @@ HTML;
                 } catch (Throwable) {
                     $invalizi++;
                 }
+            }
+        }
+
+        if ($inTranzactie) {
+            try {
+                $db->commit();
+            } catch (Throwable $e) {
+                $db->rollBack();
+                return [
+                    'ok' => false,
+                    'message' => 'Importul a eșuat și a fost anulat complet: ' . $e->getMessage(),
+                ];
             }
         }
 
