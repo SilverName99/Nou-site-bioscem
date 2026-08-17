@@ -105,24 +105,43 @@ Recomandare cron: la 10-15 minute.
 php /home/USER/public_html/scripts/abandoned-cart-emails.php --limit=100
 ```
 
-### Newslettere programate (obligatoriu cron)
+> **ATENTIE la comenzile de mai sus si de mai jos:** `USER` este un substituent,
+> nu un nume de cont. Inlocuieste-l cu userul real de gazduire (pe Hostinger e
+> de forma `u742855921`) si verifica in File Manager traseul exact pana la
+> folderul `scripts/`. Un cron copiat cu `USER` in el nu da eroare vizibila
+> nicaieri — pur si simplu nu ruleaza niciodata. Dupa ce il adaugi, deschide
+> „View Output" din panoul de cron si asigura-te ca vezi linia de rezultat a
+> scriptului, nu „No such file or directory".
 
-Newsletterele programate (status `scheduled` + `scheduled_at`) NU se trimit
-singure — trebuie un cron care ruleaza scriptul de dispatch. Fara acest cron,
-campaniile programate raman in asteptare si nu pleaca niciodata.
+### Newslettere (obligatoriu cron)
+
+Cronul de newsletter face doua lucruri:
+
+1. **continua campaniile ramase in curs** (status `sending`) — o lista de zeci
+   de mii de abonati nu pleaca dintr-o singura executie PHP, asa ca trimiterea
+   merge pe bucati si fiecare rulare o duce mai departe de unde a ramas;
+2. **porneste campaniile programate** ajunse la scadenta (`scheduled_at <= NOW()`).
+
+Fara acest cron, campaniile programate nu pleaca deloc, iar cele mari raman
+neterminate pana cand cineva apasa din nou „Trimite acum" pentru fiecare lot.
 
 ```bash
-php /home/USER/public_html/scripts/newsletter-campaigns.php
+php /home/USER/public_html/scripts/newsletter-campaigns.php --seconds=240
 ```
 
 Recomandare cron: la fiecare 5 minute:
 
 ```
-*/5 * * * * php /home/USER/public_html/scripts/newsletter-campaigns.php >/dev/null 2>&1
+*/5 * * * * php /home/USER/public_html/scripts/newsletter-campaigns.php --seconds=240 >/dev/null 2>&1
 ```
 
-Scriptul preia campaniile a caror ora a trecut (`scheduled_at <= NOW()`) si le
-trimite, deci o campanie programata pleaca in maxim ~5 minute dupa ora setata.
+Optiuni: `--seconds=` bugetul de timp al unei rulari (implicit 240; se opreste
+curat inainte de limita de executie a serverului, iar restul pleaca la trecerea
+urmatoare), `--per-run=` cati destinatari cel mult per campanie per trecere
+(implicit 2000), `--limit=` cate campanii programate se pornesc odata.
+
+Rularile nu se suprapun: scriptul ia un lacat pe fisier
+(`storage/newsletter-cron.lock`) si iese imediat daca precedenta inca lucreaza.
 
 ### Recomandări next sprint
 
