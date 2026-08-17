@@ -968,13 +968,24 @@ final class CheckoutCalculator
 
     private static function calculateShipping(array $settings, string $county, float $subtotal, float $discount): float
     {
+        $isBucharest = strtolower(trim($county)) === 'bucuresti';
+
+        // Prețul fix are prioritate: se afișează în sumar prețul de bază, iar
+        // eventuala taxă de km suplimentari se adaugă la finalizarea comenzii,
+        // când se cunoaște localitatea exactă.
+        $pretFix = ShippingPricing::pretDeBaza($settings);
+        if ($pretFix !== null) {
+            return self::transportGratuit($settings, $isBucharest, $subtotal, $discount)
+                ? 0.0
+                : $pretFix;
+        }
+
         // In FAN live mode we no longer expose legacy manual tariffs in summaries.
         // The final shipping value is resolved from FAN at checkout submit time.
         if ((string) ($settings['fan_live_tariff_enabled'] ?? '0') === '1') {
             return 0.0;
         }
 
-        $isBucharest = strtolower(trim($county)) === 'bucuresti';
         $includeCoupons = ((string) ($settings['shipping_include_coupons'] ?? '1')) === '1';
 
         $threshold = $isBucharest
@@ -995,6 +1006,24 @@ final class CheckoutCalculator
         return min($baseShipping, $maxShipping);
     }
 
+    /** Coșul atinge pragul de transport gratuit? */
+    private static function transportGratuit(
+        array $settings,
+        bool $isBucharest,
+        float $subtotal,
+        float $discount
+    ): bool {
+        $includeCoupons = ((string) ($settings['shipping_include_coupons'] ?? '1')) === '1';
+        $threshold = $isBucharest
+            ? (float) ($settings['shipping_free_bucharest'] ?? 200)
+            : (float) ($settings['shipping_free_province'] ?? 200);
+        if ($threshold <= 0) {
+            return false;
+        }
+        $referinta = $includeCoupons ? ($subtotal - $discount) : $subtotal;
+        return $referinta >= $threshold;
+    }
+
     /**
      * Recalcul transport pentru editarea manuală a comenzii din admin.
      * Dacă subtotalul (minus reduceri) atinge pragul de transport gratuit → 0.
@@ -1013,6 +1042,11 @@ final class CheckoutCalculator
         }
         if ($currentShipping > 0.0) {
             return round($currentShipping, 2);
+        }
+        // Fără un transport deja stabilit, prețul fix (dacă e activ) e referința.
+        $pretFix = ShippingPricing::pretDeBaza($settings);
+        if ($pretFix !== null) {
+            return $pretFix;
         }
         $base = $isBucharest
             ? (float) ($settings['shipping_cost_bucharest'] ?? 15)

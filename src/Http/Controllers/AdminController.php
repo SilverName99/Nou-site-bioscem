@@ -7658,6 +7658,11 @@ final class AdminController
             'shipping_cost_bucharest' => '0',
             'shipping_cost_province' => '0',
             'shipping_max_cost' => '0',
+            // Prețuri fixe de transport (au prioritate față de tariful FAN).
+            'shipping_fixed_enabled' => isset($_POST['shipping_fixed_enabled']) ? '1' : '0',
+            'shipping_fixed_base' => $this->sumaPozitiva($_POST['shipping_fixed_base'] ?? null),
+            'shipping_fixed_extra_km' => $this->sumaPozitiva($_POST['shipping_fixed_extra_km'] ?? null),
+            'shipping_fixed_fanbox' => $this->sumaPozitiva($_POST['shipping_fixed_fanbox'] ?? null),
             'fan_live_tariff_enabled' => isset($_POST['fan_live_tariff_enabled']) ? '1' : '0',
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
             'fan_service_type' => trim((string) ($_POST['fan_service_type'] ?? 'Standard')),
@@ -7829,6 +7834,14 @@ final class AdminController
         }
 
         return array_values(array_unique(array_filter($candidati, static fn (string $v): bool => $v !== '')));
+    }
+
+    /** O sumă din formular, normalizată la un număr pozitiv cu 2 zecimale. */
+    private function sumaPozitiva(mixed $raw): string
+    {
+        $text = str_replace(',', '.', trim((string) $raw));
+        $valoare = is_numeric($text) ? (float) $text : 0.0;
+        return number_format(max(0.0, $valoare), 2, '.', '');
     }
 
     private function fanNormalizeSelectedOptions(array $selected): string

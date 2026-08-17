@@ -15,6 +15,11 @@ final class Settings
         'shipping_cost_bucharest' => '15',
         'shipping_cost_province' => '15',
         'shipping_max_cost' => '40',
+        // Prețuri fixe de transport (înlocuiesc tariful curierului când sunt active).
+        'shipping_fixed_enabled' => '0',
+        'shipping_fixed_base' => '0',
+        'shipping_fixed_extra_km' => '0',
+        'shipping_fixed_fanbox' => '0',
         'fan_live_tariff_enabled' => '0',
         'fan_awb_auto' => '0',
         'fan_service_type' => 'Standard',

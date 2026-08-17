@@ -225,6 +225,42 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
             <input type="number" step="0.01" name="shipping_free_province"
                    value="<?= htmlspecialchars((string) $settings['shipping_free_province'], ENT_QUOTES) ?>">
         </div>
+        <div style="grid-column:1/-1;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:4px;">
+            <h3 style="margin:0 0 4px;">Preț fix de transport</h3>
+            <p style="margin:0 0 8px;color:#64748b;font-size:13px;">
+                Când e activ, prețul de mai jos înlocuiește tariful calculat de curier.
+                La localitățile din lista cu km suplimentari se adaugă taxa suplimentară,
+                iar la livrarea în FANbox se folosește prețul propriu de FANbox.
+                Pragurile de transport gratuit rămân valabile.
+            </p>
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" name="shipping_fixed_enabled" value="1"
+                       <?= ((string) ($settings['shipping_fixed_enabled'] ?? '0')) === '1' ? 'checked' : '' ?>>
+                Folosește preț fix de transport
+            </label>
+        </div>
+        <div class="field">
+            <label>Minim preț transport (lei)</label>
+            <input type="number" step="0.01" min="0" name="shipping_fixed_base"
+                   value="<?= htmlspecialchars((string) ($settings['shipping_fixed_base'] ?? '0'), ENT_QUOTES) ?>">
+        </div>
+        <div class="field">
+            <label>Taxă km suplimentari (lei)</label>
+            <input type="number" step="0.01" min="0" name="shipping_fixed_extra_km"
+                   value="<?= htmlspecialchars((string) ($settings['shipping_fixed_extra_km'] ?? '0'), ENT_QUOTES) ?>">
+            <p style="margin:4px 0 0;color:#64748b;font-size:12px;">
+                Se adaugă la minimul de mai sus, pentru localitățile din lista importată
+                (total localități: <strong><?= (int) ($fanExtraKmCount ?? 0) ?></strong>).
+            </p>
+        </div>
+        <div class="field">
+            <label>Preț livrare FANbox (lei)</label>
+            <input type="number" step="0.01" min="0" name="shipping_fixed_fanbox"
+                   value="<?= htmlspecialchars((string) ($settings['shipping_fixed_fanbox'] ?? '0'), ENT_QUOTES) ?>">
+            <p style="margin:4px 0 0;color:#64748b;font-size:12px;">
+                Se aplică atunci când în „Opțiuni FAN" e bifat V sau W (PickUp / DropOff FANbox).
+            </p>
+        </div>
         <div class="field">
             <label>Tip serviciu FAN</label>
             <?php

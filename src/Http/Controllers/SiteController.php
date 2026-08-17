@@ -6249,6 +6249,23 @@ CSS;
     private function resolveFanLiveShipping(array $settings, array $summary, array $billing, ?string &$errorMessage = null): ?float
     {
         $errorMessage = null;
+
+        // Prețul fix configurat în Setări livrare bate tariful curierului: îl
+        // aplicăm aici, unde știm deja județul și localitatea comenzii, ca să
+        // putem adăuga și taxa pentru localitățile cu km suplimentari.
+        if (\App\Support\ShippingPricing::esteActiv($settings)) {
+            if (!$this->requiresFanLiveShippingCharge($settings, $summary)) {
+                return null; // comanda a atins pragul de transport gratuit
+            }
+            $dbFix = $this->db();
+            return \App\Support\ShippingPricing::pret(
+                $dbFix instanceof PDO ? $dbFix : null,
+                $settings,
+                trim((string) ($billing['billing_county'] ?? '')),
+                trim((string) ($billing['billing_city'] ?? ''))
+            );
+        }
+
         if ((string) ($settings['fan_live_tariff_enabled'] ?? '0') !== '1') {
             return null;
         }
