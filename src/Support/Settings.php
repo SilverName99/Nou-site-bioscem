@@ -23,6 +23,9 @@ final class Settings
         'shipping_fixed_fanbox_enabled' => '0',
         'fan_live_tariff_enabled' => '0',
         'fan_awb_auto' => '0',
+        // Un singur AWB per comandă, chiar dacă marfa vine din mai multe
+        // depozite. Coletele se consolidează înainte de expediere.
+        'fan_awb_single' => '1',
         'fan_service_type' => 'Standard',
         'fan_shipping_payer' => 'recipient',
         'fan_cod_payer' => 'sender',

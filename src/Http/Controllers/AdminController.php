@@ -6347,6 +6347,37 @@ final class AdminController
         }
     }
 
+    /**
+     * Notează în jurnal că o comandă din mai multe depozite a plecat pe un
+     * singur AWB. Fără urma asta, nimeni n-ar mai ști de ce o comandă cu marfă
+     * din două locuri are un singur cod de urmărire — și cine împachetează n-ar
+     * ști că trebuie adusă marfa la un loc.
+     *
+     * @param array<int, array<string, mixed>> $colete
+     */
+    private function logComasareColete(PDO $db, int $orderId, array $colete): void
+    {
+        $depozite = [];
+        foreach ($colete as $colet) {
+            if (!is_array($colet)) {
+                continue;
+            }
+            $nume = trim((string) ($colet['gestiuneName'] ?? $colet['gestiuneId'] ?? ''));
+            if ($nume !== '' && !in_array($nume, $depozite, true)) {
+                $depozite[] = $nume;
+            }
+        }
+        try {
+            AdminActivityLog::log($db, 'awb_colete_comasate', [
+                'comanda_id' => $orderId,
+                'depozite' => implode(', ', $depozite),
+                'colete_primite' => count($colete),
+            ]);
+        } catch (Throwable) {
+            // Jurnalul nu trebuie să oprească generarea AWB-ului.
+        }
+    }
+
     private function createFanAwbInternal(PDO $db, int $orderId): array
     {
         if ($orderId <= 0) {
@@ -6945,11 +6976,18 @@ final class AdminController
         $awb = trim((string) ($order['fan_awb'] ?? ''));
         $awbMessage = '';
         if ($awb === '') {
-            // ERP-ul trimite coletele (depozit + produse). Mai multe colete =
-            // câte un AWB per depozit; altfel, fluxul obișnuit cu un singur AWB.
+            // ERP-ul trimite coletele (depozit + produse). Implicit, comanda
+            // pleacă într-un singur AWB chiar dacă marfa vine din două
+            // depozite: coletele se adună înainte de expediere, iar clientul
+            // primește un singur colet și un singur cod de urmărire. Cine are
+            // nevoie de expediere separată per depozit dezactivează setarea.
             $colete = is_array($event['colete'] ?? null) ? array_values($event['colete']) : [];
+            $unSingurAwb = (string) (Settings::all($db)['fan_awb_single'] ?? '1') === '1';
+            if ($unSingurAwb && count($colete) >= 2) {
+                $this->logComasareColete($db, $orderId, $colete);
+            }
             try {
-                $rezultat = count($colete) >= 2
+                $rezultat = (!$unSingurAwb && count($colete) >= 2)
                     ? $this->createFanAwbMulti($db, $orderId, $colete)
                     : $this->createFanAwbInternal($db, $orderId);
                 if (($rezultat['ok'] ?? false) !== true) {
@@ -8253,6 +8291,7 @@ final class AdminController
             'shipping_fixed_fanbox_enabled' => isset($_POST['shipping_fixed_fanbox_enabled']) ? '1' : '0',
             'fan_live_tariff_enabled' => isset($_POST['fan_live_tariff_enabled']) ? '1' : '0',
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
+            'fan_awb_single' => isset($_POST['fan_awb_single']) ? '1' : '0',
             'fan_service_type' => trim((string) ($_POST['fan_service_type'] ?? 'Standard')),
             'fan_service_type_fanbox' => trim((string) ($_POST['fan_service_type_fanbox'] ?? 'FANbox')),
             'fan_shipping_payer' => $shippingPayer,

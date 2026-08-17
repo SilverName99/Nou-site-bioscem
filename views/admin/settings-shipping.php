@@ -485,6 +485,18 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                 Generare AWB automată (în lucru, acum folosește buton manual din Comenzi)
             </label>
         </div>
+        <div class="field" style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" name="fan_awb_single" value="1"
+                    <?= ((string) ($settings['fan_awb_single'] ?? '1')) === '1' ? 'checked' : '' ?>>
+                Un singur AWB pe comandă, chiar dacă marfa vine din mai multe depozite
+            </label>
+            <small style="color:#64748b;">
+                Bifat, comanda pleacă într-un singur colet, cu un singur cod de urmărire — marfa se adună
+                înainte de expediere, iar clientul primește o singură livrare. Debifat, se emite câte un AWB
+                per depozit, iar rambursul întreg merge pe primul colet.
+            </small>
+        </div>
         </div>
 
         <article class="panel shipping-settings-panel" data-shipping-settings-panel="delivery-settings" <?= $shippingTab !== 'delivery-settings' ? 'hidden' : '' ?> style="grid-column:1/-1;margin:12px 0 0;background:#f8fafc;border-color:#cbd5e1;">
