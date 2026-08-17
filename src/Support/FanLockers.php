@@ -103,6 +103,52 @@ final class FanLockers
     }
 
     /**
+     * Câte puncte au coordonate. Diagnostic: dacă e 0 după un import, fișierul
+     * n-avea coloanele de latitudine/longitudine sau coloanele din baza de date
+     * lipseau la momentul importului.
+     */
+    public static function numarCuCoordonate(?PDO $db): int
+    {
+        if (!$db instanceof PDO) {
+            return 0;
+        }
+        try {
+            self::ensureSchema($db);
+            return (int) ($db->query(
+                'SELECT COUNT(*) FROM fan_lockers WHERE active = 1 AND lat IS NOT NULL AND lng IS NOT NULL'
+            )->fetchColumn() ?: 0);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Judeţele din nomenclator, cu numărul de puncte. Diagnostic pentru
+     * „niciun punct în acest judeţ": arată exact cum sunt scrise judeţele.
+     *
+     * @return array<string,int>
+     */
+    public static function peJudete(?PDO $db): array
+    {
+        if (!$db instanceof PDO) {
+            return [];
+        }
+        try {
+            self::ensureSchema($db);
+            $randuri = $db->query(
+                'SELECT county, COUNT(*) AS n FROM fan_lockers WHERE active = 1 GROUP BY county ORDER BY county'
+            )->fetchAll() ?: [];
+        } catch (Throwable) {
+            return [];
+        }
+        $out = [];
+        foreach ($randuri as $r) {
+            $out[(string) ($r['county'] ?? '')] = (int) ($r['n'] ?? 0);
+        }
+        return $out;
+    }
+
+    /**
      * Punctele dintr-un județ (și, opțional, dintr-o localitate). Fără județ
      * întoarce lista goală: nu are sens să încărcăm toată țara în checkout.
      *

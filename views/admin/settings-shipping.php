@@ -211,8 +211,22 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
             <button class="btn" type="submit">Importă puncte FANbox</button>
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-            Puncte active în nomenclator: <strong><?= (int) ($fanLockersCount ?? 0) ?></strong>
+            Puncte active în nomenclator: <strong><?= (int) ($fanLockersCount ?? 0) ?></strong>,
+            din care cu coordonate (pentru hartă): <strong><?= (int) ($fanLockersCuCoordonate ?? 0) ?></strong>
         </p>
+        <?php $judeteLockere = is_array($fanLockersJudete ?? null) ? $fanLockersJudete : []; ?>
+        <?php if ($judeteLockere !== []): ?>
+            <details style="margin:8px 0 0;">
+                <summary style="cursor:pointer;color:#64748b;font-size:13px;">
+                    Județe în nomenclator (<?= count($judeteLockere) ?>)
+                </summary>
+                <p style="margin:6px 0 0;color:#475569;font-size:12px;line-height:1.7;">
+                    <?php foreach ($judeteLockere as $judet => $cate): ?>
+                        <span style="display:inline-block;margin-right:10px;"><?= htmlspecialchars((string) $judet, ENT_QUOTES) ?> (<?= (int) $cate ?>)</span>
+                    <?php endforeach; ?>
+                </p>
+            </details>
+        <?php endif; ?>
         <p style="margin:6px 0 0;color:#64748b;font-size:13px;">
             Punctele care nu mai apar într-un import ulterior se dezactivează, nu se șterg —
             comenzile vechi trebuie să rămână explicabile.

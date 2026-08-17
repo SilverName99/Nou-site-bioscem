@@ -3120,13 +3120,11 @@ final class SiteController
      */
     public function fanLockersApi(): void
     {
+        // Lista de lockere e informație publică de la FAN; nu o închidem după
+        // bifa magazinului. Altfel administratorul nu putea schimba destinația
+        // unei comenzi cât timp bifa era oprită, iar mesajul spunea „niciun
+        // punct în acest județ" — ceea ce e altceva decât „opțiunea e oprită".
         $db = $this->db();
-        $settings = $this->cachedSettings($db);
-        if (!\App\Support\ShippingPricing::livrareLaFanbox($settings)) {
-            $this->jsonResponse(['ok' => false, 'items' => []], 200);
-            return;
-        }
-
         $judet = trim((string) ($_GET['county'] ?? ''));
         $localitate = trim((string) ($_GET['locality'] ?? ''));
         $puncte = \App\Support\FanLockers::pentruJudet($db, $judet, $localitate);

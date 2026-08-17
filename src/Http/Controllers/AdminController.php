@@ -7623,6 +7623,8 @@ final class AdminController
             'fanStreetsCount' => $streetsCount,
             'fanExtraKmCount' => $kmLocalitiesCount,
             'fanLockersCount' => \App\Support\FanLockers::numar($db),
+            'fanLockersCuCoordonate' => \App\Support\FanLockers::numarCuCoordonate($db),
+            'fanLockersJudete' => \App\Support\FanLockers::peJudete($db),
             'fanJudete' => $this->fanCountyList($db),
             'erpDepozite' => $erpDepozite,
             'erpGestiuniPeJudete' => $erpGestiuniPeJudete,
