@@ -379,7 +379,20 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                             <?php
                             $campaignId = (int) ($campaign['id'] ?? 0);
                             $cardStatus = (string) ($campaign['status'] ?? 'draft');
-                            $statusClass = $cardStatus === 'sent' ? 'ok' : ($cardStatus === 'scheduled' ? '' : 'off');
+                            $statusClass = $cardStatus === 'sent' ? 'ok' : (in_array($cardStatus, ['scheduled', 'sending'], true) ? '' : 'off');
+                            $statusLabel = match ($cardStatus) {
+                                'sent' => 'trimis',
+                                'sending' => 'în curs',
+                                'scheduled' => 'programat',
+                                'draft' => 'ciornă',
+                                default => $cardStatus,
+                            };
+                            // La o campanie în curs se vede cât a plecat din total,
+                            // ca să nu pară blocată cât lucrează cronul.
+                            if ($cardStatus === 'sending') {
+                                $statusLabel .= ' ' . (int) ($campaign['total_sent'] ?? 0)
+                                    . '/' . (int) ($campaign['total_recipients'] ?? 0);
+                            }
                             ?>
                             <article class="newsletter-campaign-card <?= ((int) ($selectedCampaign['id'] ?? 0) === $campaignId) ? 'selected' : '' ?>">
                                 <div>
@@ -407,7 +420,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                                             <button type="submit" class="icon-btn danger" title="Șterge newsletterul">🗑</button>
                                         </form>
                                     </div>
-                                    <span class="status-pill <?= $statusClass ?>"><?= htmlspecialchars($cardStatus, ENT_QUOTES) ?></span>
+                                    <span class="status-pill <?= $statusClass ?>"><?= htmlspecialchars($statusLabel, ENT_QUOTES) ?></span>
                                     <div class="newsletter-campaign-metrics">
                                         <strong><?= (int) ($campaign['total_sent'] ?? 0) ?></strong>
                                         <span>Trimise</span>

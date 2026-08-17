@@ -10154,8 +10154,25 @@ final class AdminController
             NewsletterService::ensureSchema($db);
             $campaignId = (int) ($_POST['campaign_id'] ?? 0);
             try {
-                $result = NewsletterService::sendCampaignNow($db, $campaignId, Settings::all($db), 10000);
-                Flash::set('success', 'Newsletter trimis acum. Sent=' . (int) ($result['sent'] ?? 0) . ', Failed=' . (int) ($result['failed'] ?? 0));
+                // Din browser trimitem doar cât încape sigur într-o cerere web;
+                // restul îl duce cronul, ca nimeni să nu stea cu pagina deschisă
+                // și să apese de mai multe ori pentru o listă mare.
+                $result = NewsletterService::sendCampaignNow(
+                    $db,
+                    $campaignId,
+                    Settings::all($db),
+                    2000,
+                    time() + 45
+                );
+                $ramase = (int) ($result['remaining'] ?? 0);
+                Flash::set(
+                    'success',
+                    $ramase > 0
+                        ? 'Trimitere pornită: ' . (int) ($result['sent'] ?? 0) . ' emailuri au plecat acum, '
+                            . $ramase . ' mai sunt la rând. Restul pleacă automat, nu mai trebuie să apeși nimic.'
+                        : 'Newsletter trimis integral: ' . (int) ($result['total_sent'] ?? 0) . ' trimise, '
+                            . (int) ($result['total_failed'] ?? 0) . ' eșuate.'
+                );
             } catch (RuntimeException $exception) {
                 Flash::set('error', 'Trimiterea newsletter-ului a eșuat: ' . $exception->getMessage());
             }

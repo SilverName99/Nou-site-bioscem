@@ -487,8 +487,21 @@ final class NewsletterService
         ]);
     }
 
-    public static function sendCampaignNow(PDO $db, int $campaignId, array $settings, int $limit = 5000): array
-    {
+    /**
+     * Trimite o bucată din campanie și se oprește.
+     *
+     * Ce nu a apucat să plece rămâne pentru rulările următoare: campania stă în
+     * starea „sending" până când nu mai are pe nimeni de servit. `$deadline` (un
+     * timestamp) oprește lotul mai devreme, ca o rulare din cron să nu fie tăiată
+     * la mijloc de limita de execuție a serverului.
+     */
+    public static function sendCampaignNow(
+        PDO $db,
+        int $campaignId,
+        array $settings,
+        int $limit = 5000,
+        ?int $deadline = null
+    ): array {
         $campaign = self::loadCampaign($db, $campaignId);
         if (!is_array($campaign)) {
             throw new RuntimeException('Campanie invalidă.');
@@ -514,9 +527,10 @@ final class NewsletterService
             }
         }
 
-        $recipients = self::multiListRecipients($db, array_values($listIds), $limit);
+        $recipients = self::remainingRecipients($db, $campaignId, array_values($listIds), $limit);
         $sent = 0;
         $failed = 0;
+        $oprit = false;
         $checkStmt = $db->prepare(
             'SELECT status
              FROM newsletter_campaign_sends
@@ -525,6 +539,10 @@ final class NewsletterService
         );
 
         foreach ($recipients as $recipient) {
+            if ($deadline !== null && time() >= $deadline) {
+                $oprit = true;
+                break;
+            }
             $subscriberId = (int) ($recipient['id'] ?? 0);
             $email = trim((string) ($recipient['email'] ?? ''));
             if ($subscriberId <= 0 || $email === '') {
@@ -590,12 +608,30 @@ final class NewsletterService
             }
         }
 
-        $totalRecipients = count($recipients);
-        $status = 'sent';
+        // Totalurile se citesc din evidența trimiterilor, nu din lotul curent:
+        // altfel a doua rulare ar raporta mai puțin decât prima și ar șterge
+        // istoricul campaniei.
+        $totalRecipients = self::totalRecipients($db, array_values($listIds));
+        $ramase = self::remainingCount($db, $campaignId, array_values($listIds));
+        $cumulat = $db->prepare(
+            'SELECT
+                SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) AS trimise,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS esuate
+             FROM newsletter_campaign_sends
+             WHERE campaign_id = :campaign_id'
+        );
+        $cumulat->execute(['campaign_id' => $campaignId]);
+        $totaluri = $cumulat->fetch() ?: [];
+        $totalSent = (int) ($totaluri['trimise'] ?? 0);
+        $totalFailed = (int) ($totaluri['esuate'] ?? 0);
+
+        // Cât timp mai are cui trimite, campania rămâne „în curs": cronul o
+        // reia singur, iar în listă se vede că nu s-a terminat.
+        $status = $ramase > 0 ? 'sending' : 'sent';
         $stmt = $db->prepare(
             'UPDATE newsletter_campaigns
              SET status = :status,
-                 sent_at = NOW(),
+                 sent_at = COALESCE(sent_at, NOW()),
                  total_recipients = :total_recipients,
                  total_sent = :total_sent,
                  total_failed = :total_failed
@@ -604,8 +640,8 @@ final class NewsletterService
         $stmt->execute([
             'status' => $status,
             'total_recipients' => $totalRecipients,
-            'total_sent' => $sent,
-            'total_failed' => $failed,
+            'total_sent' => $totalSent,
+            'total_failed' => $totalFailed,
             'id' => $campaignId,
         ]);
 
@@ -614,11 +650,71 @@ final class NewsletterService
             'total' => $totalRecipients,
             'sent' => $sent,
             'failed' => $failed,
+            'total_sent' => $totalSent,
+            'total_failed' => $totalFailed,
+            'remaining' => $ramase,
+            'stopped_early' => $oprit,
+            'finished' => $ramase === 0,
         ];
     }
 
-    public static function sendDueScheduledCampaigns(PDO $db, array $settings, int $limit = 20): array
-    {
+    /**
+     * Reia campaniile rămase în curs (status „sending"), în ordinea începerii.
+     * Se apelează din cron: o campanie mare se termină singură, în mai multe
+     * treceri, fără ca cineva să apese butonul din nou.
+     */
+    public static function continueRunningCampaigns(
+        PDO $db,
+        array $settings,
+        int $perRun = 5000,
+        ?int $deadline = null
+    ): array {
+        $stmt = $db->query(
+            'SELECT id FROM newsletter_campaigns WHERE status = "sending" ORDER BY sent_at ASC, id ASC'
+        );
+        $rows = $stmt !== false ? (array) $stmt->fetchAll() : [];
+
+        $reluate = 0;
+        $trimise = 0;
+        $esuate = 0;
+        $terminate = 0;
+        foreach ($rows as $row) {
+            if ($deadline !== null && time() >= $deadline) {
+                break;
+            }
+            $campaignId = (int) ($row['id'] ?? 0);
+            if ($campaignId <= 0) {
+                continue;
+            }
+            $reluate++;
+            try {
+                $rezultat = self::sendCampaignNow($db, $campaignId, $settings, $perRun, $deadline);
+                $trimise += (int) ($rezultat['sent'] ?? 0);
+                $esuate += (int) ($rezultat['failed'] ?? 0);
+                if (!empty($rezultat['finished'])) {
+                    $terminate++;
+                }
+            } catch (Throwable) {
+                // O campanie stricată (listă ștearsă, de exemplu) nu trebuie să
+                // blocheze restul: rămâne în „sending" și se vede în listă.
+                $esuate++;
+            }
+        }
+
+        return [
+            'resumed_campaigns' => $reluate,
+            'finished_campaigns' => $terminate,
+            'sent' => $trimise,
+            'failed' => $esuate,
+        ];
+    }
+
+    public static function sendDueScheduledCampaigns(
+        PDO $db,
+        array $settings,
+        int $limit = 20,
+        ?int $deadline = null
+    ): array {
         $stmt = $db->prepare(
             'SELECT id
              FROM newsletter_campaigns
@@ -634,13 +730,16 @@ final class NewsletterService
         $sent = 0;
         $failed = 0;
         foreach ($rows as $row) {
+            if ($deadline !== null && time() >= $deadline) {
+                break;
+            }
             $campaignId = (int) ($row['id'] ?? 0);
             if ($campaignId <= 0) {
                 continue;
             }
             $processed++;
             try {
-                $result = self::sendCampaignNow($db, $campaignId, $settings, 10000);
+                $result = self::sendCampaignNow($db, $campaignId, $settings, 10000, $deadline);
                 $sent += (int) ($result['sent'] ?? 0);
                 $failed += (int) ($result['failed'] ?? 0);
             } catch (Throwable $exception) {
@@ -674,6 +773,77 @@ final class NewsletterService
         $stmt->bindValue(':limit', max(1, min(10000, $limit)), PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
+    }
+
+    /**
+     * Destinatarii care NU au primit încă această campanie.
+     *
+     * Selecția pe listă, fără să știe ce s-a trimis deja, întorcea mereu aceiași
+     * primi N abonați: la a doua rulare erau toți marcați „sent", se săreau toți,
+     * iar restul listei nu primea niciodată nimic. De aici, trimiterea se face
+     * pe bucăți și fiecare rulare continuă de unde a rămas precedenta.
+     */
+    public static function remainingRecipients(PDO $db, int $campaignId, array $listIds, int $limit = 5000): array
+    {
+        $listIds = array_values(array_filter(array_map('intval', $listIds), fn($v) => $v > 0));
+        if ($listIds === [] || $campaignId <= 0) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($listIds), '?'));
+        $stmt = $db->prepare(
+            "SELECT DISTINCT s.id, s.email, s.name, s.status
+             FROM newsletter_list_subscribers ls
+             INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
+             LEFT JOIN newsletter_campaign_sends cs
+                    ON cs.campaign_id = ? AND cs.subscriber_id = s.id AND cs.status = 'sent'
+             WHERE ls.list_id IN ($placeholders)
+               AND s.status = 'active'
+               AND cs.subscriber_id IS NULL
+             ORDER BY s.id ASC
+             LIMIT " . max(1, min(50000, $limit))
+        );
+        $stmt->execute(array_merge([$campaignId], $listIds));
+        return $stmt->fetchAll();
+    }
+
+    /** Câți abonați activi are campania în total, pe toate listele ei. */
+    public static function totalRecipients(PDO $db, array $listIds): int
+    {
+        $listIds = array_values(array_filter(array_map('intval', $listIds), fn($v) => $v > 0));
+        if ($listIds === []) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($listIds), '?'));
+        $stmt = $db->prepare(
+            "SELECT COUNT(DISTINCT s.id)
+             FROM newsletter_list_subscribers ls
+             INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
+             WHERE ls.list_id IN ($placeholders) AND s.status = 'active'"
+        );
+        $stmt->execute($listIds);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /** Câți mai au de primit campania (0 = gata). */
+    public static function remainingCount(PDO $db, int $campaignId, array $listIds): int
+    {
+        $listIds = array_values(array_filter(array_map('intval', $listIds), fn($v) => $v > 0));
+        if ($listIds === [] || $campaignId <= 0) {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($listIds), '?'));
+        $stmt = $db->prepare(
+            "SELECT COUNT(DISTINCT s.id)
+             FROM newsletter_list_subscribers ls
+             INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
+             LEFT JOIN newsletter_campaign_sends cs
+                    ON cs.campaign_id = ? AND cs.subscriber_id = s.id AND cs.status = 'sent'
+             WHERE ls.list_id IN ($placeholders)
+               AND s.status = 'active'
+               AND cs.subscriber_id IS NULL"
+        );
+        $stmt->execute(array_merge([$campaignId], $listIds));
+        return (int) $stmt->fetchColumn();
     }
 
     public static function multiListRecipients(PDO $db, array $listIds, int $limit = 5000): array
