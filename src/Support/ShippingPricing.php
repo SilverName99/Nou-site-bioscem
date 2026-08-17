@@ -24,14 +24,22 @@ final class ShippingPricing
     }
 
     /**
-     * Magazinul livrează la FANbox? Deocamdată e o decizie de magazin, luată
-     * explicit dintr-o bifă proprie — NU dedusă din „Opțiuni FAN", care e o
-     * setare tehnică pentru AWB și n-ar trebui să schimbe prețul pe tăcute.
-     * Când clientul va putea alege FANbox la checkout, aici intră alegerea lui.
+     * Magazinul oferă livrare la FANbox? E o decizie de magazin, luată explicit
+     * dintr-o bifă proprie — NU dedusă din „Opțiuni FAN", care e o setare
+     * tehnică pentru AWB și n-ar trebui să schimbe prețul pe tăcute.
+     *
+     * Atenție: asta spune doar că opțiunea e disponibilă în checkout. Dacă o
+     * comandă chiar merge la FANbox decide clientul, la fiecare comandă.
      */
-    public static function livrareLaFanbox(array $settings): bool
+    public static function ofertaFanbox(array $settings): bool
     {
         return (string) ($settings['shipping_fixed_fanbox_enabled'] ?? '0') === '1';
+    }
+
+    /** Denumirea veche, păstrată pentru apelurile existente. */
+    public static function livrareLaFanbox(array $settings): bool
+    {
+        return self::ofertaFanbox($settings);
     }
 
     /**
@@ -45,12 +53,15 @@ final class ShippingPricing
         ?PDO $db,
         array $settings,
         string $judet,
-        string $localitate
+        string $localitate,
+        bool $laFanbox = false
     ): ?float {
         if (!self::esteActiv($settings)) {
             return null;
         }
-        if (self::livrareLaFanbox($settings)) {
+        // Prețul de FANbox se aplică doar comenzilor livrate acolo, nu tuturor
+        // comenzilor dintr-un magazin care oferă și această variantă.
+        if ($laFanbox && self::ofertaFanbox($settings)) {
             return round(max(0.0, (float) ($settings['shipping_fixed_fanbox'] ?? 0)), 2);
         }
 
@@ -62,12 +73,12 @@ final class ShippingPricing
     }
 
     /** Prețul de bază, pentru sumarele în care nu știm încă localitatea. */
-    public static function pretDeBaza(array $settings): ?float
+    public static function pretDeBaza(array $settings, bool $laFanbox = false): ?float
     {
         if (!self::esteActiv($settings)) {
             return null;
         }
-        if (self::livrareLaFanbox($settings)) {
+        if ($laFanbox && self::ofertaFanbox($settings)) {
             return round(max(0.0, (float) ($settings['shipping_fixed_fanbox'] ?? 0)), 2);
         }
         return round(max(0.0, (float) ($settings['shipping_fixed_base'] ?? 0)), 2);

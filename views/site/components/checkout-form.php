@@ -43,6 +43,9 @@ $paymentMethod = (string) ($values['payment_method'] ?? '');
 if (!in_array($paymentMethod, $paymentMethods, true)) {
     $paymentMethod = $paymentMethods[0];
 }
+$fanboxDisponibil = (bool) ($fanboxDisponibil ?? false);
+$fanboxAles = (int) ($fanboxAles ?? 0);
+$fanboxPret = $fanboxPret ?? null;
 $antiBot = is_array($antiBot ?? null) ? $antiBot : [];
 $antiBotToken = trim((string) ($antiBot['token'] ?? ''));
 $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
@@ -75,6 +78,11 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
            astfel; poziționarea în afara ecranului le lăsa vizibile pentru
            autofill și bloca clienți reali. */
         .bv-checkout-v3__hp{display:none;}
+        .bv-checkout-v3__fanbox{border:1px solid #d5e5dc;border-radius:12px;padding:12px 14px;background:#f6faf8;}
+        .bv-checkout-v3__fanbox-pick{display:none;margin-top:10px;}
+        .bv-checkout-v3__fanbox-pick.is-visible{display:block;}
+        .bv-checkout-v3__fanbox-pick select{width:100%;}
+        .bv-checkout-v3__fanbox-note{margin:6px 0 0;font-size:13px;color:#64748b;}
         .bv-checkout-v3__field input:focus,.bv-checkout-v3__field textarea:focus,.bv-checkout-v3__field select:focus{border-color:#3aa26f;box-shadow:0 0 0 3px rgba(42,140,89,.14);}
         .bv-checkout-v3__payment{margin:6px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
         .bv-checkout-v3__method{position:relative;}
@@ -240,6 +248,21 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                             <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-postcode">Cod poștal *</label>
                             <input id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-postcode" type="text" name="billing_postcode" value="<?= htmlspecialchars((string) ($values['billing_postcode'] ?? ''), ENT_QUOTES) ?>" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" title="Codul poștal trebuie să conțină exact 6 cifre">
                         </div>
+                        <?php if (!empty($fanboxDisponibil)): ?>
+                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full bv-checkout-v3__fanbox" data-fanbox-block>
+                            <label class="bv-checkout-v3__checkbox">
+                                <input type="checkbox" name="livrare_fanbox" value="1" data-fanbox-toggle <?= !empty($fanboxAles) ? 'checked' : '' ?>>
+                                <span>Livrare la FANbox<?php if (($fanboxPret ?? null) !== null): ?> — <?= number_format((float) $fanboxPret, 2) ?> lei<?php endif; ?></span>
+                            </label>
+                            <div class="bv-checkout-v3__fanbox-pick<?= !empty($fanboxAles) ? ' is-visible' : '' ?>" data-fanbox-pick>
+                                <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-fanbox">Alege punctul de ridicare *</label>
+                                <select id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-fanbox" name="fan_locker_id" data-fanbox-select>
+                                    <option value="">— Alege întâi județul —</option>
+                                </select>
+                                <p class="bv-checkout-v3__fanbox-note" data-fanbox-note></p>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                         <?php $shippingSame = ((int) ($values['shipping_same_as_billing'] ?? 1)) === 1; ?>
                         <input type="hidden" name="has_shipping_toggle" value="1">
                         <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
@@ -570,6 +593,83 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         }
         syncShippingFields();
 
+        // ── FANbox: bifa arată selectorul, iar punctele se încarcă din județ ──
+        const fanboxToggle = form.querySelector('[data-fanbox-toggle]');
+        const fanboxPick = form.querySelector('[data-fanbox-pick]');
+        const fanboxSelect = form.querySelector('[data-fanbox-select]');
+        const fanboxNote = form.querySelector('[data-fanbox-note]');
+        let fanboxJudetIncarcat = '';
+
+        const incarcaFanbox = async (judet, localitate) => {
+            if (!(fanboxSelect instanceof HTMLSelectElement)) return;
+            const cheie = `${judet}|${localitate}`;
+            if (cheie === fanboxJudetIncarcat) return;
+            if (!judet) {
+                fanboxSelect.innerHTML = '<option value="">— Alege întâi județul —</option>';
+                fanboxJudetIncarcat = '';
+                return;
+            }
+            fanboxJudetIncarcat = cheie;
+            fanboxSelect.innerHTML = '<option value="">Se încarcă…</option>';
+            try {
+                const url = `/api/fan/lockers?county=${encodeURIComponent(judet)}&locality=${encodeURIComponent(localitate || '')}`;
+                const res = await fetch(url, { headers: { Accept: 'application/json' } });
+                const data = await res.json();
+                const items = Array.isArray(data.items) ? data.items : [];
+                if (items.length === 0) {
+                    fanboxSelect.innerHTML = '<option value="">Niciun punct FANbox în acest județ</option>';
+                    if (fanboxNote instanceof HTMLElement) {
+                        fanboxNote.textContent = 'Alege livrarea la adresă sau un alt județ.';
+                    }
+                    return;
+                }
+                const alesAnterior = String(<?= (int) ($fanboxAles ?? 0) ?>);
+                fanboxSelect.innerHTML =
+                    '<option value="">— Alege punctul —</option>' +
+                    items.map((p) => {
+                        const sel = String(p.id) === alesAnterior ? ' selected' : '';
+                        const eticheta = String(p.label || p.name || '').replace(/</g, '&lt;');
+                        return `<option value="${p.id}"${sel}>${eticheta}</option>`;
+                    }).join('');
+                if (fanboxNote instanceof HTMLElement) {
+                    fanboxNote.textContent = `${items.length} puncte disponibile.`;
+                }
+            } catch {
+                fanboxSelect.innerHTML = '<option value="">Nu am putut încărca punctele</option>';
+                fanboxJudetIncarcat = '';
+            }
+        };
+
+        const sincronizeazaFanbox = () => {
+            const activ = fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked;
+            if (fanboxPick instanceof HTMLElement) {
+                fanboxPick.classList.toggle('is-visible', activ);
+            }
+            if (fanboxSelect instanceof HTMLSelectElement) {
+                // Punctul e obligatoriu doar când clientul a ales FANbox.
+                fanboxSelect.required = activ;
+                if (!activ) fanboxSelect.value = '';
+            }
+            if (activ) {
+                const j = form.querySelector('[data-fan-county-select]');
+                const l = form.querySelector('[data-fan-locality-input]');
+                void incarcaFanbox(
+                    j instanceof HTMLSelectElement ? j.value : '',
+                    l instanceof HTMLInputElement ? l.value : '',
+                );
+            }
+        };
+        if (fanboxSelect instanceof HTMLSelectElement) {
+            fanboxSelect.addEventListener('change', () => void requestShippingQuote());
+        }
+        if (fanboxToggle instanceof HTMLInputElement) {
+            fanboxToggle.addEventListener('change', () => {
+                sincronizeazaFanbox();
+                // Prețul transportului depinde de alegere, deci recalculăm.
+                void requestShippingQuote();
+            });
+        }
+
         const countyInput = form.querySelector('[data-fan-county-select]');
         const localityInput = form.querySelector('[data-fan-locality-input]');
         const localityList = form.querySelector('[data-fan-locality-list]');
@@ -691,6 +791,11 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         billing_street: simpleValue(streetInput),
                         billing_street_no: simpleValue(streetNoInput),
                         billing_postcode: simpleValue(postcodeInput),
+                        // Prețul transportului depinde de FANbox vs. adresă.
+                        fan_locker_id: fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked
+                            && fanboxSelect instanceof HTMLSelectElement
+                            ? fanboxSelect.value
+                            : '',
                     })
                 });
                 const payload = await response.json().catch(() => ({}));
@@ -787,12 +892,17 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                 void requestShippingQuote();
             });
         }
+        sincronizeazaFanbox();
         if (countyInput instanceof HTMLInputElement || countyInput instanceof HTMLSelectElement) {
             countyInput.addEventListener('change', () => {
                 if (localityInput instanceof HTMLInputElement) {
                     localityInput.value = '';
                     setListOpen(false);
                 }
+                // Punctele FANbox sunt pe județ: la schimbarea lui, lista veche
+                // n-ar mai fi valabilă.
+                fanboxJudetIncarcat = '';
+                sincronizeazaFanbox();
                 void requestShippingQuote();
             });
         }

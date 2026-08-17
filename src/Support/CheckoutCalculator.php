@@ -10,6 +10,37 @@ use Throwable;
 
 final class CheckoutCalculator
 {
+    /** Cheia din sesiune în care se ține punctul FANbox ales de client. */
+    public const FANBOX_SESSION_KEY = 'checkout_fan_locker';
+
+    /**
+     * Clientul a ales livrarea la FANbox pentru comanda curentă?
+     *
+     * Alegerea trăiește în sesiune cât timp se completează checkout-ul, ca
+     * sumarul și prețul transportului să se potrivească cu ce vede clientul
+     * pe ecran înainte de a trimite comanda.
+     */
+    public static function livrareAleasaLaFanbox(): bool
+    {
+        return (int) ($_SESSION[self::FANBOX_SESSION_KEY] ?? 0) > 0;
+    }
+
+    /** Id-ul punctului FANbox ales (0 = livrare la adresă). */
+    public static function fanboxAles(): int
+    {
+        return max(0, (int) ($_SESSION[self::FANBOX_SESSION_KEY] ?? 0));
+    }
+
+    /** Reține alegerea clientului; 0 înseamnă livrare la adresă. */
+    public static function alegeFanbox(int $lockerId): void
+    {
+        if ($lockerId > 0) {
+            $_SESSION[self::FANBOX_SESSION_KEY] = $lockerId;
+            return;
+        }
+        unset($_SESSION[self::FANBOX_SESSION_KEY]);
+    }
+
     public static function buildSummary(?PDO $db, array $settings): array
     {
         $cartMap = Cart::items();
@@ -279,6 +310,15 @@ final class CheckoutCalculator
             "ALTER TABLE orders ADD COLUMN shipping_city VARCHAR(190) DEFAULT NULL AFTER shipping_address_line1",
             "ALTER TABLE orders ADD COLUMN shipping_county VARCHAR(190) DEFAULT NULL AFTER shipping_city",
             "ALTER TABLE orders ADD COLUMN shipping_postcode VARCHAR(20) DEFAULT NULL AFTER shipping_county",
+            // Livrarea la FANbox: punctul ales se îngheață pe comandă, nu doar
+            // ca id — nomenclatorul se reimportă, comanda trebuie să rămână
+            // explicabilă peste un an.
+            "ALTER TABLE orders ADD COLUMN fan_locker_id INT UNSIGNED DEFAULT NULL AFTER shipping_postcode",
+            "ALTER TABLE orders ADD COLUMN fan_locker_name VARCHAR(190) DEFAULT NULL AFTER fan_locker_id",
+            "ALTER TABLE orders ADD COLUMN fan_locker_address VARCHAR(255) DEFAULT NULL AFTER fan_locker_name",
+            "ALTER TABLE orders ADD COLUMN fan_locker_city VARCHAR(190) DEFAULT NULL AFTER fan_locker_address",
+            "ALTER TABLE orders ADD COLUMN fan_locker_county VARCHAR(190) DEFAULT NULL AFTER fan_locker_city",
+            "ALTER TABLE orders ADD COLUMN fan_locker_postcode VARCHAR(20) DEFAULT NULL AFTER fan_locker_county",
         ];
         foreach ($cols as $sql) {
             try {
@@ -973,7 +1013,7 @@ final class CheckoutCalculator
         // Prețul fix are prioritate: se afișează în sumar prețul de bază, iar
         // eventuala taxă de km suplimentari se adaugă la finalizarea comenzii,
         // când se cunoaște localitatea exactă.
-        $pretFix = ShippingPricing::pretDeBaza($settings);
+        $pretFix = ShippingPricing::pretDeBaza($settings, self::livrareAleasaLaFanbox());
         if ($pretFix !== null) {
             return self::transportGratuit($settings, $isBucharest, $subtotal, $discount)
                 ? 0.0
@@ -1044,7 +1084,7 @@ final class CheckoutCalculator
             return round($currentShipping, 2);
         }
         // Fără un transport deja stabilit, prețul fix (dacă e activ) e referința.
-        $pretFix = ShippingPricing::pretDeBaza($settings);
+        $pretFix = ShippingPricing::pretDeBaza($settings, self::livrareAleasaLaFanbox());
         if ($pretFix !== null) {
             return $pretFix;
         }

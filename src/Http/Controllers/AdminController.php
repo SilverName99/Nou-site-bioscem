@@ -13033,6 +13033,18 @@ HTML;
             $recipientStreet = trim((string) ($order['billing_address_line1'] ?? ''));
             $recipientZip = trim((string) ($order['billing_postcode'] ?? ''));
         }
+        // Livrare la FANbox: destinatarul rămâne clientul (nume, telefon — el
+        // ridică coletul), dar adresa devine a lockerului ales. Opțiunea „V"
+        // spune curierului că destinația e un punct FANbox.
+        $lockerAddress = trim((string) ($order['fan_locker_address'] ?? ''));
+        $laFanbox = $lockerAddress !== '' && (int) ($order['fan_locker_id'] ?? 0) > 0;
+        if ($laFanbox) {
+            $recipientCounty = trim((string) ($order['fan_locker_county'] ?? '')) ?: $recipientCounty;
+            $recipientLocality = trim((string) ($order['fan_locker_city'] ?? '')) ?: $recipientLocality;
+            $recipientStreet = $lockerAddress;
+            $recipientZip = trim((string) ($order['fan_locker_postcode'] ?? '')) ?: $recipientZip;
+        }
+
         // Emailul de notificare rămâne cel al clientului (nu există câmp separat la livrare).
         $recipientEmail = trim((string) ($order['billing_email'] ?? ''));
 
@@ -13069,7 +13081,7 @@ HTML;
                 'observation' => $contentLabel,
                 'content' => $contentLabel,
                 'costCenter' => null,
-                'options' => $this->fanOptionCodesFromSettings($settings),
+                'options' => $this->fanOptionCodes($settings, $laFanbox),
             ],
             'recipient' => [
                 'name' => $recipientName !== '' ? $recipientName : 'Client',
@@ -13192,6 +13204,20 @@ HTML;
             'width' => $width > 0 ? $width : 0,
             'height' => $height > 0 ? $height : 0,
         ];
+    }
+
+    /**
+     * Opțiunile FAN pentru un AWB. La livrarea în FANbox se adaugă „V", chiar
+     * dacă magazinul n-a bifat-o în setări: fără ea coletul ar pleca spre
+     * adresa lockerului ca spre o adresă obișnuită.
+     */
+    private function fanOptionCodes(array $settings, bool $laFanbox): array
+    {
+        $codes = $this->fanOptionCodesFromSettings($settings);
+        if ($laFanbox && !in_array('V', $codes, true)) {
+            $codes[] = 'V';
+        }
+        return $codes;
     }
 
     private function fanOptionCodesFromSettings(array $settings): array

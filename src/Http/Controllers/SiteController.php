@@ -873,6 +873,24 @@ final class SiteController
         // completat, nu gol (altfel ar retasta toată adresa la fiecare eroare).
         $this->rememberCheckoutInput();
 
+        // Alegerea FANbox vine din formular; fără punct ales, comanda n-are
+        // unde fi livrată, deci o oprim aici, nu la generarea AWB-ului.
+        $lockerId = isset($_POST['livrare_fanbox']) ? (int) ($_POST['fan_locker_id'] ?? 0) : 0;
+        \App\Support\CheckoutCalculator::alegeFanbox($lockerId);
+        $locker = null;
+        if ($lockerId > 0) {
+            $locker = \App\Support\FanLockers::dupaId($db, $lockerId);
+            if ($locker === null) {
+                Flash::set('error', 'Punctul FANbox ales nu mai este disponibil. Alege altul.');
+                header('Location: /checkout');
+                return;
+            }
+        } elseif (isset($_POST['livrare_fanbox'])) {
+            Flash::set('error', 'Alege punctul FANbox la care vrei livrarea.');
+            header('Location: /checkout');
+            return;
+        }
+
         $antiBotError = $this->validateCheckoutAntiBot($db);
         if ($antiBotError !== null) {
             Flash::set('error', $antiBotError);
@@ -960,6 +978,8 @@ final class SiteController
                     billing_is_company, billing_company_name, billing_company_tax_id, billing_company_registration_no,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                     shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
+                    fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
+                    fan_locker_county, fan_locker_postcode,
                     notes, created_at
                 ) VALUES (
                     :order_number, :user_id, :status, :payment_method, :payment_status, :shipping_method, :shipping_cost,
@@ -969,6 +989,8 @@ final class SiteController
                     :billing_is_company, :billing_company_name, :billing_company_tax_id, :billing_company_registration_no,
                     :shipping_same_as_billing, :shipping_first_name, :shipping_last_name, :shipping_phone,
                     :shipping_address_line1, :shipping_city, :shipping_county, :shipping_postcode,
+                    :fan_locker_id, :fan_locker_name, :fan_locker_address, :fan_locker_city,
+                    :fan_locker_county, :fan_locker_postcode,
                     :notes, :created_at
                 )'
             );
@@ -979,7 +1001,13 @@ final class SiteController
                 'status' => $status,
                 'payment_method' => $billing['payment_method'],
                 'payment_status' => 'unpaid',
-                'shipping_method' => 'fan_courier',
+                'fan_locker_id' => $locker !== null ? $locker['id'] : null,
+                'fan_locker_name' => $locker !== null ? $locker['name'] : null,
+                'fan_locker_address' => $locker !== null ? $locker['address'] : null,
+                'fan_locker_city' => $locker !== null ? $locker['locality'] : null,
+                'fan_locker_county' => $locker !== null ? $locker['county'] : null,
+                'fan_locker_postcode' => $locker !== null ? ($locker['postcode'] ?? null) : null,
+                'shipping_method' => $locker !== null ? 'fan_box' : 'fan_courier',
                 'shipping_cost' => $summary['shipping'],
                 'discount_total' => $summary['discount'],
                 'loyalty_points_used' => $pointsApplied,
@@ -3231,6 +3259,11 @@ final class SiteController
         $payload['billing_street'] = trim((string) ($payload['billing_street'] ?? $_GET['billing_street'] ?? ''));
         $payload['billing_street_no'] = trim((string) ($payload['billing_street_no'] ?? $_GET['billing_street_no'] ?? ''));
         $payload['billing_postcode'] = trim((string) ($payload['billing_postcode'] ?? $_GET['billing_postcode'] ?? ''));
+        // Alegerea FANbox schimbă prețul, deci o reținem înainte de a calcula:
+        // sumarul afișat trebuie să fie cel pe care îl va plăti clientul.
+        \App\Support\CheckoutCalculator::alegeFanbox(
+            (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0)
+        );
         $result = $this->checkoutShippingQuoteForPayload($payload);
         $status = trim((string) ($result['error'] ?? '')) === 'Conexiunea DB nu este disponibilă.' ? 503 : 200;
         $this->jsonResponse($result, $status);
@@ -4251,6 +4284,26 @@ HTML;
         return $day . ' ' . $month;
     }
 
+    /**
+     * Magazinul oferă FANbox ȘI are puncte în nomenclator? Fără puncte,
+     * opțiunea ar fi o promisiune goală în checkout.
+     */
+    private function fanboxDisponibil(): bool
+    {
+        $db = $this->db();
+        if (!\App\Support\ShippingPricing::ofertaFanbox($this->cachedSettings($db))) {
+            return false;
+        }
+        return \App\Support\FanLockers::numar($db) > 0;
+    }
+
+    /** Prețul de livrare la FANbox, când prețurile fixe sunt active. */
+    private function fanboxPret(): ?float
+    {
+        $settings = $this->cachedSettings($this->db());
+        return \App\Support\ShippingPricing::pretDeBaza($settings, true);
+    }
+
     private function renderCheckoutSection(array $summary, array $values, array $fanCounties, bool $isLoggedIn = false): string
     {
         return $this->renderPhpView('site/components/checkout-form', [
@@ -4262,6 +4315,9 @@ HTML;
             'shippingQuoteEndpoint' => self::CHECKOUT_SHIPPING_QUOTE_API_ENDPOINT,
             'isLoggedIn' => $isLoggedIn,
             'antiBot' => $this->issueCheckoutAntiBotPayload(),
+            'fanboxDisponibil' => $this->fanboxDisponibil(),
+            'fanboxAles' => \App\Support\CheckoutCalculator::fanboxAles(),
+            'fanboxPret' => $this->fanboxPret(),
             'previewMode' => false,
             'checkoutInstanceId' => 'checkout-live',
         ]);
@@ -6374,7 +6430,8 @@ CSS;
                 $dbFix instanceof PDO ? $dbFix : null,
                 $settings,
                 trim((string) ($billing['billing_county'] ?? '')),
-                trim((string) ($billing['billing_city'] ?? ''))
+                trim((string) ($billing['billing_city'] ?? '')),
+                \App\Support\CheckoutCalculator::livrareAleasaLaFanbox()
             );
         }
 
