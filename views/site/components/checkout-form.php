@@ -83,6 +83,9 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         .bv-checkout-v3__fanbox-pick.is-visible{display:block;}
         .bv-checkout-v3__fanbox-pick select{width:100%;}
         .bv-checkout-v3__fanbox-note{margin:6px 0 0;font-size:13px;color:#64748b;}
+        .bv-checkout-v3__fanbox-maptoggle{margin-top:8px;border:0;background:none;padding:0;color:#1f8b57;font:600 13px/1.2 "DM Sans",Arial,sans-serif;text-decoration:underline;cursor:pointer;}
+        .bv-checkout-v3__fanbox-map{margin-top:10px;height:320px;border-radius:12px;overflow:hidden;border:1px solid #d2e0d7;}
+        .bv-checkout-v3__fanbox-map .leaflet-container{height:100%;width:100%;}
         .bv-checkout-v3__field input:focus,.bv-checkout-v3__field textarea:focus,.bv-checkout-v3__field select:focus{border-color:#3aa26f;box-shadow:0 0 0 3px rgba(42,140,89,.14);}
         .bv-checkout-v3__payment{margin:6px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
         .bv-checkout-v3__method{position:relative;}
@@ -260,6 +263,8 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                                     <option value="">— Alege întâi județul —</option>
                                 </select>
                                 <p class="bv-checkout-v3__fanbox-note" data-fanbox-note></p>
+                                <button type="button" class="bv-checkout-v3__fanbox-maptoggle" data-fanbox-maptoggle>Vezi pe hartă</button>
+                                <div class="bv-checkout-v3__fanbox-map" data-fanbox-map hidden></div>
                             </div>
                         </div>
                         <?php endif; ?>
@@ -631,14 +636,104 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         const eticheta = String(p.label || p.name || '').replace(/</g, '&lt;');
                         return `<option value="${p.id}"${sel}>${eticheta}</option>`;
                     }).join('');
+                puncteCurente = items;
                 if (fanboxNote instanceof HTMLElement) {
                     fanboxNote.textContent = `${items.length} puncte disponibile.`;
+                }
+                if (fanboxMapEl instanceof HTMLElement && !fanboxMapEl.hidden) {
+                    void deseneazaHarta();
                 }
             } catch {
                 fanboxSelect.innerHTML = '<option value="">Nu am putut încărca punctele</option>';
                 fanboxJudetIncarcat = '';
             }
         };
+
+        // ── Harta punctelor ──────────────────────────────────────────────
+        // Leaflet se încarcă abia când clientul cere harta: pentru cei care
+        // livrează la adresă n-are rost să tragem o bibliotecă externă.
+        const fanboxMapToggle = form.querySelector('[data-fanbox-maptoggle]');
+        const fanboxMapEl = form.querySelector('[data-fanbox-map]');
+        let harta = null;
+        let stratMarkere = null;
+        let leafletPromise = null;
+
+        const incarcaLeaflet = () => {
+            if (window.L) return Promise.resolve(window.L);
+            if (leafletPromise) return leafletPromise;
+            leafletPromise = new Promise((resolve, reject) => {
+                const css = document.createElement('link');
+                css.rel = 'stylesheet';
+                css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                document.head.appendChild(css);
+                const js = document.createElement('script');
+                js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                js.onload = () => resolve(window.L);
+                js.onerror = () => reject(new Error('leaflet'));
+                document.head.appendChild(js);
+            });
+            return leafletPromise;
+        };
+
+        let puncteCurente = [];
+
+        const deseneazaHarta = async () => {
+            if (!(fanboxMapEl instanceof HTMLElement)) return;
+            const cuCoordonate = puncteCurente.filter(
+                (p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)),
+            );
+            if (cuCoordonate.length === 0) return;
+            let L;
+            try {
+                L = await incarcaLeaflet();
+            } catch {
+                fanboxMapEl.hidden = true;
+                if (fanboxMapToggle instanceof HTMLElement) {
+                    fanboxMapToggle.textContent = 'Harta nu s-a putut încărca';
+                }
+                return;
+            }
+            if (!harta) {
+                harta = L.map(fanboxMapEl, { scrollWheelZoom: false });
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 18,
+                    attribution: '© OpenStreetMap',
+                }).addTo(harta);
+                stratMarkere = L.layerGroup().addTo(harta);
+            }
+            stratMarkere.clearLayers();
+            const limite = [];
+            cuCoordonate.forEach((p) => {
+                const lat = Number(p.lat);
+                const lng = Number(p.lng);
+                limite.push([lat, lng]);
+                const marker = L.marker([lat, lng]).addTo(stratMarkere);
+                marker.bindPopup(
+                    `<strong>${String(p.name || '')}</strong><br>${String(p.address || '')}<br>` +
+                    '<em>Apasă pe marcaj pentru a alege acest punct</em>',
+                );
+                // Marcajul e o a doua cale de a alege: selectul rămâne sursa
+                // adevărului, ca să funcționeze și fără hartă.
+                marker.on('click', () => {
+                    if (fanboxSelect instanceof HTMLSelectElement) {
+                        fanboxSelect.value = String(p.id);
+                        fanboxSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+            });
+            harta.fitBounds(limite, { padding: [24, 24], maxZoom: 14 });
+            // Containerul a fost ascuns până acum: fără asta, harta rămâne gri.
+            window.setTimeout(() => harta.invalidateSize(), 60);
+        };
+
+        if (fanboxMapToggle instanceof HTMLElement && fanboxMapEl instanceof HTMLElement) {
+            fanboxMapToggle.addEventListener('click', () => {
+                const deschis = !fanboxMapEl.hidden;
+                fanboxMapEl.hidden = deschis;
+                fanboxMapToggle.textContent = deschis ? 'Vezi pe hartă' : 'Ascunde harta';
+                if (!deschis) void deseneazaHarta();
+            });
+        }
 
         const sincronizeazaFanbox = () => {
             const activ = fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked;

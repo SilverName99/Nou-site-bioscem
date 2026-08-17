@@ -4299,6 +4299,7 @@ final class AdminController
                         loyalty_points_used, loyalty_points_discount, loyalty_points_awarded, created_at,
                         deleted_at, ad_source, ad_click_id,
                         fan_awb, fan_awb_list, fan_tracking_url, fan_tracking_status, fan_tracking_last_event_at, fan_tracking_synced_at,
+                        fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city, fan_locker_county,
                         completed_awb_email_sent_at, completed_awb_email_error,
                         billing_first_name, billing_last_name, billing_email, billing_phone,
                         billing_address_line1, billing_address_line2, billing_city, billing_county, billing_postcode,
@@ -4845,6 +4846,141 @@ final class AdminController
      * Editare manuală a produselor comenzii din admin: cantități + adăugare produse noi.
      * Recalculează subtotal, transport (gratuit dacă atinge pragul) și total.
      */
+    /**
+     * Schimbă destinația unei comenzi: livrare la un punct FANbox sau înapoi la
+     * adresa clientului. Prețul transportului se recalculează, fiindcă FANbox
+     * are tarif propriu.
+     */
+    public function orderFanboxSave(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if ($orderId <= 0 || !$db instanceof PDO) {
+            echo json_encode(['ok' => false, 'error' => 'Comandă invalidă.']);
+            return;
+        }
+        \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, status, payment_status, subtotal, discount_total, loyalty_points_discount,
+                    shipping_cost, billing_county, billing_city, fan_awb
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch();
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
+            return;
+        }
+        // Cu AWB emis, destinația e deja la curier: o schimbare aici ar rămâne
+        // doar în site, iar coletul ar pleca tot unde scrie pe AWB.
+        if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Comanda are deja AWB emis. Anulează AWB-ul la FAN înainte de a schimba destinația.',
+            ]);
+            return;
+        }
+
+        $lockerId = max(0, (int) ($_POST['fan_locker_id'] ?? 0));
+        $locker = null;
+        if ($lockerId > 0) {
+            $locker = \App\Support\FanLockers::dupaId($db, $lockerId);
+            if ($locker === null) {
+                echo json_encode(['ok' => false, 'error' => 'Punctul FANbox ales nu este disponibil.']);
+                return;
+            }
+        }
+
+        $settings = Settings::all($db);
+        $subtotal = round((float) ($order['subtotal'] ?? 0), 2);
+        $discountRef = round((float) ($order['discount_total'] ?? 0), 2)
+            + round((float) ($order['loyalty_points_discount'] ?? 0), 2);
+
+        // Transportul se ia de la zero: prețul vechi era pentru cealaltă
+        // destinație, deci nu are ce să conteze aici.
+        $transport = \App\Support\ShippingPricing::pret(
+            $db,
+            $settings,
+            (string) ($order['billing_county'] ?? ''),
+            (string) ($order['billing_city'] ?? ''),
+            $locker !== null
+        );
+        if ($transport === null) {
+            $transport = \App\Support\CheckoutCalculator::adminRecalcShipping(
+                $settings,
+                (string) ($order['billing_county'] ?? ''),
+                $subtotal,
+                $discountRef,
+                0.0
+            );
+        } elseif (\App\Support\CheckoutCalculator::adminRecalcShipping(
+            $settings,
+            (string) ($order['billing_county'] ?? ''),
+            $subtotal,
+            $discountRef,
+            0.0
+        ) === 0.0) {
+            // Pragul de transport gratuit rămâne valabil și la FANbox.
+            $transport = 0.0;
+        }
+
+        $effDiscount = min($discountRef, $subtotal);
+        $total = round(max(0.0, $subtotal - $effDiscount + $transport), 2);
+
+        try {
+            $db->prepare(
+                'UPDATE orders SET
+                    fan_locker_id = :lid, fan_locker_name = :lname, fan_locker_address = :laddr,
+                    fan_locker_city = :lcity, fan_locker_county = :lcounty, fan_locker_postcode = :lzip,
+                    shipping_method = :method, shipping_cost = :ship, total = :tot
+                 WHERE id = :id'
+            )->execute([
+                'lid' => $locker !== null ? $locker['id'] : null,
+                'lname' => $locker !== null ? $locker['name'] : null,
+                'laddr' => $locker !== null ? $locker['address'] : null,
+                'lcity' => $locker !== null ? $locker['locality'] : null,
+                'lcounty' => $locker !== null ? $locker['county'] : null,
+                'lzip' => $locker !== null ? ($locker['postcode'] ?? null) : null,
+                'method' => $locker !== null ? 'fan_box' : 'fan_courier',
+                'ship' => $transport,
+                'tot' => $total,
+                'id' => $orderId,
+            ]);
+        } catch (Throwable) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut salva destinația comenzii.']);
+            return;
+        }
+
+        AdminActivityLog::log($db, 'order_delivery_change', [
+            'order_id' => $orderId,
+            'destinatie' => $locker !== null ? ('FANbox: ' . $locker['name']) : 'adresa clientului',
+            'transport' => $transport,
+        ]);
+
+        $erpSync = null;
+        if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+            try {
+                $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+            } catch (Throwable $e) {
+                $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+            }
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'shipping_cost' => $transport,
+            'total' => $total,
+            'locker' => $locker,
+            'plata_diferenta' => (string) ($order['payment_status'] ?? '') === 'paid',
+            'erp' => $erpSync,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
     public function orderItemsSave(array $params): void
     {
         if (!$this->guard()) {

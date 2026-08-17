@@ -767,6 +767,22 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     <div><small>AWB FAN</small><p>${esc(order.fan_awb || '-')}</p></div>
                     <div><small>Cupon folosit</small><p>${couponCode !== '' ? esc(couponCode) : '— (fără cupon)'}</p></div>
                 </div>
+                <div id="order-fanbox-${order.id}" style="background:#f6faf8;border:1px solid #d5e5dc;border-radius:8px;padding:12px;margin-bottom:10px;">
+                  <small style="display:block;margin-bottom:6px;color:#475569;">Destinație livrare</small>
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                    <input type="checkbox" id="order-fanbox-toggle-${order.id}" ${order.fan_locker_id ? 'checked' : ''}>
+                    Livrare la FANbox
+                  </label>
+                  <div id="order-fanbox-pick-${order.id}" style="margin-top:8px;${order.fan_locker_id ? '' : 'display:none;'}">
+                    <select id="order-fanbox-select-${order.id}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:6px;">
+                      <option value="">Se încarcă…</option>
+                    </select>
+                    <p id="order-fanbox-note-${order.id}" style="margin:6px 0 0;font-size:12px;color:#64748b;">
+                      ${order.fan_locker_name ? esc(order.fan_locker_name) + ' — ' + esc(order.fan_locker_address || '') : ''}
+                    </p>
+                  </div>
+                  <button type="button" onclick="salveazaFanbox(${order.id})" style="margin-top:8px;font-size:12px;padding:5px 10px;border:1px solid #1f8b57;border-radius:6px;background:#1f8b57;color:#fff;cursor:pointer;">Salvează destinația</button>
+                </div>
                 <p>
                   <small>Adresă</small>
                   <span id="order-address-display-${order.id}">${addressParts.length ? addressParts.map(esc).join(', ') : '-'}</span>
@@ -824,6 +840,25 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     ${totalsHtml}
                 </div>
             `;
+            // Bifa de FANbox arată selectorul și încarcă punctele din județul
+            // comenzii; legarea se face după injectarea conținutului.
+            const fbToggle = document.getElementById('order-fanbox-toggle-' + order.id);
+            const fbPick = document.getElementById('order-fanbox-pick-' + order.id);
+            if (fbToggle && fbPick) {
+                const sincro = () => {
+                    fbPick.style.display = fbToggle.checked ? '' : 'none';
+                    if (fbToggle.checked) {
+                        incarcaFanboxComanda(
+                            order.id,
+                            order.billing_county || '',
+                            order.billing_city || '',
+                            order.fan_locker_id || '',
+                        );
+                    }
+                };
+                fbToggle.addEventListener('change', sincro);
+                if (fbToggle.checked) sincro();
+            }
             modal.classList.add('open');
         });
     });
@@ -835,6 +870,48 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
         }
     });
 })();
+
+// Destinația comenzii: FANbox sau adresa clientului. Punctele se încarcă
+// din județul comenzii, la deschiderea ferestrei.
+async function incarcaFanboxComanda(orderId, judet, localitate, alesId) {
+  const sel = document.getElementById('order-fanbox-select-' + orderId);
+  if (!sel) return;
+  if (!judet) { sel.innerHTML = '<option value="">Comanda nu are județ completat</option>'; return; }
+  try {
+    const r = await fetch('/api/fan/lockers?county=' + encodeURIComponent(judet) + '&locality=' + encodeURIComponent(localitate || ''));
+    const d = await r.json();
+    const items = Array.isArray(d.items) ? d.items : [];
+    if (!items.length) { sel.innerHTML = '<option value="">Niciun punct FANbox în acest județ</option>'; return; }
+    sel.innerHTML = '<option value="">— Alege punctul —</option>' + items.map(function (p) {
+      const sel2 = String(p.id) === String(alesId || '') ? ' selected' : '';
+      return '<option value="' + p.id + '"' + sel2 + '>' + String(p.label || p.name).replace(/</g, '&lt;') + '</option>';
+    }).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Nu am putut încărca punctele</option>';
+  }
+}
+
+async function salveazaFanbox(orderId) {
+  const toggle = document.getElementById('order-fanbox-toggle-' + orderId);
+  const sel = document.getElementById('order-fanbox-select-' + orderId);
+  const laFanbox = toggle && toggle.checked;
+  if (laFanbox && (!sel || !sel.value)) { alert('Alege punctul FANbox.'); return; }
+  const body = new URLSearchParams();
+  body.set('fan_locker_id', laFanbox && sel ? sel.value : '0');
+  try {
+    const r = await fetch('/admin/orders/' + orderId + '/fanbox', { method: 'POST', body: body });
+    const d = await r.json();
+    if (!d.ok) { alert(d.error || 'Nu am putut salva destinația.'); return; }
+    let mesaj = 'Destinație salvată. Transport: ' + Number(d.shipping_cost).toFixed(2) + ' lei, total: ' + Number(d.total).toFixed(2) + ' lei.';
+    if (d.plata_diferenta) {
+      mesaj += '\n\nComanda e deja plătită, iar totalul s-a schimbat. Dacă a crescut, trimite clientului linkul de plată pentru diferență.';
+    }
+    alert(mesaj);
+    location.reload();
+  } catch (e) {
+    alert('Nu am putut salva destinația.');
+  }
+}
 
 function toggleAddressEdit(orderId) {
     const form = document.getElementById('order-address-form-' + orderId);

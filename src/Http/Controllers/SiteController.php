@@ -3144,6 +3144,8 @@ final class SiteController
                 'name' => $p['name'],
                 'locality' => $p['locality'],
                 'address' => $p['address'],
+                'lat' => $p['lat'] ?? null,
+                'lng' => $p['lng'] ?? null,
                 'label' => trim($p['locality'] . ' — ' . $p['name'] . ($p['address'] !== '' ? ', ' . $p['address'] : '')),
             ], $puncte),
         ], 200);

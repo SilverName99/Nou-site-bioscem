@@ -29,6 +29,8 @@ final class FanLockers
                     locality VARCHAR(190) NOT NULL,
                     address VARCHAR(255) NOT NULL DEFAULT "",
                     postcode VARCHAR(20) NOT NULL DEFAULT "",
+                    lat DECIMAL(10, 7) DEFAULT NULL,
+                    lng DECIMAL(10, 7) DEFAULT NULL,
                     county_norm VARCHAR(120) NOT NULL,
                     locality_norm VARCHAR(190) NOT NULL,
                     active TINYINT(1) NOT NULL DEFAULT 1,
@@ -41,6 +43,17 @@ final class FanLockers
             );
         } catch (Throwable) {
         }
+    }
+
+    /** Coordonată validă sau null (fișierul FAN le dă ca text). */
+    private static function coordonata(mixed $value): ?float
+    {
+        $text = trim((string) ($value ?? ''));
+        if ($text === '' || !is_numeric($text)) {
+            return null;
+        }
+        $numar = (float) $text;
+        return ($numar >= -180.0 && $numar <= 180.0 && abs($numar) > 0.0001) ? $numar : null;
     }
 
     /** Text comparabil: fără diacritice, fără prefixe, litere mici. */
@@ -90,7 +103,7 @@ final class FanLockers
         }
         try {
             self::ensureSchema($db);
-            $sql = 'SELECT id, code, name, county, locality, address, postcode
+            $sql = 'SELECT id, code, name, county, locality, address, postcode, lat, lng
                     FROM fan_lockers
                     WHERE active = 1 AND county_norm = :judet';
             $params = ['judet' => $judetNorm];
@@ -99,7 +112,7 @@ final class FanLockers
                 $sql .= ' AND locality_norm = :localitate';
                 $params['localitate'] = $localitateNorm;
             }
-            $sql .= ' ORDER BY locality, name LIMIT 400';
+            $sql .= ' ORDER BY locality, name LIMIT 2000';
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $randuri = $stmt->fetchAll() ?: [];
@@ -117,6 +130,8 @@ final class FanLockers
                 'locality' => (string) ($r['locality'] ?? ''),
                 'address' => (string) ($r['address'] ?? ''),
                 'postcode' => (string) ($r['postcode'] ?? ''),
+                'lat' => $r['lat'] !== null ? (float) $r['lat'] : null,
+                'lng' => $r['lng'] !== null ? (float) $r['lng'] : null,
             ];
         }
 
@@ -138,7 +153,7 @@ final class FanLockers
         try {
             self::ensureSchema($db);
             $stmt = $db->prepare(
-                'SELECT id, code, name, county, locality, address, postcode
+                'SELECT id, code, name, county, locality, address, postcode, lat, lng
                  FROM fan_lockers
                  WHERE id = :id AND active = 1
                  LIMIT 1'
@@ -160,6 +175,8 @@ final class FanLockers
             'locality' => (string) ($r['locality'] ?? ''),
             'address' => (string) ($r['address'] ?? ''),
             'postcode' => (string) ($r['postcode'] ?? ''),
+            'lat' => $r['lat'] !== null ? (float) $r['lat'] : null,
+            'lng' => $r['lng'] !== null ? (float) $r['lng'] : null,
         ];
     }
 
@@ -176,6 +193,8 @@ final class FanLockers
         'street' => ['strada', 'street'],
         'street_no' => ['numar', 'nr', 'number'],
         'postcode' => ['cod_postal', 'codpostal', 'postcode', 'zip'],
+        'lat' => ['latitudine', 'latitude', 'lat'],
+        'lng' => ['longitudine', 'longitude', 'lng', 'lon'],
     ];
 
     /** Antet normalizat: litere mici, fără diacritice, separatorii → „_". */
@@ -247,6 +266,8 @@ final class FanLockers
                 'locality' => $localitate,
                 'address' => $adresa,
                 'postcode' => $ia('postcode'),
+                'lat' => $ia('lat'),
+                'lng' => $ia('lng'),
             ];
         }
 
@@ -379,14 +400,16 @@ final class FanLockers
 
         $stmt = $db->prepare(
             'INSERT INTO fan_lockers
-                (code, name, county, locality, address, postcode, county_norm, locality_norm, active, created_at, updated_at)
-             VALUES (:code, :name, :county, :locality, :address, :postcode, :county_norm, :locality_norm, 1, :created_at, :updated_at)
+                (code, name, county, locality, address, postcode, lat, lng, county_norm, locality_norm, active, created_at, updated_at)
+             VALUES (:code, :name, :county, :locality, :address, :postcode, :lat, :lng, :county_norm, :locality_norm, 1, :created_at, :updated_at)
              ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 county = VALUES(county),
                 locality = VALUES(locality),
                 address = VALUES(address),
                 postcode = VALUES(postcode),
+                lat = VALUES(lat),
+                lng = VALUES(lng),
                 county_norm = VALUES(county_norm),
                 locality_norm = VALUES(locality_norm),
                 active = 1,
@@ -413,6 +436,8 @@ final class FanLockers
                     'locality' => mb_substr($locality, 0, 190),
                     'address' => mb_substr(trim((string) ($r['address'] ?? '')), 0, 255),
                     'postcode' => mb_substr(trim((string) ($r['postcode'] ?? '')), 0, 20),
+                    'lat' => self::coordonata($r['lat'] ?? null),
+                    'lng' => self::coordonata($r['lng'] ?? null),
                     'county_norm' => mb_substr(self::normalizeaza($county), 0, 120),
                     'locality_norm' => mb_substr(self::normalizeaza($locality), 0, 190),
                     'created_at' => $acum,
