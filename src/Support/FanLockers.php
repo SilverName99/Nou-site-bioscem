@@ -43,6 +43,22 @@ final class FanLockers
             );
         } catch (Throwable) {
         }
+
+        // CREATE TABLE IF NOT EXISTS nu atinge o tabelă deja creată, așa că
+        // fiecare coloană adăugată ulterior are nevoie de propriul ALTER.
+        // Fără ele, interogările cedau în tăcere și lista de puncte ieșea
+        // goală, deși nomenclatorul avea mii de rânduri.
+        foreach ([
+            'ALTER TABLE fan_lockers ADD COLUMN postcode VARCHAR(20) NOT NULL DEFAULT "" AFTER address',
+            'ALTER TABLE fan_lockers ADD COLUMN lat DECIMAL(10, 7) DEFAULT NULL AFTER postcode',
+            'ALTER TABLE fan_lockers ADD COLUMN lng DECIMAL(10, 7) DEFAULT NULL AFTER lat',
+        ] as $sql) {
+            try {
+                $db->exec($sql);
+            } catch (Throwable) {
+                // coloana există deja
+            }
+        }
     }
 
     /** Coordonată validă sau null (fișierul FAN le dă ca text). */

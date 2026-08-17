@@ -780,6 +780,8 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     <p id="order-fanbox-note-${order.id}" style="margin:6px 0 0;font-size:12px;color:#64748b;">
                       ${order.fan_locker_name ? esc(order.fan_locker_name) + ' — ' + esc(order.fan_locker_address || '') : ''}
                     </p>
+                    <button type="button" id="order-fanbox-maptoggle-${order.id}" style="margin-top:6px;border:0;background:none;padding:0;color:#1f8b57;font-size:12px;text-decoration:underline;cursor:pointer;">Vezi pe hartă</button>
+                    <div id="order-fanbox-map-${order.id}" style="display:none;height:300px;margin-top:8px;border:1px solid #d1d5db;border-radius:8px;overflow:hidden;"></div>
                   </div>
                   <button type="button" onclick="salveazaFanbox(${order.id})" style="margin-top:8px;font-size:12px;padding:5px 10px;border:1px solid #1f8b57;border-radius:6px;background:#1f8b57;color:#fff;cursor:pointer;">Salvează destinația</button>
                 </div>
@@ -859,6 +861,16 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 fbToggle.addEventListener('change', sincro);
                 if (fbToggle.checked) sincro();
             }
+            const fbMapBtn = document.getElementById('order-fanbox-maptoggle-' + order.id);
+            const fbMapEl = document.getElementById('order-fanbox-map-' + order.id);
+            if (fbMapBtn && fbMapEl) {
+                fbMapBtn.addEventListener('click', function () {
+                    const deschis = fbMapEl.style.display !== 'none';
+                    fbMapEl.style.display = deschis ? 'none' : '';
+                    fbMapBtn.textContent = deschis ? 'Vezi pe hartă' : 'Ascunde harta';
+                    if (!deschis) deseneazaHartaComanda(order.id);
+                });
+            }
             modal.classList.add('open');
         });
     });
@@ -871,6 +883,65 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
     });
 })();
 
+// Leaflet se încarcă o singură dată, la prima cerere de hartă.
+let fanboxLeafletPromise = null;
+function incarcaLeafletAdmin() {
+  if (window.L) return Promise.resolve(window.L);
+  if (fanboxLeafletPromise) return fanboxLeafletPromise;
+  fanboxLeafletPromise = new Promise(function (resolve, reject) {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = function () { resolve(window.L); };
+    js.onerror = function () { reject(new Error('leaflet')); };
+    document.head.appendChild(js);
+  });
+  return fanboxLeafletPromise;
+}
+
+// Punctele încărcate pentru comanda deschisă, ca harta să le poată desena.
+const fanboxPuncte = {};
+const fanboxHarti = {};
+
+async function deseneazaHartaComanda(orderId) {
+  const el = document.getElementById('order-fanbox-map-' + orderId);
+  if (!el) return;
+  const puncte = (fanboxPuncte[orderId] || []).filter(function (p) {
+    return isFinite(Number(p.lat)) && isFinite(Number(p.lng));
+  });
+  if (!puncte.length) { el.innerHTML = '<p style="padding:10px;font-size:12px;color:#64748b;">Punctele nu au coordonate. Reimportă lista FANbox.</p>'; return; }
+  let L;
+  try { L = await incarcaLeafletAdmin(); } catch (e) {
+    el.innerHTML = '<p style="padding:10px;font-size:12px;color:#b91c1c;">Harta nu s-a putut încărca.</p>';
+    return;
+  }
+  let h = fanboxHarti[orderId];
+  if (!h) {
+    h = { map: L.map(el, { scrollWheelZoom: false }) };
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(h.map);
+    h.layer = L.layerGroup().addTo(h.map);
+    fanboxHarti[orderId] = h;
+  }
+  h.layer.clearLayers();
+  const limite = [];
+  puncte.forEach(function (p) {
+    const lat = Number(p.lat), lng = Number(p.lng);
+    limite.push([lat, lng]);
+    const m = L.marker([lat, lng]).addTo(h.layer);
+    m.bindPopup('<strong>' + String(p.name || '') + '</strong><br>' + String(p.address || ''));
+    // Alegerea se face tot prin select, ca să rămână o singură sursă.
+    m.on('click', function () {
+      const sel = document.getElementById('order-fanbox-select-' + orderId);
+      if (sel) sel.value = String(p.id);
+    });
+  });
+  h.map.fitBounds(limite, { padding: [20, 20], maxZoom: 14 });
+  setTimeout(function () { h.map.invalidateSize(); }, 60);
+}
+
 // Destinația comenzii: FANbox sau adresa clientului. Punctele se încarcă
 // din județul comenzii, la deschiderea ferestrei.
 async function incarcaFanboxComanda(orderId, judet, localitate, alesId) {
@@ -882,6 +953,9 @@ async function incarcaFanboxComanda(orderId, judet, localitate, alesId) {
     const d = await r.json();
     const items = Array.isArray(d.items) ? d.items : [];
     if (!items.length) { sel.innerHTML = '<option value="">Niciun punct FANbox în acest județ</option>'; return; }
+    fanboxPuncte[orderId] = items;
+    const harta = document.getElementById('order-fanbox-map-' + orderId);
+    if (harta && harta.style.display !== 'none') { deseneazaHartaComanda(orderId); }
     sel.innerHTML = '<option value="">— Alege punctul —</option>' + items.map(function (p) {
       const sel2 = String(p.id) === String(alesId || '') ? ' selected' : '';
       return '<option value="' + p.id + '"' + sel2 + '>' + String(p.label || p.name).replace(/</g, '&lt;') + '</option>';
