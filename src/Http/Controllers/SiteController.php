@@ -3218,7 +3218,10 @@ final class SiteController
         $settings = Settings::all($db);
         $summary = CheckoutCalculator::buildSummary($db, $settings);
         $summary['county'] = $county;
-        $fanLiveEnabled = ((string) ($settings['fan_live_tariff_enabled'] ?? '0')) === '1';
+        // Prețul fix e deja în sumar și nu depinde de interogarea FAN, deci
+        // pentru acest răspuns tratăm magazinul ca fiind pe tarif propriu.
+        $fanLiveEnabled = ((string) ($settings['fan_live_tariff_enabled'] ?? '0')) === '1'
+            && !\App\Support\ShippingPricing::esteActiv($settings);
         $requiresShippingCharge = $this->requiresFanLiveShippingCharge($settings, $summary);
 
         if (!$fanLiveEnabled) {
@@ -4295,7 +4298,8 @@ HTML;
         if ($selectedCounty !== '') {
             $summary['county'] = $selectedCounty;
         }
-        if ((string) ($settings['fan_live_tariff_enabled'] ?? '0') === '1') {
+        $pretFixActiv = \App\Support\ShippingPricing::esteActiv($settings);
+        if ($pretFixActiv || (string) ($settings['fan_live_tariff_enabled'] ?? '0') === '1') {
             $previewBilling = [
                 'billing_county' => $selectedCounty,
                 'billing_city' => trim((string) ($values['billing_city'] ?? '')),
@@ -4303,9 +4307,12 @@ HTML;
                 'billing_street_no' => trim((string) ($values['billing_street_no'] ?? '')),
                 'billing_postcode' => trim((string) ($values['billing_postcode'] ?? '')),
             ];
-            $previewShipping = $this->isFanShippingAddressComplete($previewBilling)
-                ? $this->resolveFanLiveShipping($settings, $summary, $previewBilling)
-                : null;
+            // Tariful FAN are nevoie de adresa completă; prețul fix nu — el se
+            // știe din prima, iar localitatea doar decide taxa de km suplimentari.
+            $previewShipping =
+                $pretFixActiv || $this->isFanShippingAddressComplete($previewBilling)
+                    ? $this->resolveFanLiveShipping($settings, $summary, $previewBilling)
+                    : null;
             $summary['shipping'] = $previewShipping ?? 0.0;
             $summary['total'] = max(
                 0,
