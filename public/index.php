@@ -184,6 +184,7 @@ $router->post('/admin/logout', [AuthController::class, 'logout']);
 $router->get('/admin', [AdminController::class, 'dashboard']);
 $router->get('/admin/users', [AdminController::class, 'users']);
 $router->post('/admin/users/import', [AdminController::class, 'usersImport']);
+$router->post('/admin/users/import-backup', [AdminController::class, 'usersImportDump']);
 $router->post('/admin/users/save', [AdminController::class, 'usersSave']);
 $router->post('/admin/users/delete-selected', [AdminController::class, 'usersDeleteSelected']);
 $router->get('/admin/users/settings', [AdminController::class, 'usersSettings']);

@@ -16,6 +16,7 @@ use App\Support\OrderMailer;
 use App\Support\ResponseCache;
 use App\Support\Settings;
 use App\Support\View;
+use App\Support\WordPressDumpReader;
 use Throwable;
 use PDO;
 use RuntimeException;
@@ -33,6 +34,9 @@ final class AdminController
     private const GOOGLE_AUTH_BUTTON_TOKEN = '{{auth_google_button}}';
     private const FAN_LOCALITIES_UPLOAD_MAX_SIZE = 12_000_000;
     private const USERS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
+
+    /** Unde se pun arhivele de backup WordPress, urcate prin FTP/File Manager. */
+    private const WP_DUMP_DIR = '/storage/import';
     private const LOYALTY_POINTS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
     private const BLOG_POSTS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
     private const PRODUCT_REVIEWS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
@@ -131,6 +135,262 @@ final class AdminController
         $result = $this->importWordPressUsersFromUploadedFile($db, $_FILES['users_file'] ?? null);
         Flash::set($result['ok'] ? 'success' : 'error', (string) ($result['message'] ?? 'Import invalid.'));
         header('Location: /admin/users?panel=import');
+    }
+
+    /**
+     * Import direct din backup-ul WordPress (`*-db.gz` de la UpdraftPlus).
+     *
+     * Fișierul se citește în flux, comprimat: dump-ul dezarhivat poate trece de
+     * 4 GB, deci nu se dezarhivează și nu se încarcă în memorie. Rulează întâi
+     * în modul „doar verifică", ca să se vadă ce s-ar întâmpla înainte să se
+     * scrie ceva.
+     */
+    public function usersImportDump(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/users?panel=import');
+            return;
+        }
+
+        $nume = basename(trim((string) ($_POST['dump_file'] ?? '')));
+        $disponibile = array_column($this->wordpressDumpFiles(), 'nume');
+        if ($nume === '' || !in_array($nume, $disponibile, true)) {
+            Flash::set('error', 'Alege un fișier de backup din lista de mai jos.');
+            header('Location: /admin/users?panel=import');
+            return;
+        }
+
+        $scrie = (string) ($_POST['mod'] ?? 'verifica') === 'importa';
+        $listaId = (int) ($_POST['newsletter_list_id'] ?? 0);
+
+        // Citirea unui dump de sute de MB durează minute, nu secunde.
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
+        try {
+            $date = WordPressDumpReader::citeste(dirname(__DIR__, 3) . self::WP_DUMP_DIR . '/' . $nume);
+        } catch (Throwable $e) {
+            Flash::set('error', 'Nu am putut citi arhiva: ' . $e->getMessage());
+            header('Location: /admin/users?panel=import');
+            return;
+        }
+
+        if (!($date['ok'] ?? false)) {
+            Flash::set('error', (string) ($date['message'] ?? 'Fișierul nu conține datele căutate.'));
+            header('Location: /admin/users?panel=import');
+            return;
+        }
+
+        $raport = $this->analizeazaDumpWordPress($db, $date);
+        if ($scrie) {
+            $raport = array_merge($raport, $this->scrieDumpWordPress($db, $date, $listaId));
+            AdminActivityLog::log($db, 'import_utilizatori_wordpress', [
+                'fisier' => $nume,
+                'conturi_noi' => $raport['conturi_noi'] ?? 0,
+                'abonati_noi' => $raport['abonati_noi'] ?? 0,
+            ]);
+        }
+
+        Flash::set('wp_dump_report', (string) json_encode(array_merge($raport, [
+            'fisier' => $nume,
+            'prefix' => (string) ($date['prefix'] ?? ''),
+            'scris' => $scrie,
+            'tabele' => $date['tabele'] ?? [],
+        ]), JSON_UNESCAPED_UNICODE));
+        Flash::set(
+            'success',
+            $scrie
+                ? 'Import finalizat din ' . $nume . '.'
+                : 'Verificare finalizată — nu s-a scris nimic încă. Vezi raportul de mai jos.'
+        );
+        header('Location: /admin/users?panel=import');
+    }
+
+    /** Ce ar intra și ce ar fi sărit, fără să modifice nimic. */
+    private function analizeazaDumpWordPress(PDO $db, array $date): array
+    {
+        $existent = $db->prepare('SELECT 1 FROM users WHERE email = :email LIMIT 1');
+        $conturiNoi = 0;
+        $conturiExistente = 0;
+        $cuAdresa = 0;
+        $faraParola = 0;
+        foreach ((array) ($date['utilizatori'] ?? []) as $u) {
+            $existent->execute(['email' => $u['email']]);
+            if ((bool) $existent->fetchColumn()) {
+                $conturiExistente++;
+                continue;
+            }
+            $conturiNoi++;
+            if (($u['adresa'] ?? null) !== null) {
+                $cuAdresa++;
+            }
+            if (trim((string) ($u['password_hash'] ?? '')) === '') {
+                $faraParola++;
+            }
+        }
+
+        $abonatiNoi = 0;
+        $abonatiExistenti = 0;
+        try {
+            NewsletterService::ensureSchema($db);
+            $cauta = $db->prepare('SELECT 1 FROM newsletter_subscribers WHERE email = :email LIMIT 1');
+            foreach ((array) ($date['abonati'] ?? []) as $a) {
+                $cauta->execute(['email' => $a['email']]);
+                if ((bool) $cauta->fetchColumn()) {
+                    $abonatiExistenti++;
+                } else {
+                    $abonatiNoi++;
+                }
+            }
+        } catch (Throwable) {
+            $abonatiNoi = count((array) ($date['abonati'] ?? []));
+        }
+
+        $stat = (array) ($date['statistici'] ?? []);
+        return [
+            'gasite_conturi' => count((array) ($date['utilizatori'] ?? [])),
+            'gasite_abonati' => count((array) ($date['abonati'] ?? [])),
+            'conturi_noi' => $conturiNoi,
+            'conturi_existente' => $conturiExistente,
+            'conturi_cu_adresa' => $cuAdresa,
+            'conturi_fara_parola' => $faraParola,
+            'abonati_noi' => $abonatiNoi,
+            'abonati_existenti' => $abonatiExistenti,
+            'admini_sariti' => (int) ($stat['admini_sariti'] ?? 0),
+            'linii_citite' => (int) ($stat['linii'] ?? 0),
+        ];
+    }
+
+    /**
+     * Scrie efectiv. Conturile care există deja NU se ating: cine s-a
+     * înregistrat pe site-ul nou după mutare are parola pe care o știe acum,
+     * iar suprascrierea cu hash-ul vechi l-ar bloca afară.
+     */
+    private function scrieDumpWordPress(PDO $db, array $date, int $listaId): array
+    {
+        $existent = $db->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+        $inserare = $db->prepare(
+            'INSERT INTO users (first_name, last_name, email, phone, password_hash, created_at)
+             VALUES (:first_name, :last_name, :email, :phone, :password_hash, :created_at)'
+        );
+        $adresaStmt = $db->prepare(
+            'INSERT INTO user_addresses (
+                user_id, label, full_name, phone, address_line1, address_line2, city, county, postcode, is_default
+             ) VALUES (
+                :user_id, :label, :full_name, :phone, :address_line1, :address_line2, :city, :county, :postcode, 1
+             )'
+        );
+
+        $noi = 0;
+        $adrese = 0;
+        $esuate = 0;
+        // O singură tranzacție pentru toate conturile: mii de inserări separate
+        // ar dura minute, iar o cădere la jumătate ar lăsa importul pe jumătate
+        // făcut, fără să se știe unde a rămas.
+        $inTranzactie = false;
+        try {
+            $db->beginTransaction();
+            $inTranzactie = true;
+        } catch (Throwable) {
+            $inTranzactie = false;
+        }
+        foreach ((array) ($date['utilizatori'] ?? []) as $u) {
+            $email = (string) $u['email'];
+            $existent->execute(['email' => $email]);
+            if ((bool) $existent->fetchColumn()) {
+                continue;
+            }
+
+            $hash = trim((string) ($u['password_hash'] ?? ''));
+            if ($hash === '') {
+                // Fără parolă în dump: punem una imposibil de ghicit, iar omul
+                // intră prin „Am uitat parola".
+                $hash = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+            }
+            $creatLa = date('Y-m-d H:i:s');
+            $creatBrut = trim((string) ($u['created_at'] ?? ''));
+            if ($creatBrut !== '' && ($ts = strtotime($creatBrut)) !== false) {
+                $creatLa = date('Y-m-d H:i:s', $ts);
+            }
+
+            try {
+                $inserare->execute([
+                    'first_name' => trim((string) $u['first_name']) !== '' ? $u['first_name'] : 'Client',
+                    'last_name' => trim((string) $u['last_name']) !== '' ? $u['last_name'] : '',
+                    'email' => $email,
+                    'phone' => trim((string) $u['phone']) !== '' ? $u['phone'] : null,
+                    'password_hash' => $hash,
+                    'created_at' => $creatLa,
+                ]);
+            } catch (Throwable) {
+                $esuate++;
+                continue;
+            }
+            $noi++;
+
+            $adresa = $u['adresa'] ?? null;
+            if (!is_array($adresa)) {
+                continue;
+            }
+            try {
+                $adresaStmt->execute([
+                    'user_id' => (int) $db->lastInsertId(),
+                    'label' => $adresa['label'],
+                    'full_name' => $adresa['full_name'] !== '' ? $adresa['full_name'] : $email,
+                    'phone' => $adresa['phone'] !== '' ? $adresa['phone'] : null,
+                    'address_line1' => $adresa['address_line1'],
+                    'address_line2' => $adresa['address_line2'] !== '' ? $adresa['address_line2'] : null,
+                    'city' => $adresa['city'],
+                    'county' => $adresa['county'],
+                    'postcode' => $adresa['postcode'] !== '' ? $adresa['postcode'] : null,
+                ]);
+                $adrese++;
+            } catch (Throwable) {
+                // Adresa e un bonus: dacă schema diferă, contul rămâne valid.
+            }
+        }
+        if ($inTranzactie) {
+            try {
+                $db->commit();
+            } catch (Throwable) {
+                $db->rollBack();
+                return ['conturi_scrise' => 0, 'adrese_scrise' => 0, 'abonati_scrisi' => 0, 'esuate' => $noi + $esuate];
+            }
+        }
+
+        $abonatiNoi = 0;
+        $abonati = (array) ($date['abonati'] ?? []);
+        if ($abonati !== []) {
+            try {
+                NewsletterService::ensureSchema($db);
+                if ($listaId <= 0) {
+                    $listaId = NewsletterService::defaultListId($db);
+                }
+                foreach ($abonati as $a) {
+                    try {
+                        NewsletterService::subscribeToList($db, $listaId, (string) $a['email'], (string) $a['name']);
+                        $abonatiNoi++;
+                    } catch (Throwable) {
+                        $esuate++;
+                    }
+                }
+            } catch (Throwable) {
+                // Fără liste de newsletter, conturile tot au intrat.
+            }
+        }
+
+        return [
+            'conturi_scrise' => $noi,
+            'adrese_scrise' => $adrese,
+            'abonati_scrisi' => $abonatiNoi,
+            'esuate' => $esuate,
+        ];
     }
 
     public function usersSave(): void
@@ -892,7 +1152,60 @@ final class AdminController
             'totalPages' => $usersTotalPages,
             'perPageOptions' => $this->adminPerPageOptions(),
             'panel' => $panel,
+            'wpDumpFiles' => $this->wordpressDumpFiles(),
+            'wpDumpDir' => self::WP_DUMP_DIR,
+            'wpDumpReport' => Flash::get('wp_dump_report'),
+            'newsletterLists' => $db instanceof PDO ? $this->newsletterListsForImport($db) : [],
         ], 'admin/layout');
+    }
+
+    /**
+     * Arhivele de backup WordPress puse pe server (prin FTP / File Manager).
+     * Nu se încarcă prin formular: dump-ul are sute de MB, iar limitele PHP de
+     * upload l-ar refuza oricum.
+     *
+     * @return array<int,array{nume:string,marime:int,data:string}>
+     */
+    private function wordpressDumpFiles(): array
+    {
+        $dir = dirname(__DIR__, 3) . self::WP_DUMP_DIR;
+        if (!is_dir($dir)) {
+            return [];
+        }
+        $fisiere = [];
+        foreach ((array) scandir($dir) as $nume) {
+            $nume = (string) $nume;
+            if ($nume === '' || $nume[0] === '.') {
+                continue;
+            }
+            $cale = $dir . '/' . $nume;
+            if (!is_file($cale)) {
+                continue;
+            }
+            $ext = strtolower(pathinfo($nume, PATHINFO_EXTENSION));
+            if (!in_array($ext, ['gz', 'sql'], true)) {
+                continue;
+            }
+            $fisiere[] = [
+                'nume' => $nume,
+                'marime' => (int) filesize($cale),
+                'data' => date('d.m.Y H:i', (int) filemtime($cale)),
+            ];
+        }
+        usort($fisiere, static fn (array $a, array $b): int => strcmp($b['nume'], $a['nume']));
+        return $fisiere;
+    }
+
+    /** Listele de newsletter, pentru alegerea destinației la import. */
+    private function newsletterListsForImport(PDO $db): array
+    {
+        try {
+            NewsletterService::ensureSchema($db);
+            $stmt = $db->query('SELECT id, name FROM newsletter_lists ORDER BY is_default DESC, name ASC');
+            return $stmt !== false ? (array) $stmt->fetchAll() : [];
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     public function products(): void

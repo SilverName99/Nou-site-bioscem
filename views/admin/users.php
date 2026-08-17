@@ -92,6 +92,108 @@ for ($i = $paginationStart; $i <= $paginationEnd; $i++) {
     </div>
 
     <article class="panel store-settings-panel" data-admin-simple-panel="import" <?= $panel !== 'import' ? 'hidden' : '' ?> style="margin:12px 0;">
+        <?php
+        $wpDumpFiles = is_array($wpDumpFiles ?? null) ? $wpDumpFiles : [];
+        $wpDumpDir = (string) ($wpDumpDir ?? '/storage/import');
+        $newsletterLists = is_array($newsletterLists ?? null) ? $newsletterLists : [];
+        $raport = null;
+        if (($wpDumpReport ?? null) !== null) {
+            $decodat = json_decode((string) $wpDumpReport, true);
+            $raport = is_array($decodat) ? $decodat : null;
+        }
+        $mb = static fn (int $o): string => number_format($o / 1048576, 1, ',', '.') . ' MB';
+        ?>
+
+        <h3 style="margin:0 0 6px;font-size:16px;">Import din backup WordPress</h3>
+        <p style="margin:0 0 12px;color:#64748b;font-size:13px;line-height:1.5;">
+            Citește direct arhiva bazei de date de la UpdraftPlus (fișierul care se termină în
+            <strong>-db.gz</strong>). Nu o dezarhiva și nu o urca prin formular — pune-o prin FTP sau File Manager
+            în folderul <code><?= htmlspecialchars($wpDumpDir, ENT_QUOTES) ?></code> de pe server, apoi apare mai jos.
+            Conturile păstrează parolele vechi: site-ul știe să verifice hash-urile WordPress și le convertește
+            singur la prima autentificare.
+        </p>
+
+        <?php if ($wpDumpFiles === []): ?>
+            <div style="border-radius:10px;background:#fef3c7;color:#92400e;padding:12px 14px;font-size:13px;">
+                Niciun fișier găsit în <code><?= htmlspecialchars($wpDumpDir, ENT_QUOTES) ?></code>.
+                Creează folderul dacă nu există și pune arhiva acolo (se acceptă <code>.gz</code> și <code>.sql</code>).
+            </div>
+        <?php else: ?>
+            <form method="post" action="/admin/users/import-backup" style="display:grid;gap:10px;max-width:760px;">
+                <label style="display:grid;gap:4px;font-size:13px;color:#334155;">
+                    Fișierul de backup
+                    <select name="dump_file" required style="height:38px;border:1px solid #cbd5e1;border-radius:8px;padding:0 8px;">
+                        <?php foreach ($wpDumpFiles as $f): ?>
+                            <option value="<?= htmlspecialchars((string) $f['nume'], ENT_QUOTES) ?>">
+                                <?= htmlspecialchars((string) $f['nume'], ENT_QUOTES) ?>
+                                — <?= htmlspecialchars($mb((int) $f['marime']), ENT_QUOTES) ?>
+                                (<?= htmlspecialchars((string) $f['data'], ENT_QUOTES) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <?php if ($newsletterLists !== []): ?>
+                    <label style="display:grid;gap:4px;font-size:13px;color:#334155;">
+                        Abonații găsiți intră în lista
+                        <select name="newsletter_list_id" style="height:38px;border:1px solid #cbd5e1;border-radius:8px;padding:0 8px;">
+                            <?php foreach ($newsletterLists as $l): ?>
+                                <option value="<?= (int) ($l['id'] ?? 0) ?>"><?= htmlspecialchars((string) ($l['name'] ?? ''), ENT_QUOTES) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                <?php endif; ?>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <button class="btn btn-secondary" type="submit" name="mod" value="verifica">Verifică (nu scrie nimic)</button>
+                    <button class="btn" type="submit" name="mod" value="importa"
+                            onclick="return confirm('Se importă conturile și abonații găsiți în arhivă. Conturile deja existente pe site nu sunt modificate. Continui?');">
+                        Importă acum
+                    </button>
+                    <small style="color:#64748b;">Citirea unei arhive de câteva sute de MB durează câteva minute — nu închide pagina.</small>
+                </div>
+            </form>
+        <?php endif; ?>
+
+        <?php if ($raport !== null): ?>
+            <div style="margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;background:#f8fafc;font-size:13px;">
+                <strong><?= !empty($raport['scris']) ? 'Rezultatul importului' : 'Verificare — nu s-a scris nimic' ?></strong>
+                <div style="color:#64748b;margin:2px 0 10px;">
+                    <?= htmlspecialchars((string) ($raport['fisier'] ?? ''), ENT_QUOTES) ?>
+                    <?php if (($raport['prefix'] ?? '') !== ''): ?>
+                        · prefix tabele: <code><?= htmlspecialchars((string) $raport['prefix'], ENT_QUOTES) ?></code>
+                    <?php endif; ?>
+                </div>
+                <table class="table" style="margin:0;">
+                    <tbody>
+                    <tr><td>Conturi de client găsite în arhivă</td><td style="text-align:right;"><strong><?= (int) ($raport['gasite_conturi'] ?? 0) ?></strong></td></tr>
+                    <tr><td>— din care nu există pe site (se importă)</td><td style="text-align:right;"><strong><?= (int) ($raport['conturi_noi'] ?? 0) ?></strong></td></tr>
+                    <tr><td>— există deja (rămân neatinse)</td><td style="text-align:right;"><?= (int) ($raport['conturi_existente'] ?? 0) ?></td></tr>
+                    <tr><td>— vin și cu adresă de livrare</td><td style="text-align:right;"><?= (int) ($raport['conturi_cu_adresa'] ?? 0) ?></td></tr>
+                    <tr><td>Conturi de administrare sărite</td><td style="text-align:right;"><?= (int) ($raport['admini_sariti'] ?? 0) ?></td></tr>
+                    <tr><td>Abonați activi la newsletter găsiți</td><td style="text-align:right;"><strong><?= (int) ($raport['gasite_abonati'] ?? 0) ?></strong></td></tr>
+                    <tr><td>— noi pentru site</td><td style="text-align:right;"><?= (int) ($raport['abonati_noi'] ?? 0) ?></td></tr>
+                    <?php if (!empty($raport['scris'])): ?>
+                        <tr><td><strong>Conturi scrise</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['conturi_scrise'] ?? 0) ?></strong></td></tr>
+                        <tr><td><strong>Adrese scrise</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['adrese_scrise'] ?? 0) ?></strong></td></tr>
+                        <tr><td><strong>Abonați scriși</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['abonati_scrisi'] ?? 0) ?></strong></td></tr>
+                        <?php if ((int) ($raport['esuate'] ?? 0) > 0): ?>
+                            <tr><td style="color:#b91c1c;">Rânduri eșuate</td><td style="text-align:right;color:#b91c1c;"><?= (int) $raport['esuate'] ?></td></tr>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+                <?php if (!empty($raport['tabele']) && is_array($raport['tabele'])): ?>
+                    <div style="margin-top:8px;color:#64748b;">
+                        Tabele recunoscute: <?= htmlspecialchars(implode(', ', array_map('strval', $raport['tabele'])), ENT_QUOTES) ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:18px 0 14px;">
+
+        <h3 style="margin:0 0 8px;font-size:16px;">Import din fișier CSV/XLSX</h3>
         <form method="post" action="/admin/users/import" enctype="multipart/form-data" class="users-search-row" style="margin-bottom:0;">
             <input type="file" name="users_file" accept=".csv,.xlsx" required>
             <button class="btn" type="submit">Import utilizatori (CSV/XLSX)</button>
