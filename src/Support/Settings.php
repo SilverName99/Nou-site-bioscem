@@ -30,6 +30,7 @@ final class Settings
         'fan_parcel_count' => '1',
         'fan_envelope_count' => '0',
         'fan_option_codes' => '',
+        'fan_service_type_fanbox' => 'FANbox',
         'fan_declared_value_mode' => 'order_total',
         'fan_pickup_point' => '',
         'fan_client_id' => '',

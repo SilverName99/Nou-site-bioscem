@@ -7872,6 +7872,7 @@ final class AdminController
             'fan_live_tariff_enabled' => isset($_POST['fan_live_tariff_enabled']) ? '1' : '0',
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
             'fan_service_type' => trim((string) ($_POST['fan_service_type'] ?? 'Standard')),
+            'fan_service_type_fanbox' => trim((string) ($_POST['fan_service_type_fanbox'] ?? 'FANbox')),
             'fan_shipping_payer' => $shippingPayer,
             'fan_shipment_type' => $packageType,
             'fan_parcel_count' => (string) $parcelCount,
@@ -13247,6 +13248,16 @@ HTML;
             $recipientLocality = trim((string) ($order['fan_locker_city'] ?? '')) ?: $recipientLocality;
             $recipientStreet = $lockerAddress;
             $recipientZip = trim((string) ($order['fan_locker_postcode'] ?? '')) ?: $recipientZip;
+        }
+
+        // FAN nu acceptă opțiunea de FANbox pe orice serviciu: livrarea în locker
+        // are propriul tip de serviciu. Se schimbă doar pentru aceste comenzi,
+        // ca livrările obișnuite să rămână pe serviciul normal.
+        if ($laFanbox) {
+            $serviciuFanbox = trim((string) ($settings['fan_service_type_fanbox'] ?? 'FANbox'));
+            if ($serviciuFanbox !== '') {
+                $service = $serviciuFanbox;
+            }
         }
 
         // Emailul de notificare rămâne cel al clientului (nu există câmp separat la livrare).

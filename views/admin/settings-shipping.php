@@ -346,6 +346,22 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                     </option>
                 <?php endforeach; ?>
             </select>
+            <small style="display:block;margin-top:4px;color:#64748b;">Pentru livrările la adresă.</small>
+        </div>
+        <div class="field">
+            <label>Tip serviciu FAN pentru FANbox</label>
+            <?php $fanServiceFanbox = trim((string) ($settings['fan_service_type_fanbox'] ?? 'FANbox')); ?>
+            <select name="fan_service_type_fanbox">
+                <?php foreach ($fanServiceOptions as $service): ?>
+                    <option value="<?= htmlspecialchars($service, ENT_QUOTES) ?>" <?= $service === $fanServiceFanbox ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($service, ENT_QUOTES) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <small style="display:block;margin-top:4px;color:#64748b;">
+                FAN nu acceptă livrarea în locker pe orice serviciu. Se folosește doar
+                pentru comenzile trimise la FANbox; restul rămân pe serviciul de mai sus.
+            </small>
         </div>
         <div class="field">
             <label>Plata transport (cotație FAN)</label>
