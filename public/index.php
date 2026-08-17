@@ -133,6 +133,7 @@ $router->get('/api/products/best-sellers', [SiteController::class, 'bestSellersA
 $router->get('/api/search/products', [SiteController::class, 'productSearchApi']);
 $router->get('/api/shop/catalog', [SiteController::class, 'shopCatalogApi']);
 $router->get('/api/fan/localities', [SiteController::class, 'fanLocalitiesApi']);
+$router->get('/api/fan/lockers', [SiteController::class, 'fanLockersApi']);
 $router->get('/api/checkout/shipping-quote', [SiteController::class, 'checkoutShippingQuoteApi']);
 $router->post('/api/checkout/shipping-quote', [SiteController::class, 'checkoutShippingQuoteApi']);
 $router->post('/api/cart/items/{id}/add', [SiteController::class, 'cartItemAddApi']);
@@ -282,6 +283,7 @@ $router->post('/admin/settings/shipping', [AdminController::class, 'shippingSett
 $router->post('/admin/settings/shipping/localities/import', [AdminController::class, 'shippingLocalitiesImport']);
 $router->post('/admin/settings/shipping/streets/import', [AdminController::class, 'shippingStreetsImport']);
 $router->post('/admin/settings/shipping/extra-km/import', [AdminController::class, 'shippingLocalitiesKmImport']);
+$router->post('/admin/settings/shipping/fanbox/import', [AdminController::class, 'shippingFanboxImport']);
 $router->get('/admin/settings/erp', [AdminController::class, 'erpSettingsForm']);
 $router->post('/admin/settings/erp', [AdminController::class, 'erpSettingsSave']);
 $router->get('/admin/settings/payments', [AdminController::class, 'paymentSettingsForm']);

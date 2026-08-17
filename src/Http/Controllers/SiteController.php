@@ -3083,6 +3083,44 @@ final class SiteController
         ], $this->customPageSeoMeta($db, $page)));
     }
 
+    /**
+     * Punctele FANbox dintr-un județ, pentru selecția din checkout.
+     *
+     * Lista vine din nomenclatorul importat local, nu din API-ul FAN: nu
+     * există un endpoint public cu lockerele, iar o cerere externă la fiecare
+     * pas din checkout ar fi oricum un punct de cădere în plus.
+     */
+    public function fanLockersApi(): void
+    {
+        $db = $this->db();
+        $settings = $this->cachedSettings($db);
+        if (!\App\Support\ShippingPricing::livrareLaFanbox($settings)) {
+            $this->jsonResponse(['ok' => false, 'items' => []], 200);
+            return;
+        }
+
+        $judet = trim((string) ($_GET['county'] ?? ''));
+        $localitate = trim((string) ($_GET['locality'] ?? ''));
+        $puncte = \App\Support\FanLockers::pentruJudet($db, $judet, $localitate);
+
+        // Fără puncte în localitate, arătăm tot județul: un locker la 10 km e
+        // adesea acceptabil, o listă goală nu ajută pe nimeni.
+        if ($puncte === [] && $localitate !== '') {
+            $puncte = \App\Support\FanLockers::pentruJudet($db, $judet);
+        }
+
+        $this->jsonResponse([
+            'ok' => true,
+            'items' => array_map(static fn (array $p): array => [
+                'id' => $p['id'],
+                'name' => $p['name'],
+                'locality' => $p['locality'],
+                'address' => $p['address'],
+                'label' => trim($p['locality'] . ' — ' . $p['name'] . ($p['address'] !== '' ? ', ' . $p['address'] : '')),
+            ], $puncte),
+        ], 200);
+    }
+
     public function fanLocalitiesApi(): void
     {
         $db = $this->db();

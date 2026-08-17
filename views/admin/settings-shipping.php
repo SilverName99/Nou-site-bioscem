@@ -3,7 +3,7 @@ $shippingTab = trim((string) ($shippingTab ?? 'fan-localities'));
 if ($shippingTab === 'store-rules') {
     $shippingTab = 'delivery-settings';
 }
-if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'fan-api', 'delivery-settings'], true)) {
+if (!in_array($shippingTab, ['fan-localities', 'fan-streets', 'fan-extra-km', 'fanbox', 'fan-api', 'delivery-settings'], true)) {
     $shippingTab = 'fan-localities';
 }
 
@@ -149,6 +149,7 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
         <button class="btn btn-secondary <?= $shippingTab === 'fan-localities' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-localities">Import localități FAN (Excel/CSV)</button>
         <button class="btn btn-secondary <?= $shippingTab === 'fan-streets' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-streets">Lista străzi (Excel/CSV)</button>
         <button class="btn btn-secondary <?= $shippingTab === 'fan-extra-km' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-extra-km">Lista localități cu km suplimentari (Excel/CSV)</button>
+        <button class="btn btn-secondary <?= $shippingTab === 'fanbox' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fanbox">Puncte FANbox (Excel/CSV)</button>
         <button class="btn btn-secondary <?= $shippingTab === 'fan-api' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-api">Autentificare FAN API</button>
         <button class="btn btn-secondary <?= $shippingTab === 'delivery-settings' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="delivery-settings">Setări de livrare</button>
     </div>
@@ -194,6 +195,27 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
             Total localități km suplimentari: <strong><?= (int) ($fanExtraKmCount ?? 0) ?></strong>
+        </p>
+    </article>
+
+    <article class="panel shipping-settings-panel" data-shipping-settings-panel="fanbox" <?= $shippingTab !== 'fanbox' ? 'hidden' : '' ?> style="margin:12px 0 16px;background:#f8fafc;border-color:#cbd5e1;">
+        <h3 style="margin:0 0 8px;">Puncte FANbox (Excel/CSV)</h3>
+        <p style="margin:0 0 10px;color:#64748b;">
+            Lista lockerelor la care poate alege clientul livrarea. FAN nu o publică printr-un API,
+            deci se încarcă din fișierul primit de la ei. Fișierul are nevoie de un rând de antet cu
+            cel puțin <strong>judet</strong> și <strong>localitate</strong>; opțional
+            <strong>cod</strong>, <strong>denumire</strong> și <strong>adresa</strong>.
+        </p>
+        <form method="post" action="/admin/settings/shipping/fanbox/import" enctype="multipart/form-data" style="display:grid;gap:8px;max-width:520px;">
+            <input type="file" name="fan_lockers_file" accept=".csv,.xlsx" required>
+            <button class="btn" type="submit">Importă puncte FANbox</button>
+        </form>
+        <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
+            Puncte active în nomenclator: <strong><?= (int) ($fanLockersCount ?? 0) ?></strong>
+        </p>
+        <p style="margin:6px 0 0;color:#64748b;font-size:13px;">
+            Punctele care nu mai apar într-un import ulterior se dezactivează, nu se șterg —
+            comenzile vechi trebuie să rămână explicabile.
         </p>
     </article>
 

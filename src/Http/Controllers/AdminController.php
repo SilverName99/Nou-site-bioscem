@@ -7420,6 +7420,7 @@ final class AdminController
             'fanLocalitiesCount' => $localitiesCount,
             'fanStreetsCount' => $streetsCount,
             'fanExtraKmCount' => $kmLocalitiesCount,
+            'fanLockersCount' => \App\Support\FanLockers::numar($db),
             'fanJudete' => $this->fanCountyList($db),
             'erpDepozite' => $erpDepozite,
             'erpGestiuniPeJudete' => $erpGestiuniPeJudete,
@@ -7921,6 +7922,70 @@ final class AdminController
             (string) ($result['message'] ?? 'Import listă localități km suplimentari finalizat.')
         );
         header('Location: /admin/settings/shipping?tab=fan-extra-km');
+    }
+
+    /** Import nomenclator puncte FANbox (CSV/XLSX primit de la FAN). */
+    public function shippingFanboxImport(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        $file = $_FILES['fan_lockers_file'] ?? null;
+        if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            Flash::set('error', 'Selectează fișierul CSV/XLSX cu punctele FANbox.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            Flash::set('error', 'Upload eșuat. Încearcă din nou.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+        $marime = (int) ($file['size'] ?? 0);
+        if ($marime <= 0 || $marime > self::FAN_LOCALITIES_UPLOAD_MAX_SIZE) {
+            Flash::set('error', 'Fișier invalid sau prea mare (max 12MB).');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+        $tmp = (string) ($file['tmp_name'] ?? '');
+        if ($tmp === '' || !is_uploaded_file($tmp)) {
+            Flash::set('error', 'Fișier invalid.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+        $ext = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'xlsx'], true)) {
+            Flash::set('error', 'Format neacceptat. Folosește CSV sau XLSX.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        $randuri = \App\Support\FanLockers::randuriDinFisier($tmp, $ext);
+        if ($randuri === []) {
+            Flash::set(
+                'error',
+                'Nu am găsit puncte valide. Fișierul trebuie să aibă un rând de antet cu cel puțin coloanele „judet" și „localitate" (opțional „cod", „denumire", „adresa").'
+            );
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        $rezultat = \App\Support\FanLockers::inlocuieste($db, $randuri);
+        $mesaj = 'Puncte FANbox importate: ' . $rezultat['importate'] . '.';
+        if ($rezultat['dezactivate'] > 0) {
+            $mesaj .= ' ' . $rezultat['dezactivate'] . ' puncte care nu mai apar în fișier au fost dezactivate.';
+        }
+        Flash::set('success', $mesaj);
+        ResponseCache::purgePageCache();
+        header('Location: /admin/settings/shipping?tab=fanbox');
     }
 
     public function shippingExtraKmImport(): void
