@@ -282,12 +282,15 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
             <label style="display:flex;align-items:center;gap:8px;margin-top:6px;">
                 <input type="checkbox" name="shipping_fixed_fanbox_enabled" value="1"
                        <?= ((string) ($settings['shipping_fixed_fanbox_enabled'] ?? '0')) === '1' ? 'checked' : '' ?>>
-                Toate comenzile se livrează la FANbox
+                Oferă livrare la FANbox (clientul alege la finalizarea comenzii)
             </label>
             <p style="margin:4px 0 0;color:#64748b;font-size:12px;">
-                Prețul de mai sus se folosește doar cu bifa aceasta pusă. Cât timp
-                clientul nu poate alege FANbox la finalizarea comenzii, alegerea e
-                a magazinului. Bifele din „Opțiuni FAN" nu schimbă prețul.
+                Cu bifa pusă, în checkout apare opțiunea „Livrare la FANbox" și un
+                selector cu punctele din județul clientului. Prețul de mai sus se
+                aplică doar comenzilor livrate acolo; restul rămân pe prețul
+                normal de transport. Opțiunea apare doar dacă nomenclatorul de
+                puncte are date — vezi tab-ul „Puncte FANbox". Bifele din
+                „Opțiuni FAN" nu schimbă prețul.
             </p>
         </div>
         <div class="field">
