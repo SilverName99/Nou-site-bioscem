@@ -169,12 +169,18 @@ final class FanLockers
                     FROM fan_lockers
                     WHERE active = 1 AND county_norm = :judet';
             $params = ['judet' => $judetNorm];
+            // Localitatea nu filtrează, ci doar ordonează: punctele din
+            // localitatea clientului apar primele, dar rămân vizibile și
+            // celelalte din județ. Altfel, un oraș cu un singur locker
+            // ascundea toate alternativele din apropiere.
             $localitateNorm = self::normalizeaza($localitate);
             if ($localitateNorm !== '') {
-                $sql .= ' AND locality_norm = :localitate';
+                $sql .= ' ORDER BY (locality_norm = :localitate) DESC, locality, name';
                 $params['localitate'] = $localitateNorm;
+            } else {
+                $sql .= ' ORDER BY locality, name';
             }
-            $sql .= ' ORDER BY locality, name LIMIT 2000';
+            $sql .= ' LIMIT 2000';
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $randuri = $stmt->fetchAll() ?: [];

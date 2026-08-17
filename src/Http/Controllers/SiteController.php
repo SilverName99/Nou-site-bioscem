@@ -3127,13 +3127,9 @@ final class SiteController
         $db = $this->db();
         $judet = trim((string) ($_GET['county'] ?? ''));
         $localitate = trim((string) ($_GET['locality'] ?? ''));
+        // Se întorc toate punctele din județ, cu cele din localitatea clientului
+        // primele — nu doar acelea, ca să rămână vizibile alternativele.
         $puncte = \App\Support\FanLockers::pentruJudet($db, $judet, $localitate);
-
-        // Fără puncte în localitate, arătăm tot județul: un locker la 10 km e
-        // adesea acceptabil, o listă goală nu ajută pe nimeni.
-        if ($puncte === [] && $localitate !== '') {
-            $puncte = \App\Support\FanLockers::pentruJudet($db, $judet);
-        }
 
         $this->jsonResponse([
             'ok' => true,
