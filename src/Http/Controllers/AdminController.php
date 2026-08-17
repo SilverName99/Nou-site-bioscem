@@ -5859,19 +5859,7 @@ final class AdminController
         $awbServiceFallbackNote = '';
 
         try {
-            try {
-                $result = FanCourierGateway::createInternalAwb($credentials, $payload);
-            } catch (RuntimeException $exception) {
-                if (!$this->shouldRetryFanAwbWithStandardService($order, $payload, $exception->getMessage())) {
-                    throw $exception;
-                }
-                $currentService = trim((string) ($payload['shipments'][0]['info']['service'] ?? ''));
-                $payload = $this->fanPayloadWithService($payload, 'Standard');
-                $result = FanCourierGateway::createInternalAwb($credentials, $payload);
-                if ($currentService !== '' && strtolower($currentService) !== 'standard') {
-                    $awbServiceFallbackNote = ' Serviciul FAN "' . $currentService . '" a cerut COD; AWB-ul a fost trimis automat cu serviciul "Standard".';
-                }
-            }
+            $result = $this->creeazaAwbFanCuReincercari($credentials, $payload, $order, $awbServiceFallbackNote);
             $awb = trim((string) ($result['awb'] ?? ''));
             if ($awb === '') {
                 throw new RuntimeException('FAN nu a returnat numarul AWB.');
@@ -5945,6 +5933,7 @@ final class AdminController
         $totalColete = count($colete);
         $generated = [];
         $errors = [];
+        $note = [];
 
         foreach (array_values($colete) as $index => $colet) {
             if (!is_array($colet)) {
@@ -5981,14 +5970,10 @@ final class AdminController
             ]);
 
             try {
-                try {
-                    $result = FanCourierGateway::createInternalAwb($credentials, $payload);
-                } catch (RuntimeException $exception) {
-                    if (!$this->shouldRetryFanAwbWithStandardService($order, $payload, $exception->getMessage())) {
-                        throw $exception;
-                    }
-                    $payload = $this->fanPayloadWithService($payload, 'Standard');
-                    $result = FanCourierGateway::createInternalAwb($credentials, $payload);
+                $notaColet = '';
+                $result = $this->creeazaAwbFanCuReincercari($credentials, $payload, $order, $notaColet);
+                if (trim($notaColet) !== '') {
+                    $note[] = trim($notaColet);
                 }
                 $awb = trim((string) ($result['awb'] ?? ''));
                 if ($awb === '') {
@@ -6046,7 +6031,8 @@ final class AdminController
         }
         return [
             'ok' => true,
-            'message' => 'AWB-uri FAN generate: ' . $listaAwb . ' (' . $totalColete . ' colete). Status comandă: completed.',
+            'message' => 'AWB-uri FAN generate: ' . $listaAwb . ' (' . $totalColete . ' colete). Status comandă: completed.'
+                . ($note !== [] ? ' ' . implode(' ', array_unique($note)) : ''),
         ];
     }
 
@@ -6105,6 +6091,86 @@ final class AdminController
 
         $currentService = strtolower(trim((string) ($payload['shipments'][0]['info']['service'] ?? '')));
         return $currentService !== '' && $currentService !== 'standard';
+    }
+
+    /**
+     * FAN refuză o opțiune care nu e disponibilă pentru serviciul ales
+     * („Option not available for this service type"). Cel mai des e o opțiune
+     * bifată global în setări, care nu se potrivește comenzii curente.
+     */
+    private function esteEroareDeOptiuniFan(string $errorMessage): bool
+    {
+        $mesaj = strtolower(trim($errorMessage));
+        return str_contains($mesaj, 'option')
+            && (str_contains($mesaj, 'not available') || str_contains($mesaj, 'invalid'));
+    }
+
+    /** Același payload, fără opțiunile FAN. */
+    private function fanPayloadFaraOptiuni(array $payload): array
+    {
+        if (isset($payload['shipments'][0]['info'])) {
+            $payload['shipments'][0]['info']['options'] = [];
+        }
+        return $payload;
+    }
+
+    /** Coletul pleacă spre un punct FANbox? Atunci opțiunea „V" e obligatorie. */
+    private function fanPayloadAreFanbox(array $payload): bool
+    {
+        $optiuni = (array) ($payload['shipments'][0]['info']['options'] ?? []);
+        return in_array('V', $optiuni, true);
+    }
+
+    /**
+     * Creează AWB-ul, cu reîncercările care au sens:
+     *  1. serviciul cere ramburs → se trece pe „Standard";
+     *  2. o opțiune nu e valabilă pentru serviciu → se reia fără opțiuni.
+     *
+     * A doua reîncercare NU se face la livrarea în FANbox: acolo opțiunea „V"
+     * e chiar destinația, iar fără ea coletul ar pleca greșit. Acolo e mai bine
+     * să eșueze vizibil, cu un mesaj care spune ce trebuie schimbat.
+     */
+    private function creeazaAwbFanCuReincercari(
+        array $credentials,
+        array &$payload,
+        array $order,
+        string &$nota
+    ): array {
+        try {
+            return FanCourierGateway::createInternalAwb($credentials, $payload);
+        } catch (RuntimeException $exception) {
+            $mesaj = $exception->getMessage();
+
+            if ($this->shouldRetryFanAwbWithStandardService($order, $payload, $mesaj)) {
+                $serviciuVechi = trim((string) ($payload['shipments'][0]['info']['service'] ?? ''));
+                $payload = $this->fanPayloadWithService($payload, 'Standard');
+                $rezultat = FanCourierGateway::createInternalAwb($credentials, $payload);
+                if ($serviciuVechi !== '' && strtolower($serviciuVechi) !== 'standard') {
+                    $nota .= ' Serviciul FAN "' . $serviciuVechi . '" a cerut COD; AWB-ul a fost trimis automat cu serviciul "Standard".';
+                }
+                return $rezultat;
+            }
+
+            if ($this->esteEroareDeOptiuniFan($mesaj)) {
+                if ($this->fanPayloadAreFanbox($payload)) {
+                    throw new RuntimeException(
+                        'FAN nu acceptă livrarea la FANbox cu tipul de serviciu ales ("'
+                        . trim((string) ($payload['shipments'][0]['info']['service'] ?? '')) . '"). '
+                        . 'Schimbă „Tip serviciu FAN" din Setări livrare sau întreabă consilierul FAN ce serviciu permite FANbox. Răspuns FAN: ' . $mesaj
+                    );
+                }
+                $optiuni = (array) ($payload['shipments'][0]['info']['options'] ?? []);
+                $payload = $this->fanPayloadFaraOptiuni($payload);
+                $rezultat = FanCourierGateway::createInternalAwb($credentials, $payload);
+                if ($optiuni !== []) {
+                    $nota .= ' Opțiunile FAN (' . implode(', ', $optiuni) . ') nu sunt disponibile pentru serviciul ales;'
+                        . ' AWB-ul a fost emis fără ele. Verifică „Opțiuni FAN" din Setări livrare.';
+                }
+                return $rezultat;
+            }
+
+            throw $exception;
+        }
     }
 
     private function fanPayloadWithService(array $payload, string $service): array
