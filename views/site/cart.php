@@ -16,6 +16,10 @@ $shippingThreshold = $shippingThresholdRaw > 0 ? $shippingThresholdRaw : 200.0;
 $shippingReference = max(0.0, (float) ($summary['shipping_reference'] ?? ($subtotal - $discount - $pointsDiscount)));
 $remainingForFreeShipping = max(0.0, $shippingThreshold - $shippingReference);
 $freeShippingProgress = $shippingThreshold > 0 ? min(100.0, (($shippingReference / $shippingThreshold) * 100.0)) : 0.0;
+// Transportul e cunoscut din coș doar când e gratuit sau când magazinul are
+// preț fix; cu tarif de curier se află abia la checkout, după adresă.
+$shippingCost = (float) ($summary['shipping'] ?? 0.0);
+$shippingGratuit = $remainingForFreeShipping <= 0.009;
 $points = is_array($summary['points'] ?? null) ? $summary['points'] : [];
 $pointsEnabled = !empty($points['enabled']);
 $pointsAvailable = max(0, (int) ($points['available'] ?? 0));
@@ -272,7 +276,13 @@ foreach ($lines as $line) {
                 <div class="bv-cart-v2__rows">
                     <div class="bv-cart-v2__row"><span>Subtotal</span><strong><?= number_format($subtotalWithoutVat, 2) ?> lei</strong></div>
                     <div class="bv-cart-v2__row"><span>TVA</span><strong><?= number_format($vat, 2) ?> lei</strong></div>
-                    <div class="bv-cart-v2__row bv-cart-v2__row--note"><span>Transport</span><strong>Transportul va fi calculat la Checkout.</strong></div>
+                    <?php if ($shippingGratuit): ?>
+                        <div class="bv-cart-v2__row"><span>Transport</span><strong>Gratuit</strong></div>
+                    <?php elseif ($shippingCost > 0.009): ?>
+                        <div class="bv-cart-v2__row"><span>Transport</span><strong><?= number_format($shippingCost, 2) ?> lei</strong></div>
+                    <?php else: ?>
+                        <div class="bv-cart-v2__row bv-cart-v2__row--note"><span>Transport</span><strong>Transportul va fi calculat la Checkout.</strong></div>
+                    <?php endif; ?>
                     <?php if ($discount > 0): ?>
                         <div class="bv-cart-v2__row bv-cart-v2__row--danger"><span>Reducere</span><strong>-<?= number_format($discount, 2) ?> lei</strong></div>
                     <?php endif; ?>
