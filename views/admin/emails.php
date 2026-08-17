@@ -812,6 +812,18 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         Format suportat: perechi repetate de coloane <strong>Email</strong> + <strong>Listă</strong>. Listele inexistente se creează automat.
                     </p>
 
+                    <form method="post" action="/admin/emails" enctype="multipart/form-data" class="newsletter-inline-form" style="margin:0 0 6px;">
+                        <input type="hidden" name="section" value="newsletter-mailchimp-import">
+                        <input type="hidden" name="subscriber_list_id" value="<?= $selectedListId ?>">
+                        <input type="file" class="newsletter-input-polish" name="mailchimp_file" accept=".csv,.zip" required>
+                        <button class="btn btn-secondary" type="submit">Importă export Mailchimp</button>
+                    </form>
+                    <p style="margin:0 0 10px;color:#64748b;font-size:12px;">
+                        Acceptă CSV-ul sau chiar arhiva ZIP descărcată din Mailchimp (Audience → Contacts → Export).
+                        Intră în lista selectată mai sus. Se importă <strong>doar abonații activi</strong>: dezabonații
+                        și adresele curățate sunt ignorate automat, chiar dacă exportul le conține.
+                    </p>
+
                     <table class="table">
                         <thead>
                         <tr>

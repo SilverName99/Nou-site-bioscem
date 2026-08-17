@@ -10266,6 +10266,23 @@ final class AdminController
             return;
         }
 
+        if ($section === 'newsletter-mailchimp-import') {
+            if (!$db instanceof PDO) {
+                Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+                header('Location: /admin/emails/newsletters?tab=subscribers');
+                return;
+            }
+            NewsletterService::ensureSchema($db);
+            $result = $this->importMailchimpSubscribers(
+                $db,
+                $_FILES['mailchimp_file'] ?? null,
+                (int) ($_POST['subscriber_list_id'] ?? 0)
+            );
+            Flash::set(($result['ok'] ?? false) ? 'success' : 'error', (string) ($result['message'] ?? 'Import invalid.'));
+            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . (int) ($_POST['subscriber_list_id'] ?? 0));
+            return;
+        }
+
         if ($section === 'newsletter-subscriber-save') {
             if (!$db instanceof PDO) {
                 Flash::set('error', 'Conexiunea DB nu este disponibilă.');
@@ -15010,6 +15027,213 @@ HTML;
             $legacyRole = $fallbackRole;
         }
         return Auth::normalizeRoles($rawRoles, $legacyRole);
+    }
+
+    /**
+     * Import din exportul Mailchimp (CSV sau ZIP-ul descărcat ca atare).
+     *
+     * Mailchimp nu are coloană de listă, deci destinația e cea aleasă în
+     * pagină. Se importă DOAR abonații activi: exportul conține și dezabonați
+     * și adrese curățate, iar cine și-a retras consimțământul rămâne retras.
+     * Statusul se citește din coloană dacă există, altfel din numele fișierului
+     * — exportul clasic pune fiecare status în câte un CSV separat.
+     */
+    private function importMailchimpSubscribers(PDO $db, mixed $file, int $listId): array
+    {
+        if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return ['ok' => false, 'message' => 'Selectează fișierul exportat din Mailchimp (CSV sau ZIP).'];
+        }
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            return ['ok' => false, 'message' => 'Upload eșuat. Încearcă din nou.'];
+        }
+        $tmpPath = (string) ($file['tmp_name'] ?? '');
+        if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+            return ['ok' => false, 'message' => 'Fișier invalid.'];
+        }
+        $numeFisier = (string) ($file['name'] ?? '');
+        $ext = strtolower(pathinfo($numeFisier, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['csv', 'zip'], true)) {
+            return ['ok' => false, 'message' => 'Format neacceptat. Încarcă CSV-ul sau ZIP-ul descărcat din Mailchimp.'];
+        }
+
+        if ($listId <= 0) {
+            $listId = NewsletterService::defaultListId($db);
+        }
+        if ($listId <= 0) {
+            return ['ok' => false, 'message' => 'Nu există nicio listă de abonați. Creează una întâi.'];
+        }
+
+        // fișier (nume afișat) => rânduri brute
+        $bucati = [];
+        if ($ext === 'csv') {
+            $bucati[$numeFisier] = @file_get_contents($tmpPath);
+        } else {
+            $zip = new \ZipArchive();
+            if ($zip->open($tmpPath) !== true) {
+                return ['ok' => false, 'message' => 'Arhiva ZIP nu a putut fi deschisă.'];
+            }
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $intrare = (string) $zip->getNameIndex($i);
+                if (strtolower(pathinfo($intrare, PATHINFO_EXTENSION)) !== 'csv') {
+                    continue;
+                }
+                $bucati[$intrare] = $zip->getFromIndex($i);
+            }
+            $zip->close();
+            if ($bucati === []) {
+                return ['ok' => false, 'message' => 'Arhiva nu conține niciun fișier CSV.'];
+            }
+        }
+
+        $adaugati = 0;
+        $existenti = 0;
+        $sariti = 0;
+        $invalizi = 0;
+        $fisiereSarite = [];
+        $vazute = [];
+
+        $cauta = $db->prepare('SELECT 1 FROM newsletter_subscribers WHERE email = :email LIMIT 1');
+
+        foreach ($bucati as $nume => $continut) {
+            if (!is_string($continut) || $continut === '') {
+                continue;
+            }
+            // Exportul clasic împarte pe status: „unsubscribed_members_...csv",
+            // „cleaned_members_...csv". Alea nu se ating deloc.
+            $numeMic = mb_strtolower($nume);
+            if (
+                str_contains($numeMic, 'unsubscribed')
+                || str_contains($numeMic, 'cleaned')
+                || str_contains($numeMic, 'nonsubscribed')
+                || str_contains($numeMic, 'non-subscribed')
+                || str_contains($numeMic, 'transactional')
+            ) {
+                $fisiereSarite[] = basename($nume);
+                continue;
+            }
+
+            foreach ($this->mailchimpRows($continut) as $rand) {
+                $email = mb_strtolower(trim((string) ($rand['email'] ?? '')));
+                if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                    $invalizi++;
+                    continue;
+                }
+                // Dacă fișierul are coloană de status, ea decide.
+                $status = mb_strtolower(trim((string) ($rand['status'] ?? '')));
+                if ($status !== '' && $status !== 'subscribed') {
+                    $sariti++;
+                    continue;
+                }
+                if (isset($vazute[$email])) {
+                    continue;
+                }
+                $vazute[$email] = true;
+
+                $cauta->execute(['email' => $email]);
+                if ((bool) $cauta->fetchColumn()) {
+                    $existenti++;
+                    continue;
+                }
+                try {
+                    NewsletterService::subscribeToList($db, $listId, $email, trim((string) ($rand['name'] ?? '')));
+                    $adaugati++;
+                } catch (Throwable) {
+                    $invalizi++;
+                }
+            }
+        }
+
+        if ($adaugati === 0 && $existenti === 0 && $invalizi === 0 && $sariti === 0) {
+            return [
+                'ok' => false,
+                'message' => 'Nu am găsit nicio adresă în fișier. Verifică să fie exportul din Mailchimp '
+                    . '(trebuie să aibă o coloană „Email Address").',
+            ];
+        }
+
+        $mesaj = 'Import Mailchimp finalizat: ' . $adaugati . ' abonați noi, '
+            . $existenti . ' existau deja, ' . $sariti . ' săriți (nu erau activi), '
+            . $invalizi . ' adrese invalide.';
+        if ($fisiereSarite !== []) {
+            $mesaj .= ' Fișiere ignorate (dezabonați / adrese curățate): ' . implode(', ', $fisiereSarite) . '.';
+        }
+
+        return ['ok' => true, 'message' => $mesaj];
+    }
+
+    /**
+     * Rândurile dintr-un CSV Mailchimp, reduse la ce ne trebuie.
+     *
+     * @return array<int,array{email:string,name:string,status:string}>
+     */
+    private function mailchimpRows(string $continut): array
+    {
+        $stream = fopen('php://memory', 'r+b');
+        if ($stream === false) {
+            return [];
+        }
+        fwrite($stream, $continut);
+        rewind($stream);
+
+        $antet = fgetcsv($stream, 0, ',');
+        if (!is_array($antet) || $antet === []) {
+            fclose($stream);
+            return [];
+        }
+        // Mailchimp exportă cu virgulă; dacă nu, ghicim separatorul din antet.
+        if (count($antet) === 1) {
+            $prima = (string) ($antet[0] ?? '');
+            $separator = substr_count($prima, ';') > substr_count($prima, "\t") ? ';' : "\t";
+            rewind($stream);
+            $antet = fgetcsv($stream, 0, $separator);
+            if (!is_array($antet)) {
+                fclose($stream);
+                return [];
+            }
+        } else {
+            $separator = ',';
+        }
+
+        $indice = [];
+        foreach ($antet as $i => $nume) {
+            $cheie = mb_strtolower(trim((string) $nume));
+            if ((int) $i === 0) {
+                $cheie = ltrim($cheie, "\xEF\xBB\xBF");
+            }
+            $indice[$cheie] = (int) $i;
+        }
+        $ia = static function (array $rand, array $indice, array $variante): string {
+            foreach ($variante as $v) {
+                if (array_key_exists($v, $indice)) {
+                    return trim((string) ($rand[$indice[$v]] ?? ''));
+                }
+            }
+            return '';
+        };
+
+        $rezultat = [];
+        while (($rand = fgetcsv($stream, 0, $separator)) !== false) {
+            if (!is_array($rand)) {
+                continue;
+            }
+            $email = $ia($rand, $indice, ['email address', 'email_address', 'email']);
+            if ($email === '') {
+                continue;
+            }
+            $nume = trim(
+                $ia($rand, $indice, ['first name', 'first_name', 'fname'])
+                . ' '
+                . $ia($rand, $indice, ['last name', 'last_name', 'lname'])
+            );
+            $rezultat[] = [
+                'email' => $email,
+                'name' => $nume,
+                'status' => $ia($rand, $indice, ['subscription status', 'status', 'member_status']),
+            ];
+        }
+        fclose($stream);
+
+        return $rezultat;
     }
 
     private function importNewsletterSubscribersFromUploadedFile(PDO $db, mixed $file): array
