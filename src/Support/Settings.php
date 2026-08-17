@@ -29,6 +29,7 @@ final class Settings
         'fan_shipment_type' => 'parcel',
         'fan_parcel_count' => '1',
         'fan_envelope_count' => '0',
+        'contact_form_recipients' => 'contact@bioscem.ro',
         'fan_option_codes' => '',
         'fan_service_type_fanbox' => 'FANbox',
         'fan_declared_value_mode' => 'order_total',

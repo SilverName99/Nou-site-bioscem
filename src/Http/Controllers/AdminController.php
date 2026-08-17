@@ -677,6 +677,51 @@ final class AdminController
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
+    /** Adresele care primesc mesajele din formularul de contact. */
+    public function contactRecipientsSave(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/emails/newsletters?tab=contact_forms');
+            return;
+        }
+
+        $brut = (string) ($_POST['contact_form_recipients'] ?? '');
+        $bucati = preg_split('/[\s,;]+/', trim($brut)) ?: [];
+        $valide = [];
+        $invalide = [];
+        foreach ($bucati as $adresa) {
+            $adresa = trim((string) $adresa);
+            if ($adresa === '') {
+                continue;
+            }
+            if (filter_var($adresa, FILTER_VALIDATE_EMAIL)) {
+                $valide[strtolower($adresa)] = $adresa;
+            } else {
+                $invalide[] = $adresa;
+            }
+        }
+        if ($invalide !== []) {
+            Flash::set('error', 'Adrese invalide: ' . implode(', ', $invalide) . '. Nu am salvat nimic.');
+            header('Location: /admin/emails/newsletters?tab=contact_forms');
+            return;
+        }
+        if ($valide === []) {
+            Flash::set('error', 'Lasă cel puțin o adresă; altfel mesajele n-ar ajunge nicăieri.');
+            header('Location: /admin/emails/newsletters?tab=contact_forms');
+            return;
+        }
+
+        Settings::save($db, ['contact_form_recipients' => implode(', ', array_values($valide))]);
+        AdminActivityLog::log($db, 'contact_recipients_save', ['adrese' => array_values($valide)]);
+        Flash::set('success', 'Destinatarii formularului de contact au fost salvați (' . count($valide) . ').');
+        header('Location: /admin/emails/newsletters?tab=contact_forms');
+    }
+
     public function usersFormSecurity(): void
     {
         if (!$this->guard()) {

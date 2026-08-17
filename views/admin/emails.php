@@ -1020,6 +1020,25 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
 
         <?php if ($newsletterTab === 'contact_forms'): ?>
             <article class="panel" style="margin-top:12px;">
+                <h3 style="margin:0 0 8px;">Cine primește mesajele</h3>
+                <p style="margin:0 0 10px;color:#64748b;">
+                    Una sau mai multe adrese, separate prin virgulă. Fiecare primește
+                    câte o copie a mesajului. Mesajele se salvează oricum în lista de mai jos,
+                    chiar dacă un email nu ajunge.
+                </p>
+                <form method="post" action="/admin/emails/contact-recipients" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+                    <input
+                        type="text"
+                        name="contact_form_recipients"
+                        value="<?= htmlspecialchars(trim((string) ($settings['contact_form_recipients'] ?? 'contact@bioscem.ro')), ENT_QUOTES) ?>"
+                        placeholder="contact@bioscem.ro, comenzi@bioscem.ro"
+                        style="flex:1 1 420px;min-width:280px;"
+                    >
+                    <button class="btn" type="submit">Salvează destinatarii</button>
+                </form>
+            </article>
+
+            <article class="panel" style="margin-top:12px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
                     <h3 style="margin:0;">Instrucțiuni pentru formularul de contact</h3>
                     <button
@@ -1037,8 +1056,14 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                     </button>
                 </div>
                 <div id="contact-instructions-body">
+                    <?php
+                    $destinatariContact = trim((string) ($settings['contact_form_recipients'] ?? 'contact@bioscem.ro'));
+                    if ($destinatariContact === '') {
+                        $destinatariContact = 'contact@bioscem.ro';
+                    }
+                    ?>
                     <p style="margin:0 0 10px;color:#64748b;">
-                        Ca formularul să trimită corect către <strong>contact@bioscem.ro</strong>, trebuie să respecte pașii de mai jos.
+                        Ca formularul să trimită corect către <strong><?= htmlspecialchars($destinatariContact, ENT_QUOTES) ?></strong>, trebuie să respecte pașii de mai jos.
                     </p>
                     <ol style="margin:0 0 10px 18px;line-height:1.7;color:#334155;">
                         <li>Formularul din front-end trebuie să trimită <code>POST</code> JSON la endpoint-ul <code>/contact/send</code>.</li>

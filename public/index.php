@@ -296,6 +296,7 @@ $router->post('/admin/emails/builder/preview', [AdminController::class, 'emailsB
 $router->get('/admin/emails/{section}', [AdminController::class, 'emailsSection']);
 $router->post('/admin/emails', [AdminController::class, 'emailsSave']);
 $router->post('/admin/emails/test', [AdminController::class, 'emailsSendTest']);
+$router->post('/admin/emails/contact-recipients', [AdminController::class, 'contactRecipientsSave']);
 $router->get('/admin/pages', [AdminController::class, 'pages']);
 $router->get('/admin/pages/trash', [AdminController::class, 'pagesTrash']);
 $router->get('/admin/pages/new', [AdminController::class, 'pageCreateForm']);

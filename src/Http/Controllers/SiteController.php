@@ -2776,7 +2776,7 @@ final class SiteController
         }
 
         $settings = Settings::all($db);
-        $to = 'contact@bioscem.ro';
+        $destinatari = $this->destinatariFormularContact($settings);
         $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeEmail = htmlspecialchars($email, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safePhone = htmlspecialchars($phone !== '' ? $phone : '-', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -2811,13 +2811,28 @@ final class SiteController
         }
 
         try {
-            OrderMailer::sendCustom($to, $mailSubject, $mailHtml, $settings, $db, [
-                'email_type' => 'contact_form_notification',
-                'source' => 'contact_form',
-                'trigger' => 'contact_form_submit',
-                'from_email' => $email,
-                'from_name' => $name,
-            ]);
+            // Mesajul pleacă separat către fiecare destinatar: expedierea e
+            // reușită dacă ajunge măcar la unul, ca o adresă greșită din
+            // setări să nu blocheze restul.
+            $trimise = 0;
+            $ultimaEroare = null;
+            foreach ($destinatari as $destinatar) {
+                try {
+                    OrderMailer::sendCustom($destinatar, $mailSubject, $mailHtml, $settings, $db, [
+                        'email_type' => 'contact_form_notification',
+                        'source' => 'contact_form',
+                        'trigger' => 'contact_form_submit',
+                        'from_email' => $email,
+                        'from_name' => $name,
+                    ]);
+                    $trimise++;
+                } catch (Throwable $e) {
+                    $ultimaEroare = $e;
+                }
+            }
+            if ($trimise === 0) {
+                throw $ultimaEroare ?? new RuntimeException('Niciun destinatar valid pentru formularul de contact.');
+            }
         } catch (Throwable) {
             $this->jsonResponse([
                 'ok' => false,
@@ -2830,6 +2845,27 @@ final class SiteController
             'ok' => true,
             'message' => 'Mesaj trimis cu succes.',
         ]);
+    }
+
+    /**
+     * Adresele care primesc mesajele din formularul de contact. Se acceptă mai
+     * multe, separate prin virgulă, punct-virgulă sau linii noi. Fără setare
+     * validă, rămâne adresa implicită, ca formularul să nu tacă niciodată.
+     *
+     * @return list<string>
+     */
+    private function destinatariFormularContact(array $settings): array
+    {
+        $brut = trim((string) ($settings['contact_form_recipients'] ?? ''));
+        $bucati = preg_split('/[\s,;]+/', $brut) ?: [];
+        $out = [];
+        foreach ($bucati as $adresa) {
+            $adresa = trim((string) $adresa);
+            if ($adresa !== '' && filter_var($adresa, FILTER_VALIDATE_EMAIL)) {
+                $out[strtolower($adresa)] = $adresa;
+            }
+        }
+        return $out !== [] ? array_values($out) : ['contact@bioscem.ro'];
     }
 
     public function optInSubmit(array $params): void
