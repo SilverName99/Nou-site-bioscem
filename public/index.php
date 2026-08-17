@@ -101,6 +101,10 @@ $router->get('/health', static function (): void {
     echo 'ok';
 });
 
+// robots.txt e servit dinamic: numele sitemap-ului vine din setări, iar în
+// mentenanță trebuie să interzică indexarea.
+$router->get('/robots\.txt', [SiteController::class, 'robots']);
+
 $router->get('/', [SiteController::class, 'home']);
 $router->get('/magazin', [SiteController::class, 'shop']);
 // URL-urile de categorie din site-ul vechi (/categorie/probiotice) rămân valide.
