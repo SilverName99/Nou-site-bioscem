@@ -6250,11 +6250,15 @@ final class AdminController
         return $payload;
     }
 
-    /** Coletul pleacă spre un punct FANbox? Atunci opțiunea „V" e obligatorie. */
-    private function fanPayloadAreFanbox(array $payload): bool
+    /**
+     * Comanda pleacă spre un punct FANbox? Se citește de pe comandă, nu din
+     * opțiunile AWB-ului: opțiunea „V" poate veni din setările globale, iar
+     * atunci o livrare obișnuită părea o livrare în locker.
+     */
+    private function comandaLaFanbox(array $order): bool
     {
-        $optiuni = (array) ($payload['shipments'][0]['info']['options'] ?? []);
-        return in_array('V', $optiuni, true);
+        return (int) ($order['fan_locker_id'] ?? 0) > 0
+            && trim((string) ($order['fan_locker_address'] ?? '')) !== '';
     }
 
     /**
@@ -6288,11 +6292,12 @@ final class AdminController
             }
 
             if ($this->esteEroareDeOptiuniFan($mesaj)) {
-                if ($this->fanPayloadAreFanbox($payload)) {
+                if ($this->comandaLaFanbox($order)) {
                     throw new RuntimeException(
-                        'FAN nu acceptă livrarea la FANbox cu tipul de serviciu ales ("'
-                        . trim((string) ($payload['shipments'][0]['info']['service'] ?? '')) . '"). '
-                        . 'Schimbă „Tip serviciu FAN" din Setări livrare sau întreabă consilierul FAN ce serviciu permite FANbox. Răspuns FAN: ' . $mesaj
+                        'FAN nu acceptă livrarea la FANbox cu serviciul "'
+                        . trim((string) ($payload['shipments'][0]['info']['service'] ?? '')) . '". '
+                        . 'Verifică „Tip serviciu FAN pentru FANbox" din Setări livrare (ar trebui „FANbox"); '
+                        . 'dacă serviciul e corect, cere consilierului FAN să-l activeze pe cont. Răspuns FAN: ' . $mesaj
                     );
                 }
                 $optiuni = (array) ($payload['shipments'][0]['info']['options'] ?? []);
