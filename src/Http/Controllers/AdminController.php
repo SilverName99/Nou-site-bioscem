@@ -1196,6 +1196,25 @@ final class AdminController
         return $fisiere;
     }
 
+    /**
+     * Pagina și căutarea din lista de abonați, ca revenirea după o acțiune să
+     * cadă unde erai. Cu zeci de mii de adrese, întoarcerea la pagina 1 după
+     * fiecare ștergere ar face lista nefolosibilă.
+     */
+    private function subscribersReturnQuery(): string
+    {
+        $bucati = [];
+        $pagina = (int) ($_POST['sub_page'] ?? 0);
+        if ($pagina > 1) {
+            $bucati['sub_page'] = $pagina;
+        }
+        $cautare = trim((string) ($_POST['sub_q'] ?? ''));
+        if ($cautare !== '') {
+            $bucati['sub_q'] = $cautare;
+        }
+        return $bucati === [] ? '' : '&' . http_build_query($bucati);
+    }
+
     /** Listele de newsletter, pentru alegerea destinației la import. */
     private function newsletterListsForImport(PDO $db): array
     {
@@ -9202,6 +9221,11 @@ final class AdminController
         $newsletterLists = [];
         $selectedListId = 0;
         $listSubscribers = [];
+        $subscribersTotal = 0;
+        $subscribersPage = 1;
+        $subscribersPages = 1;
+        $subscribersPerPage = 50;
+        $subscribersQuery = '';
         $optInForms = [];
         $selectedOptInForm = null;
         $selectedOptInFields = [];
@@ -9309,14 +9333,46 @@ final class AdminController
                     $selectedListId = (int) $newsletterLists[0]['id'];
                 }
                 if ($selectedListId > 0) {
+                    // Lista poate avea zeci de mii de adrese: se aduce doar
+                    // pagina cerută, altfel pagina de admin ar încerca să
+                    // deseneze tot nomenclatorul dintr-o dată.
+                    $subscribersQuery = trim((string) ($_GET['sub_q'] ?? ''));
+                    $subscribersPerPage = 50;
+                    $filtru = '';
+                    $parametri = ['list_id' => $selectedListId];
+                    if ($subscribersQuery !== '') {
+                        $filtru = ' AND (s.email LIKE :cauta OR s.name LIKE :cauta)';
+                        $parametri['cauta'] = '%' . $subscribersQuery . '%';
+                    }
+
+                    $stmtCount = $db->prepare(
+                        'SELECT COUNT(*)
+                         FROM newsletter_list_subscribers ls
+                         INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
+                         WHERE ls.list_id = :list_id' . $filtru
+                    );
+                    $stmtCount->execute($parametri);
+                    $subscribersTotal = (int) $stmtCount->fetchColumn();
+                    $subscribersPages = max(1, (int) ceil($subscribersTotal / $subscribersPerPage));
+                    $subscribersPage = max(1, (int) ($_GET['sub_page'] ?? 1));
+                    if ($subscribersPage > $subscribersPages) {
+                        $subscribersPage = $subscribersPages;
+                    }
+
                     $stmtSubscribers = $db->prepare(
                         'SELECT s.id, s.email, s.name, s.status
                          FROM newsletter_list_subscribers ls
                          INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
-                         WHERE ls.list_id = :list_id
-                         ORDER BY s.id DESC'
+                         WHERE ls.list_id = :list_id' . $filtru . '
+                         ORDER BY s.id DESC
+                         LIMIT :lim OFFSET :dec'
                     );
-                    $stmtSubscribers->execute(['list_id' => $selectedListId]);
+                    foreach ($parametri as $cheie => $valoare) {
+                        $stmtSubscribers->bindValue(':' . $cheie, $valoare);
+                    }
+                    $stmtSubscribers->bindValue(':lim', $subscribersPerPage, PDO::PARAM_INT);
+                    $stmtSubscribers->bindValue(':dec', ($subscribersPage - 1) * $subscribersPerPage, PDO::PARAM_INT);
+                    $stmtSubscribers->execute();
                     $listSubscribers = $stmtSubscribers->fetchAll();
                 }
             } elseif ($newsletterTab === 'optin') {
@@ -9492,6 +9548,11 @@ final class AdminController
             'newsletterLists' => $newsletterLists,
             'selectedListId' => $selectedListId,
             'listSubscribers' => $listSubscribers,
+            'subscribersTotal' => $subscribersTotal,
+            'subscribersPage' => $subscribersPage,
+            'subscribersPages' => $subscribersPages,
+            'subscribersPerPage' => $subscribersPerPage,
+            'subscribersQuery' => $subscribersQuery,
             'optInForms' => $optInForms,
             'selectedOptInForm' => $selectedOptInForm,
             'selectedOptInFields' => $selectedOptInFields,
@@ -10233,7 +10294,7 @@ final class AdminController
                 ]);
                 $listId = (int) $db->lastInsertId();
                 Flash::set('success', 'Lista a fost creată.');
-                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             } catch (Throwable) {
                 Flash::set('error', 'Lista există deja.');
@@ -10260,7 +10321,7 @@ final class AdminController
             $isDefault = (int) ($check->fetchColumn() ?: 0);
             if ($isDefault === 1) {
                 Flash::set('error', 'Lista implicită nu poate fi ștearsă.');
-                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             }
             $db->prepare('DELETE FROM newsletter_list_subscribers WHERE list_id = :id')->execute(['id' => $listId]);
@@ -10315,13 +10376,13 @@ final class AdminController
             }
             if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 Flash::set('error', 'Email abonat invalid.');
-                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             }
             NewsletterService::subscribeToList($db, $listId, $email, $name);
 
             Flash::set('success', 'Abonat salvat.');
-            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
             return;
         }
 
@@ -10336,13 +10397,13 @@ final class AdminController
             $listId = (int) ($_POST['list_id'] ?? 0);
             if ($subscriberId <= 0) {
                 Flash::set('error', 'Abonat invalid.');
-                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             }
             $db->prepare('DELETE FROM newsletter_list_subscribers WHERE subscriber_id = :id')->execute(['id' => $subscriberId]);
             $db->prepare('DELETE FROM newsletter_subscribers WHERE id = :id')->execute(['id' => $subscriberId]);
             Flash::set('success', 'Abonatul a fost șters.');
-            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
             return;
         }
 
@@ -10356,7 +10417,7 @@ final class AdminController
             $listId = (int) ($_POST['list_id'] ?? 0);
             if ($subscriberId <= 0) {
                 Flash::set('error', 'Abonat invalid.');
-                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             }
             $current = $db->prepare('SELECT status FROM newsletter_subscribers WHERE id = :id LIMIT 1');
@@ -10368,7 +10429,7 @@ final class AdminController
                 'id' => $subscriberId,
             ]);
             Flash::set('success', $next === 'active' ? 'Abonat activat.' : 'Abonat dezabonat.');
-            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId);
+            header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
             return;
         }
 

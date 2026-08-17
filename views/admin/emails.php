@@ -837,6 +837,43 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         și adresele curățate sunt ignorate automat, chiar dacă exportul le conține.
                     </p>
 
+                    <?php
+                    $subTotal = (int) ($subscribersTotal ?? 0);
+                    $subPage = max(1, (int) ($subscribersPage ?? 1));
+                    $subPages = max(1, (int) ($subscribersPages ?? 1));
+                    $subPerPage = max(1, (int) ($subscribersPerPage ?? 50));
+                    $subQuery = (string) ($subscribersQuery ?? '');
+                    /** Adresa paginii curente, păstrând lista și căutarea. */
+                    $subUrl = static function (int $pagina) use ($selectedListId, $subQuery): string {
+                        $q = ['tab' => 'subscribers', 'list' => $selectedListId, 'sub_page' => $pagina];
+                        if ($subQuery !== '') {
+                            $q['sub_q'] = $subQuery;
+                        }
+                        return '?' . http_build_query($q);
+                    };
+                    $primul = $subTotal > 0 ? (($subPage - 1) * $subPerPage) + 1 : 0;
+                    $ultimul = min($subPage * $subPerPage, $subTotal);
+                    ?>
+
+                    <form method="get" action="" class="newsletter-inline-form" style="margin:0 0 10px;">
+                        <input type="hidden" name="tab" value="subscribers">
+                        <input type="hidden" name="list" value="<?= $selectedListId ?>">
+                        <input type="text" class="newsletter-input-polish" name="sub_q"
+                               value="<?= htmlspecialchars($subQuery, ENT_QUOTES) ?>"
+                               placeholder="Caută după email sau nume...">
+                        <button class="btn btn-secondary" type="submit">Caută</button>
+                        <?php if ($subQuery !== ''): ?>
+                            <a class="btn btn-secondary" href="?tab=subscribers&list=<?= $selectedListId ?>">Renunță</a>
+                        <?php endif; ?>
+                        <span style="color:#64748b;font-size:12px;">
+                            <?php if ($subTotal > 0): ?>
+                                <?= $primul ?>–<?= $ultimul ?> din <strong><?= number_format($subTotal, 0, ',', '.') ?></strong>
+                            <?php else: ?>
+                                niciun abonat găsit
+                            <?php endif; ?>
+                        </span>
+                    </form>
+
                     <table class="table">
                         <thead>
                         <tr>
@@ -847,6 +884,11 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         </tr>
                         </thead>
                         <tbody>
+                        <?php if ($listSubscribers === []): ?>
+                            <tr><td colspan="4" style="text-align:center;color:#64748b;padding:18px;">
+                                <?= $subQuery !== '' ? 'Nicio potrivire pentru căutarea asta.' : 'Lista nu are abonați.' ?>
+                            </td></tr>
+                        <?php endif; ?>
                         <?php foreach ($listSubscribers as $subscriber): ?>
                             <?php
                             $subscriberId = (int) ($subscriber['id'] ?? 0);
@@ -861,12 +903,16 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                                         <input type="hidden" name="section" value="newsletter-subscriber-toggle">
                                         <input type="hidden" name="subscriber_id" value="<?= $subscriberId ?>">
                                         <input type="hidden" name="list_id" value="<?= $selectedListId ?>">
+                                        <input type="hidden" name="sub_page" value="<?= $subPage ?>">
+                                        <input type="hidden" name="sub_q" value="<?= htmlspecialchars($subQuery, ENT_QUOTES) ?>">
                                         <button type="submit" class="icon-btn" title="Activează/dezabonează">⟲</button>
                                     </form>
                                     <form method="post" action="/admin/emails" style="display:inline;" onsubmit="return confirm('Ștergi abonatul?');">
                                         <input type="hidden" name="section" value="newsletter-subscriber-delete">
                                         <input type="hidden" name="subscriber_id" value="<?= $subscriberId ?>">
                                         <input type="hidden" name="list_id" value="<?= $selectedListId ?>">
+                                        <input type="hidden" name="sub_page" value="<?= $subPage ?>">
+                                        <input type="hidden" name="sub_q" value="<?= htmlspecialchars($subQuery, ENT_QUOTES) ?>">
                                         <button type="submit" class="icon-btn danger">🗑</button>
                                     </form>
                                 </td>
@@ -874,6 +920,36 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         <?php endforeach; ?>
                         </tbody>
                     </table>
+
+                    <?php if ($subPages > 1): ?>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                            <?php if ($subPage > 1): ?>
+                                <a class="btn btn-secondary" href="<?= htmlspecialchars($subUrl(1), ENT_QUOTES) ?>">« Prima</a>
+                                <a class="btn btn-secondary" href="<?= htmlspecialchars($subUrl($subPage - 1), ENT_QUOTES) ?>">‹ Înapoi</a>
+                            <?php endif; ?>
+
+                            <span style="color:#64748b;font-size:13px;">
+                                Pagina <strong><?= $subPage ?></strong> din <?= number_format($subPages, 0, ',', '.') ?>
+                            </span>
+
+                            <?php if ($subPage < $subPages): ?>
+                                <a class="btn btn-secondary" href="<?= htmlspecialchars($subUrl($subPage + 1), ENT_QUOTES) ?>">Înainte ›</a>
+                                <a class="btn btn-secondary" href="<?= htmlspecialchars($subUrl($subPages), ENT_QUOTES) ?>">Ultima »</a>
+                            <?php endif; ?>
+
+                            <form method="get" action="" style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+                                <input type="hidden" name="tab" value="subscribers">
+                                <input type="hidden" name="list" value="<?= $selectedListId ?>">
+                                <?php if ($subQuery !== ''): ?>
+                                    <input type="hidden" name="sub_q" value="<?= htmlspecialchars($subQuery, ENT_QUOTES) ?>">
+                                <?php endif; ?>
+                                <label style="color:#64748b;font-size:13px;">Sari la pagina</label>
+                                <input type="number" name="sub_page" min="1" max="<?= $subPages ?>" value="<?= $subPage ?>"
+                                       style="width:90px;height:34px;border:1px solid #cbd5e1;border-radius:8px;padding:0 8px;">
+                                <button class="btn btn-secondary" type="submit">Mergi</button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endif; ?>
