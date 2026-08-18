@@ -700,6 +700,9 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             const couponDiscount = toAmount(order.discount_total || 0);
             const pointsDiscount = toAmount(order.loyalty_points_discount || 0);
             const pointsUsed = Math.max(0, Number(order.loyalty_points_used || 0) || 0);
+            const manualDiscount = toAmount(order.manual_discount || 0);
+            const manualPercent = Number(order.manual_discount_percent || 0) || 0;
+            const manualReason = String(order.manual_discount_reason || '').trim();
             const shippingCost = toAmount(order.shipping_cost || 0);
             const shippingLabel = shippingCost <= 0.004 ? 'GRATUIT' : formatRon(shippingCost);
             const paymentMethodValue = String(order.payment_method || '').trim().toLowerCase();
@@ -726,6 +729,11 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             if (pointsDiscount > 0.004) {
                 const pointsLabel = pointsUsed > 0 ? ` (${pointsUsed} pct)` : '';
                 totalsHtml += `<p><span>Reducere puncte</span><strong>- ${formatRon(pointsDiscount)}${pointsLabel}</strong></p>`;
+            }
+            if (manualDiscount > 0.004) {
+                const procentLabel = manualPercent > 0 ? ` (${manualPercent}%)` : '';
+                const motivLabel = manualReason !== '' ? `<br><small style="color:#64748b;">${esc(manualReason)}</small>` : '';
+                totalsHtml += `<p><span>Reducere comercială${procentLabel}${motivLabel}</span><strong>- ${formatRon(manualDiscount)}</strong></p>`;
             }
             totalsHtml += `
                     <p><span>Livrare</span><strong>${shippingLabel}</strong></p>
@@ -862,6 +870,27 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                         <button type="button" onclick="addOrderItemRow(${order.id})" style="padding:6px 12px;background:#f1f5f9;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;">+ Adaugă produs</button>
                         <button type="button" onclick="saveOrderItems(${order.id})" style="padding:6px 14px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Recalculează și salvează</button>
                         <span id="order-items-status-${order.id}" style="font-size:13px;"></span>
+                    </div>
+                    <div style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+                        <div style="font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Reducere comercială</div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                            <select id="order-discount-mode-${order.id}" style="height:32px;border:1px solid #cbd5e1;border-radius:5px;padding:0 6px;font-size:13px;">
+                                <option value="procent"${manualPercent > 0 ? ' selected' : ''}>Procent (%)</option>
+                                <option value="suma"${manualPercent > 0 || manualDiscount <= 0.004 ? '' : ' selected'}>Sumă (lei)</option>
+                            </select>
+                            <input type="number" step="0.01" min="0" id="order-discount-value-${order.id}"
+                                   value="${manualPercent > 0 ? manualPercent : (manualDiscount > 0.004 ? manualDiscount.toFixed(2) : '')}"
+                                   placeholder="ex. 5" style="width:100px;height:32px;border:1px solid #cbd5e1;border-radius:5px;padding:0 8px;font-size:13px;">
+                            <input type="text" id="order-discount-reason-${order.id}" maxlength="190"
+                                   value="${esc(manualReason)}" placeholder="Motiv (ex. agreat telefonic)"
+                                   style="flex:1;min-width:200px;height:32px;border:1px solid #cbd5e1;border-radius:5px;padding:0 8px;font-size:13px;">
+                            <button type="button" onclick="saveOrderDiscount(${order.id})" style="padding:6px 12px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Aplică</button>
+                            ${manualDiscount > 0.004 ? `<button type="button" onclick="clearOrderDiscount(${order.id})" style="padding:6px 12px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;">Anulează reducerea</button>` : ''}
+                            <span id="order-discount-status-${order.id}" style="font-size:13px;"></span>
+                        </div>
+                        <p style="margin:6px 0 0;color:#64748b;font-size:12px;">
+                            Se aplică doar la produse, nu și la transport. Procentul se recalculează dacă se schimbă produsele.
+                        </p>
                     </div>`}
                 </div>
                 ${promoHtml}
@@ -1145,6 +1174,48 @@ function saveOrderItems(orderId){
             setTimeout(() => { window.location.reload(); }, intarziere);
         })
         .catch(() => { if(status){status.style.color='#dc2626';status.textContent='Eroare server';} });
+}
+
+/* --- Reducere comercială pe o comandă venită din site --- */
+async function trimiteReducere(orderId, mode, value, reason){
+  const status = document.getElementById('order-discount-status-' + orderId);
+  if (status) { status.textContent = 'Se salvează...'; status.style.color = '#64748b'; }
+  const body = new URLSearchParams({ mode: mode, value: String(value), reason: reason });
+  try {
+    const res = await fetch('/admin/orders/' + orderId + '/discount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      if (status) { status.textContent = data.error || 'Nu am putut salva reducerea.'; status.style.color = '#b91c1c'; }
+      return;
+    }
+    if (status) {
+      const erp = data.erp_sync && data.erp_sync.ok === false
+        ? ' Atenție: nu a ajuns încă în ERP, se reia automat.'
+        : '';
+      status.textContent = 'Salvat. Total: ' + Number(data.total).toFixed(2) + ' lei.' + erp;
+      status.style.color = erp ? '#b45309' : '#166534';
+    }
+    // Reîncărcăm lista, ca totalul și eticheta de plată să se vadă corect.
+    setTimeout(() => window.location.reload(), 900);
+  } catch (e) {
+    if (status) { status.textContent = 'Eroare de rețea.'; status.style.color = '#b91c1c'; }
+  }
+}
+
+function saveOrderDiscount(orderId){
+  const mode = (document.getElementById('order-discount-mode-' + orderId) || {}).value || 'procent';
+  const value = (document.getElementById('order-discount-value-' + orderId) || {}).value || '0';
+  const reason = (document.getElementById('order-discount-reason-' + orderId) || {}).value || '';
+  trimiteReducere(orderId, mode, value, reason);
+}
+
+function clearOrderDiscount(orderId){
+  if (!confirm('Anulezi reducerea comercială de pe această comandă?')) return;
+  trimiteReducere(orderId, 'suma', '0', '');
 }
 
 /* --- Link de plată pentru diferența rămasă --- */

@@ -875,8 +875,9 @@ final class SiteController
 
         // Alegerea FANbox vine din formular; fără punct ales, comanda n-are
         // unde fi livrată, deci o oprim aici, nu la generarea AWB-ului.
-        $lockerId = isset($_POST['livrare_fanbox']) ? (int) ($_POST['fan_locker_id'] ?? 0) : 0;
-        \App\Support\CheckoutCalculator::alegeFanbox($lockerId);
+        $laFanbox = isset($_POST['livrare_fanbox']);
+        $lockerId = $laFanbox ? (int) ($_POST['fan_locker_id'] ?? 0) : 0;
+        \App\Support\CheckoutCalculator::alegeFanbox($lockerId, $laFanbox);
         $locker = null;
         if ($lockerId > 0) {
             $locker = \App\Support\FanLockers::dupaId($db, $lockerId);
@@ -3293,8 +3294,10 @@ final class SiteController
         $payload['billing_postcode'] = trim((string) ($payload['billing_postcode'] ?? $_GET['billing_postcode'] ?? ''));
         // Alegerea FANbox schimbă prețul, deci o reținem înainte de a calcula:
         // sumarul afișat trebuie să fie cel pe care îl va plăti clientul.
+        $fanboxBifat = $payload['livrare_fanbox'] ?? $_GET['livrare_fanbox'] ?? null;
         \App\Support\CheckoutCalculator::alegeFanbox(
-            (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0)
+            (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0),
+            $fanboxBifat === null ? null : (bool) (int) $fanboxBifat
         );
         $result = $this->checkoutShippingQuoteForPayload($payload);
         $status = trim((string) ($result['error'] ?? '')) === 'Conexiunea DB nu este disponibilă.' ? 503 : 200;

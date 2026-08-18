@@ -13,6 +13,9 @@ final class CheckoutCalculator
     /** Cheia din sesiune în care se ține punctul FANbox ales de client. */
     public const FANBOX_SESSION_KEY = 'checkout_fan_locker';
 
+    /** Modul de livrare ales, independent de punctul concret. */
+    private const FANBOX_INTENT_KEY = 'checkout_fanbox_mod';
+
     /**
      * Clientul a ales livrarea la FANbox pentru comanda curentă?
      *
@@ -22,19 +25,34 @@ final class CheckoutCalculator
      */
     public static function livrareAleasaLaFanbox(): bool
     {
-        return (int) ($_SESSION[self::FANBOX_SESSION_KEY] ?? 0) > 0;
+        // Prețul îl dă alegerea modului de livrare, nu punctul concret: clientul
+        // bifează „Livrare la FANbox" înainte să apuce să aleagă lockerul, iar
+        // până atunci sumarul arăta tariful de livrare la adresă.
+        return !empty($_SESSION[self::FANBOX_INTENT_KEY])
+            || (int) ($_SESSION[self::FANBOX_SESSION_KEY] ?? 0) > 0;
     }
 
-    /** Id-ul punctului FANbox ales (0 = livrare la adresă). */
+    /** Id-ul punctului FANbox ales (0 = niciunul ales încă). */
     public static function fanboxAles(): int
     {
         return max(0, (int) ($_SESSION[self::FANBOX_SESSION_KEY] ?? 0));
     }
 
-    /** Reține alegerea clientului; 0 înseamnă livrare la adresă. */
-    public static function alegeFanbox(int $lockerId): void
+    /**
+     * Reține alegerea clientului. `$laFanbox` e modul de livrare (bifa), iar
+     * `$lockerId` punctul concret — pot exista separat, fiindcă bifa se pune
+     * prima. `null` la `$laFanbox` păstrează modul dedus din id, pentru
+     * apelurile vechi care trimit doar lockerul.
+     */
+    public static function alegeFanbox(int $lockerId, ?bool $laFanbox = null): void
     {
-        if ($lockerId > 0) {
+        $activ = $laFanbox ?? ($lockerId > 0);
+        if ($activ) {
+            $_SESSION[self::FANBOX_INTENT_KEY] = true;
+        } else {
+            unset($_SESSION[self::FANBOX_INTENT_KEY]);
+        }
+        if ($lockerId > 0 && $activ) {
             $_SESSION[self::FANBOX_SESSION_KEY] = $lockerId;
             return;
         }

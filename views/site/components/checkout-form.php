@@ -887,6 +887,10 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         billing_street_no: simpleValue(streetNoInput),
                         billing_postcode: simpleValue(postcodeInput),
                         // Prețul transportului depinde de FANbox vs. adresă.
+                        // Bifa se trimite separat de punctul ales: tariful de
+                        // FANbox se aplică din clipa în care e aleasă livrarea
+                        // acolo, nu abia după ce se alege lockerul.
+                        livrare_fanbox: fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked ? 1 : 0,
                         fan_locker_id: fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked
                             && fanboxSelect instanceof HTMLSelectElement
                             ? fanboxSelect.value

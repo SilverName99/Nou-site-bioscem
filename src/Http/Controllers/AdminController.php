@@ -4690,7 +4690,8 @@ final class AdminController
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
                         notes,
                         erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
-                        erp_factura_numar, paid_amount' . $selectPlata . '
+                        erp_factura_numar, paid_amount,
+                        manual_discount, manual_discount_percent, manual_discount_reason' . $selectPlata . '
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
                  ORDER BY ' . $orderBySql . '
@@ -5363,6 +5364,140 @@ final class AdminController
         ], JSON_UNESCAPED_UNICODE);
     }
 
+    /**
+     * Reducerea comercială acordată manual pe o comandă venită din site
+     * (negociată cu clientul după plasare). Se aplică doar la produse, nu și la
+     * transport: un procent aplicat peste transport ar strica pragul de livrare
+     * gratuită. Comanda deja aprobată în ERP nu se mai atinge — acolo există
+     * factură, iar corecția se face prin storno.
+     */
+    public function orderDiscountSave(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, status, subtotal, discount_total, loyalty_points_discount,
+                    manual_discount, shipping_cost, billing_county
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
+            return;
+        }
+        if (in_array(strtolower((string) ($order['status'] ?? '')), ['processing', 'completed', 'cancelled', 'refunded'], true)) {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Comanda e procesată — factura există deja în ERP. Corecția se face prin storno.',
+            ]);
+            return;
+        }
+
+        $mod = (string) ($_POST['mode'] ?? 'procent') === 'suma' ? 'suma' : 'procent';
+        $valoare = (float) str_replace(',', '.', (string) ($_POST['value'] ?? '0'));
+        $motiv = trim((string) ($_POST['reason'] ?? ''));
+        if (mb_strlen($motiv) > 190) {
+            $motiv = mb_substr($motiv, 0, 190);
+        }
+
+        $subtotal = round((float) ($order['subtotal'] ?? 0), 2);
+        $procent = null;
+        if ($valoare <= 0) {
+            $reducere = 0.0;
+            $motiv = '';
+        } elseif ($mod === 'procent') {
+            if ($valoare > 100) {
+                echo json_encode(['ok' => false, 'error' => 'Procentul nu poate depăși 100%.']);
+                return;
+            }
+            $procent = round($valoare, 2);
+            $reducere = round($subtotal * ($procent / 100), 2);
+        } else {
+            $reducere = round($valoare, 2);
+            if ($reducere > $subtotal) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'Reducerea nu poate depăși valoarea produselor (' . number_format($subtotal, 2) . ' lei).',
+                ]);
+                return;
+            }
+        }
+
+        // Transportul se recalculează: reducerea poate coborî comanda sub pragul
+        // de livrare gratuită, iar clientul trebuie să vadă suma reală.
+        $settings = Settings::all($db);
+        $discountRef = round((float) ($order['discount_total'] ?? 0), 2)
+            + round((float) ($order['loyalty_points_discount'] ?? 0), 2)
+            + $reducere;
+        $shipping = \App\Support\CheckoutCalculator::adminRecalcShipping(
+            $settings,
+            (string) ($order['billing_county'] ?? ''),
+            $subtotal,
+            $discountRef,
+            (float) ($order['shipping_cost'] ?? 0)
+        );
+        $total = round(max(0.0, $subtotal - min($discountRef, $subtotal) + $shipping), 2);
+
+        try {
+            $db->prepare(
+                'UPDATE orders
+                 SET manual_discount = :suma,
+                     manual_discount_percent = :procent,
+                     manual_discount_reason = :motiv,
+                     shipping_cost = :ship,
+                     total = :total
+                 WHERE id = :id'
+            )->execute([
+                'suma' => $reducere,
+                'procent' => $procent,
+                'motiv' => $motiv !== '' ? $motiv : null,
+                'ship' => $shipping,
+                'total' => $total,
+                'id' => $orderId,
+            ]);
+        } catch (Throwable) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut salva reducerea.']);
+            return;
+        }
+
+        AdminActivityLog::log($db, $reducere > 0 ? 'comanda_reducere_comerciala' : 'comanda_reducere_anulata', [
+            'comanda' => (string) ($order['order_number'] ?? $orderId),
+            'reducere' => number_format($reducere, 2, '.', ''),
+            'procent' => $procent !== null ? number_format($procent, 2, '.', '') : '',
+            'motiv' => $motiv,
+        ]);
+
+        $erpSync = null;
+        if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+            try {
+                $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+            } catch (Throwable $e) {
+                $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+            }
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'manual_discount' => $reducere,
+            'manual_discount_percent' => $procent,
+            'manual_discount_reason' => $motiv,
+            'shipping' => $shipping,
+            'total' => $total,
+            'erp_sync' => $erpSync,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     public function orderItemsSave(array $params): void
     {
         if (!$this->guard()) {
@@ -5378,7 +5513,7 @@ final class AdminController
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
         \App\Support\ErpSync::ensureSchema($db);
-        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, manual_discount, manual_discount_percent, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $os->execute(['id' => $orderId]);
         $order = $os->fetch();
         if (!is_array($order)) {
@@ -5448,7 +5583,16 @@ final class AdminController
         $settings = Settings::all($db);
         $discountTotal = round((float) ($order['discount_total'] ?? 0), 2);
         $pointsDiscount = round((float) ($order['loyalty_points_discount'] ?? 0), 2);
-        $discountRef = $discountTotal + $pointsDiscount;
+        // Reducerea comercială dată în procent se recalculează pe noul subtotal:
+        // altfel, după ce se adaugă un produs, procentul promis clientului n-ar
+        // mai corespunde sumei scăzute.
+        $manualPercent = $order['manual_discount_percent'] ?? null;
+        $manualDiscount = round((float) ($order['manual_discount'] ?? 0), 2);
+        if ($manualPercent !== null && $manualPercent !== '' && (float) $manualPercent > 0) {
+            $manualDiscount = round($subtotal * ((float) $manualPercent / 100), 2);
+        }
+        $manualDiscount = min($manualDiscount, $subtotal);
+        $discountRef = $discountTotal + $pointsDiscount + $manualDiscount;
         $shipping = \App\Support\CheckoutCalculator::adminRecalcShipping(
             $settings,
             (string) ($order['billing_county'] ?? ''),
@@ -5466,8 +5610,8 @@ final class AdminController
             foreach ($lines as $ln) {
                 $ins->execute(['oid' => $orderId, 'pid' => $ln['pid'], 'name' => $ln['name'], 'qty' => $ln['qty'], 'unit' => $ln['unit'], 'total' => $ln['total']]);
             }
-            $db->prepare('UPDATE orders SET subtotal = :sub, shipping_cost = :ship, total = :tot WHERE id = :id')
-               ->execute(['sub' => $subtotal, 'ship' => $shipping, 'tot' => $total, 'id' => $orderId]);
+            $db->prepare('UPDATE orders SET subtotal = :sub, shipping_cost = :ship, total = :tot, manual_discount = :man WHERE id = :id')
+               ->execute(['sub' => $subtotal, 'ship' => $shipping, 'tot' => $total, 'man' => $manualDiscount, 'id' => $orderId]);
             $db->commit();
         } catch (Throwable) {
             if ($db->inTransaction()) {
@@ -5505,6 +5649,7 @@ final class AdminController
             'total' => $total,
             'discount_total' => $discountTotal,
             'loyalty_points_discount' => $pointsDiscount,
+            'manual_discount' => $manualDiscount,
             'erp_sync' => $erpSync,
             'rest_de_incasat' => $diferentaDeIncasat,
             'items' => array_map(static fn(array $l): array => [
@@ -17701,6 +17846,23 @@ HTML;
     {
         try {
             $db->exec('ALTER TABLE orders ADD COLUMN ad_source VARCHAR(50) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        // Reducere comercială acordată manual pe o comandă deja plasată. Se ține
+        // separat de cupon și de puncte: un client poate avea și cupon de pe
+        // site, și o reducere negociată la telefon, iar pe factură apar distinct.
+        try {
+            $db->exec('ALTER TABLE orders ADD COLUMN manual_discount DECIMAL(10,2) NOT NULL DEFAULT 0');
+        } catch (Throwable) {
+        }
+        try {
+            // Procentul se reține doar ca să se poată reafișa cum a fost dat;
+            // valoarea care contează la calcul e suma.
+            $db->exec('ALTER TABLE orders ADD COLUMN manual_discount_percent DECIMAL(5,2) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        try {
+            $db->exec('ALTER TABLE orders ADD COLUMN manual_discount_reason VARCHAR(190) DEFAULT NULL');
         } catch (Throwable) {
         }
         try {

@@ -234,6 +234,10 @@ final class ErpSync
             'transport' => round((float) ($order['shipping_cost'] ?? 0), 2),
             'cuponCod' => (string) ($order['coupon_code'] ?? ''),
             'discountCupon' => round((float) ($order['discount_total'] ?? 0), 2),
+            // Reducere negociată după plasarea comenzii; pe factură apare
+            // ca linie distinctă, separat de cupon și de puncte.
+            'discountManual' => round((float) ($order['manual_discount'] ?? 0), 2),
+            'motivDiscountManual' => trim((string) ($order['manual_discount_reason'] ?? '')) ?: null,
             'puncteFolosite' => (float) ($order['loyalty_points_used'] ?? 0),
             'discountPuncte' => round((float) ($order['loyalty_points_discount'] ?? 0), 2),
             'total' => round((float) ($order['total'] ?? 0), 2),
