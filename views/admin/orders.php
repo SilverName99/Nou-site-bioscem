@@ -220,7 +220,16 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                 </thead>
                 <tbody>
                 <?php foreach ($orders as $order): ?>
-                    <?php $orderJson = htmlspecialchars((string) json_encode($order, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE), ENT_QUOTES); ?>
+                    <?php
+                        // Nume de afișat în modal: cel real sau, pentru conturile
+                        // fără nume („Client Nou"), adresa de email.
+                        $order['display_name'] = \App\Support\CustomerDisplay::nume(
+                            (string) ($order['billing_first_name'] ?? ''),
+                            (string) ($order['billing_last_name'] ?? ''),
+                            (string) ($order['billing_email'] ?? '')
+                        );
+                        $orderJson = htmlspecialchars((string) json_encode($order, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE), ENT_QUOTES);
+                    ?>
                     <?php
                         $paymentStatus = (string) ($order['payment_status'] ?? 'unpaid');
                         $paymentStatusKey = strtolower($paymentStatus);
@@ -255,7 +264,12 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 : substr($paymentError, 0, 64));
                         $pointsAwarded = (int) ($order['loyalty_points_awarded'] ?? 0);
                         $orderId = (int) ($order['id'] ?? 0);
-                        $customerName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
+                        // Conturile fără nume real („Client Nou") se arată prin email.
+                        $customerName = \App\Support\CustomerDisplay::nume(
+                            (string) ($order['billing_first_name'] ?? ''),
+                            (string) ($order['billing_last_name'] ?? ''),
+                            (string) ($order['billing_email'] ?? '')
+                        );
                         $isCancelled = $statusKey === 'cancelled';
                         $isCod = $paymentMethodKey === 'cod';
                         $statusPillClass = (string) ($statusPillClassMap[$statusKey] ?? 'info');
@@ -802,7 +816,7 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
 
             content.innerHTML = `
                 <div class="order-modal-grid">
-                    <div><small>Client</small><p id="order-client-name-${order.id}">${esc(order.billing_first_name)} ${esc(order.billing_last_name)}</p></div>
+                    <div><small>Client</small><p id="order-client-name-${order.id}">${esc(order.display_name || ((order.billing_first_name||'') + ' ' + (order.billing_last_name||'')).trim())}</p></div>
                     <div><small>Email</small><p id="order-client-email-${order.id}">${esc(order.billing_email)}</p></div>
                     <div><small>Telefon</small><p id="order-client-phone-${order.id}">${esc(order.billing_phone)}</p></div>
                     <div><small>Plată</small><p>${esc(order.payment_method)}</p></div>

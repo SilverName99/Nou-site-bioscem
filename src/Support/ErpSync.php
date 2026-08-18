@@ -329,11 +329,21 @@ final class ErpSync
         $esteFirma = ((int) ($order['billing_is_company'] ?? 0)) === 1;
         $metoda = strtolower((string) ($order['payment_method'] ?? 'cod'));
 
+        // Conturile create doar cu email + parolă au numele generic „Client Nou".
+        // Trimis așa în ERP, partenerul apărea acolo tot „Client Nou". Pentru
+        // persoanele fizice fără nume real folosim adresa de email — singurul
+        // identificator pe care îl avem.
+        $clientNume = CustomerDisplay::nume(
+            (string) ($order['billing_first_name'] ?? ''),
+            (string) ($order['billing_last_name'] ?? ''),
+            (string) ($order['billing_email'] ?? ''),
+        );
+
         return [
             'numarSite' => (string) $order['order_number'],
             'dataComanda' => self::iso((string) ($order['created_at'] ?? '')),
 
-            'clientNume' => trim((string) $order['billing_first_name'] . ' ' . (string) $order['billing_last_name']),
+            'clientNume' => $clientNume,
             'clientEmail' => (string) ($order['billing_email'] ?? ''),
             'clientTelefon' => (string) ($order['billing_phone'] ?? ''),
             'esteFirma' => $esteFirma,
