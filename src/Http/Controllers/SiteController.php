@@ -1043,6 +1043,14 @@ final class SiteController
 
             $orderId = (int) $db->lastInsertId();
 
+            // Numele scris la checkout repară contul rămas „Client Nou": data
+            // viitoare clientul se vede cu numele lui, nu cu marcajul generic.
+            $this->completeazaNumeleContului(
+                $db,
+                (string) $billing['billing_first_name'],
+                (string) $billing['billing_last_name']
+            );
+
             // Cupon unic (single-use): marchează-l ca folosit → trece în tabul „Cupoane folosite"
             $appliedCouponCode = strtoupper(trim((string) ($summary['coupon']['code'] ?? '')));
             if ($appliedCouponCode !== '') {
@@ -4421,9 +4429,18 @@ HTML;
         if ($db instanceof PDO) {
             $user = CustomerAuth::user($db);
             if (is_array($user)) {
+                // Conturile făcute doar cu email + parolă au numele generic
+                // „Client Nou". Precompletat în checkout, clientul trecea peste
+                // el fără să observe și numele generic ajungea pe comandă (și
+                // de acolo în ERP). Lăsăm câmpurile goale: sunt obligatorii,
+                // deci își scrie numele adevărat.
+                $numeGenerat = \App\Support\CustomerDisplay::esteNumeGenerat(
+                    (string) ($user['first_name'] ?? ''),
+                    (string) ($user['last_name'] ?? '')
+                );
                 $defaults = [
-                    'billing_first_name' => (string) ($user['first_name'] ?? ''),
-                    'billing_last_name' => (string) ($user['last_name'] ?? ''),
+                    'billing_first_name' => $numeGenerat ? '' : (string) ($user['first_name'] ?? ''),
+                    'billing_last_name' => $numeGenerat ? '' : (string) ($user['last_name'] ?? ''),
                     'billing_phone' => (string) ($user['phone'] ?? ''),
                     'billing_email' => (string) ($user['email'] ?? ''),
                 ];
@@ -5963,6 +5980,42 @@ CSS;
     }
 
     /** Inițializarea plății a eșuat (orice procesator): comanda rămâne eșuată. */
+    /**
+     * Scrie în contul clientului numele completat la checkout, dacă în cont
+     * stătea încă marcajul generic „Client Nou".
+     *
+     * Numele de pe comandă e cel adevărat — l-a scris clientul acum, pe un
+     * câmp obligatoriu. Contul rămâne altfel veșnic „Client Nou", fiindcă
+     * nimeni nu intră special în „Contul meu" ca să-l completeze.
+     */
+    private function completeazaNumeleContului(PDO $db, string $firstName, string $lastName): void
+    {
+        try {
+            $user = CustomerAuth::user($db);
+            if (!is_array($user)) {
+                return;
+            }
+            if (!\App\Support\CustomerDisplay::esteNumeGenerat(
+                (string) ($user['first_name'] ?? ''),
+                (string) ($user['last_name'] ?? '')
+            )) {
+                return; // contul are deja un nume real
+            }
+            if (\App\Support\CustomerDisplay::esteNumeGenerat($firstName, $lastName)) {
+                return; // nici comanda n-are un nume mai bun
+            }
+            $db->prepare(
+                'UPDATE customers SET first_name = :first_name, last_name = :last_name WHERE id = :id'
+            )->execute([
+                'first_name' => trim($firstName),
+                'last_name' => trim($lastName),
+                'id' => (int) ($user['id'] ?? 0),
+            ]);
+        } catch (\Throwable) {
+            // Completarea e un bonus; o eroare aici nu are voie să oprească comanda.
+        }
+    }
+
     private function markOrderPaymentFailed(PDO $db, int $orderId, string $message): void
     {
         $stmt = $db->prepare(
