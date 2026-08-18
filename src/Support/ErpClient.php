@@ -177,6 +177,30 @@ final class ErpClient
     }
 
     /**
+     * Anulează în ERP o comandă anulată pe site. Idempotentă: dacă ERP-ul nu o
+     * are sau e deja anulată, răspunde tot cu succes.
+     *
+     * @return array{gasita: bool, status: string, avertisment: string}
+     */
+    public function cancelOrder(string $numarSite, string $motiv = ''): array
+    {
+        $numar = trim($numarSite);
+        if ($numar === '') {
+            return ['gasita' => false, 'status' => 'inexistenta', 'avertisment' => ''];
+        }
+        $raw = $this->request('POST', '/api/comenzi-site/anuleaza', [
+            'numarSite' => $numar,
+            'motiv' => trim($motiv),
+        ]);
+        return [
+            'gasita' => (bool) ($raw['gasita'] ?? false),
+            'status' => (string) ($raw['status'] ?? ''),
+            // ERP-ul a anulat comanda, dar factura legată a rămas de verificat.
+            'avertisment' => trim((string) ($raw['avertisment'] ?? '')),
+        ];
+    }
+
+    /**
      * @param array<mixed>|null $body
      * @return array<mixed>
      */

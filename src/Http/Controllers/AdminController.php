@@ -6483,12 +6483,13 @@ final class AdminController
             }
 
             if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
-                // Comanda nu mai pleacă în ERP: o scoatem din coada de
-                // reîncercări, ca să nu rămână veșnic „în așteptare".
-                \App\Support\ErpSync::skipDacaNetrimisa(
+                // Dacă nu plecase încă, o scoatem din coada de reîncercări; dacă
+                // ERP-ul o are deja, îi cerem să o anuleze acolo, ca să dispară
+                // din lista „Comenzi site".
+                \App\Support\ErpSync::anuleaza(
                     $db,
                     $orderId,
-                    'Comandă ' . $status . ' pe site; nu se mai trimite în ERP.'
+                    'Comandă ' . $status . ' pe site.'
                 );
             }
 

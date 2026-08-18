@@ -5787,7 +5787,7 @@ CSS;
             ]);
             LoyaltyService::refundRedeemedPointsForOrder($db, $orderId);
             LoyaltyService::reverseAwardedPointsForOrder($db, $orderId);
-            \App\Support\ErpSync::skipDacaNetrimisa(
+            \App\Support\ErpSync::anuleaza(
                 $db,
                 $orderId,
                 'Plata a fost respinsă; comanda nu se trimite în ERP.'
@@ -5980,7 +5980,7 @@ CSS;
         ]);
         LoyaltyService::refundRedeemedPointsForOrder($db, $orderId);
         LoyaltyService::reverseAwardedPointsForOrder($db, $orderId);
-        \App\Support\ErpSync::skipDacaNetrimisa(
+        \App\Support\ErpSync::anuleaza(
             $db,
             $orderId,
             'Plata nu a putut fi inițializată; comanda nu se trimite în ERP.'

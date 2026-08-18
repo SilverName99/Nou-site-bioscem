@@ -282,6 +282,8 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'pending' => 'ERP: în așteptare',
                             'failed' => 'ERP: eșuată',
                             'skipped' => 'ERP: netrimisă',
+                            'cancelled' => 'ERP: anulată',
+                            'cancel_pending' => 'ERP: anulare în curs',
                         ];
                         // O comandă anulată/eșuată nu mai pleacă în ERP, chiar dacă a
                         // rămas marcată „în așteptare" dinainte de anulare.
@@ -291,7 +293,13 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             $erpStatus = 'skipped';
                             $erpError = '';
                         }
-                        $erpPill = ['sent' => 'ok', 'failed' => 'off', 'skipped' => 'muted'][$erpStatus] ?? 'warn';
+                        $erpPill = [
+                            'sent' => 'ok',
+                            'failed' => 'off',
+                            'skipped' => 'muted',
+                            'cancelled' => 'muted',
+                            'cancel_pending' => 'warn',
+                        ][$erpStatus] ?? 'warn';
                         $erpFactura = trim((string) ($order['erp_factura_numar'] ?? ''));
                     ?>
                     <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?>">

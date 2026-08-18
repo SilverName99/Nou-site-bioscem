@@ -26,6 +26,10 @@ final class ErpSync
     public const STATUS_FAILED = 'failed';
     /** Nu se trimite (comandă anulată, plată eșuată). */
     public const STATUS_SKIPPED = 'skipped';
+    /** Trimisă în ERP, apoi anulată pe site; anularea n-a ajuns încă acolo. */
+    public const STATUS_CANCEL_PENDING = 'cancel_pending';
+    /** Trimisă în ERP și anulată și acolo. */
+    public const STATUS_CANCELLED = 'cancelled';
 
     /** Pauzele dintre reîncercări, în secunde. Ultima se repetă. */
     private const BACKOFF = [60, 300, 900, 3600, 21600, 43200];
@@ -189,6 +193,119 @@ final class ErpSync
         } catch (Throwable) {
             // Marcajul e informativ; o eroare aici nu trebuie să oprească anularea.
         }
+    }
+
+    /**
+     * Anularea comenzii, dusă până la capăt în ERP.
+     *
+     * Dacă în ERP comanda n-a ajuns încă, doar o scoatem din coada de
+     * trimitere (comportamentul vechi). Dacă a ajuns, cerem ERP-ului să o
+     * anuleze, ca să dispară din lista „Comenzi site". Când ERP-ul nu
+     * răspunde, comanda rămâne pe `cancel_pending` și cron-ul reia anularea.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function anuleaza(PDO $db, int $orderId, string $motiv = ''): array
+    {
+        if ($orderId <= 0) {
+            return ['ok' => false, 'message' => 'Comandă inexistentă.'];
+        }
+
+        try {
+            self::ensureSchema($db);
+            $stmt = $db->prepare(
+                'SELECT id, order_number, erp_status FROM orders WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute(['id' => $orderId]);
+            $order = $stmt->fetch();
+        } catch (Throwable $exception) {
+            return ['ok' => false, 'message' => $exception->getMessage()];
+        }
+
+        if (!is_array($order)) {
+            return ['ok' => false, 'message' => 'Comanda nu a fost găsită.'];
+        }
+
+        $status = strtolower(trim((string) ($order['erp_status'] ?? '')));
+        if ($status === self::STATUS_CANCELLED) {
+            return ['ok' => true, 'message' => 'Comanda era deja anulată în ERP.'];
+        }
+        if ($status !== self::STATUS_SENT && $status !== self::STATUS_CANCEL_PENDING) {
+            // N-a plecat niciodată: nu are ce anula acolo.
+            self::skipDacaNetrimisa($db, $orderId, $motiv);
+            return ['ok' => true, 'message' => 'Comanda nu ajunsese în ERP; am oprit trimiterea.'];
+        }
+
+        return self::trimiteAnularea($db, $orderId, (string) ($order['order_number'] ?? ''), $motiv);
+    }
+
+    /**
+     * Reia anulările care n-au ajuns în ERP (ERP oprit în momentul anulării).
+     * Rulează din cron, imediat după `retryPending()`.
+     *
+     * @return array{incercate: int, reusite: int, esuate: int}
+     */
+    public static function retryCancels(PDO $db, int $limit = 25): array
+    {
+        self::ensureSchema($db);
+
+        $stmt = $db->prepare(
+            "SELECT id, order_number FROM orders
+             WHERE erp_status = :status
+             ORDER BY id ASC
+             LIMIT " . max(1, min(200, $limit))
+        );
+        $stmt->execute(['status' => self::STATUS_CANCEL_PENDING]);
+
+        $rezultat = ['incercate' => 0, 'reusite' => 0, 'esuate' => 0];
+        foreach (($stmt->fetchAll() ?: []) as $row) {
+            $rezultat['incercate']++;
+            $anulare = self::trimiteAnularea(
+                $db,
+                (int) $row['id'],
+                (string) ($row['order_number'] ?? ''),
+                'Comandă anulată pe site.'
+            );
+            $rezultat[$anulare['ok'] ? 'reusite' : 'esuate']++;
+        }
+        return $rezultat;
+    }
+
+    /** Cererea propriu-zisă de anulare către ERP, cu marcarea rezultatului. */
+    private static function trimiteAnularea(PDO $db, int $orderId, string $numarSite, string $motiv): array
+    {
+        $numar = trim($numarSite);
+        if ($numar === '') {
+            return ['ok' => false, 'message' => 'Comanda nu are număr; nu o pot anula în ERP.'];
+        }
+
+        $client = ErpClient::fromDb($db);
+        if ($client === null) {
+            $message = 'Integrarea cu ERP-ul e oprită sau neconfigurată; anularea nu a fost trimisă.';
+            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            return ['ok' => false, 'message' => $message];
+        }
+
+        try {
+            $raspuns = $client->cancelOrder($numar, $motiv);
+        } catch (Throwable $exception) {
+            $message = 'Anularea nu a ajuns în ERP: ' . $exception->getMessage();
+            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            return ['ok' => false, 'message' => $message];
+        }
+
+        // Comanda e anulată în ERP; dacă factura de acolo a rămas de verificat,
+        // ERP-ul ne spune de ce, iar noi păstrăm motivul pe comandă.
+        $avertisment = (string) ($raspuns['avertisment'] ?? '');
+        $nota = $avertisment !== ''
+            ? 'Anulată în ERP, dar factura de acolo trebuie verificată: ' . $avertisment
+            : (trim($motiv) !== '' ? $motiv : 'Comandă anulată pe site și în ERP.');
+
+        self::mark($db, $orderId, self::STATUS_CANCELLED, ['error' => $nota]);
+        return [
+            'ok' => true,
+            'message' => $avertisment !== '' ? $nota : 'Comanda a fost anulată și în ERP.',
+        ];
     }
 
     // ───────────────────────────────────────────────────────────

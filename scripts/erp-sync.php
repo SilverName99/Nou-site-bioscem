@@ -47,7 +47,20 @@ printf(
     $rezultat['esuate']
 );
 
-// 2) Notificările pe care ERP-ul n-a reușit să ni le livreze (site jos în
+// 2) Anulările care n-au apucat să ajungă în ERP (ERP oprit în acel moment).
+$anulari = ErpSync::retryCancels($db, $limit);
+
+if ($anulari['incercate'] > 0) {
+    printf(
+        "[%s] Anulări reluate: %d — duse la capăt: %d, eșuate: %d\n",
+        date('Y-m-d H:i:s'),
+        $anulari['incercate'],
+        $anulari['reusite'],
+        $anulari['esuate']
+    );
+}
+
+// 3) Notificările pe care ERP-ul n-a reușit să ni le livreze (site jos în
 //    momentul aprobării). Le luăm noi și le confirmăm după ce le aplicăm.
 $notificari = ['preluate' => 0, 'aplicate' => 0, 'esuate' => 0];
 $client = ErpClient::fromSettings($settings);
@@ -122,4 +135,4 @@ printf(
     $notificari['esuate']
 );
 
-exit(($rezultat['esuate'] > 0 || $notificari['esuate'] > 0) ? 1 : 0);
+exit(($rezultat['esuate'] > 0 || $anulari['esuate'] > 0 || $notificari['esuate'] > 0) ? 1 : 0);
