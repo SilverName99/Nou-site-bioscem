@@ -15,6 +15,7 @@ $sortBy = (string) ($filters['sort_by'] ?? 'date');
 $sortDir = (string) ($filters['sort_dir'] ?? 'desc');
 $search = trim((string) ($filters['q'] ?? ''));
 $paymentFilter = (string) ($filters['payment_method'] ?? '');
+$doarRestDeIncasat = !empty($filters['rest_incasat']);
 $statusLabels = is_array($orderStatusLabels ?? null) ? $orderStatusLabels : [];
 $paymentStatusLabels = is_array($orderPaymentStatusLabels ?? null) ? $orderPaymentStatusLabels : [];
 $paymentMethodLabels = is_array($orderPaymentMethodLabels ?? null) ? $orderPaymentMethodLabels : [];
@@ -137,6 +138,13 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                 </select>
             </div>
             <div class="orders-filter-field">
+                <span class="orders-filter-label">Încasare</span>
+                <label style="display:flex;align-items:center;gap:6px;height:38px;font-size:13px;color:#334155;white-space:nowrap;">
+                    <input type="checkbox" name="rest_incasat" value="1" <?= $doarRestDeIncasat ? 'checked' : '' ?>>
+                    Doar cu rest de încasat
+                </label>
+            </div>
+            <div class="orders-filter-field">
                 <span class="orders-filter-label">De la data</span>
                 <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom, ENT_QUOTES) ?>">
             </div>
@@ -252,6 +260,18 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         $isCod = $paymentMethodKey === 'cod';
                         $statusPillClass = (string) ($statusPillClassMap[$statusKey] ?? 'info');
                         $paymentStatusPillClass = (string) ($paymentStatusPillClassMap[$paymentStatusKey] ?? 'info');
+                        // Plătită cu cardul, dar totalul a crescut după încasare: eticheta
+                        // „Plătit" ascundea faptul că mai e ceva de încasat, iar comanda
+                        // arăta identic cu una achitată integral.
+                        $restDeIncasat = 0.0;
+                        if ($paymentStatusKey === 'paid') {
+                            $incasat = $order['paid_amount'] ?? null;
+                            $incasat = ($incasat === null || $incasat === '')
+                                ? (float) ($order['total'] ?? 0)
+                                : (float) $incasat;
+                            $restDeIncasat = round(max(0.0, (float) ($order['total'] ?? 0) - $incasat), 2);
+                        }
+                        $platitPartial = $restDeIncasat > 0.009;
                         $paymentMethodPillClass = (string) ($paymentMethodPillClassMap[$paymentMethodKey] ?? 'muted');
                         $erpEnabled = (string) ($settings['erp_enabled'] ?? '0') === '1';
                         $erpStatus = strtolower(trim((string) ($order['erp_status'] ?? 'pending')));
@@ -295,7 +315,14 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             <div class="orders-status-stack">
                                 <span class="status-pill status-pill--<?= htmlspecialchars($statusPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($statusLabels[$statusRaw] ?? $statusRaw), ENT_QUOTES) ?></span>
                                 <?php if (!$isCod): ?>
-                                    <span class="status-pill status-pill--<?= htmlspecialchars($paymentStatusPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentStatusLabels[$paymentStatusKey] ?? $paymentStatus), ENT_QUOTES) ?></span>
+                                    <?php if ($platitPartial): ?>
+                                        <span class="status-pill status-pill--warn"
+                                              title="Încasat <?= number_format((float) ($order['total'] ?? 0) - $restDeIncasat, 2) ?> RON din <?= number_format((float) ($order['total'] ?? 0), 2) ?> RON. Diferența se cere din fereastra comenzii, cu „Trimite link de plată pentru diferență”.">
+                                            Plătit parțial — rest <?= number_format($restDeIncasat, 2) ?> RON
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="status-pill status-pill--<?= htmlspecialchars($paymentStatusPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentStatusLabels[$paymentStatusKey] ?? $paymentStatus), ENT_QUOTES) ?></span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                                 <span class="status-pill status-pill--<?= htmlspecialchars($paymentMethodPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentMethodLabels[$paymentMethodKey] ?? $paymentMethodRaw), ENT_QUOTES) ?></span>
                                 <?php if ($erpEnabled): ?>

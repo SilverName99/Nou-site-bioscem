@@ -4651,6 +4651,11 @@ final class AdminController
                 $where[] = 'LOWER(payment_status) = :payment_status';
                 $params['payment_status'] = strtolower($filters['payment_status']);
             }
+            if (!empty($filters['rest_incasat'])) {
+                // Plătită cu cardul, dar totalul a crescut după încasare.
+                $where[] = 'LOWER(payment_status) = "paid" AND paid_amount IS NOT NULL'
+                    . ' AND ROUND(total - paid_amount, 2) > 0';
+            }
             if ($filters['from_date'] !== '') {
                 $where[] = 'created_at >= :from_date';
                 $params['from_date'] = $filters['from_date'] . ' 00:00:00';
@@ -6204,6 +6209,8 @@ final class AdminController
             'status' => $status,
             'payment_method' => strtolower($paymentMethod),
             'payment_status' => strtolower($paymentStatus),
+            // Comenzi încasate cu cardul cărora le-a crescut totalul după plată.
+            'rest_incasat' => trim((string) ($input['rest_incasat'] ?? '')) !== '',
             'from_date' => $fromDate,
             'to_date' => $toDate,
             'sort_by' => $sortBy,
