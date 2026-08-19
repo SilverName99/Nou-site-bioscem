@@ -184,7 +184,10 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                     <option value="delete">Șterge (mută în coș)</option>
                     <option value="status">Schimbă status</option>
                     <option value="awb">Generează AWB</option>
+                    <option value="shipping">Corectează transportul</option>
                 </select>
+                <input type="number" name="bulk_shipping_value" id="orders-bulk-shipping" step="0.01" min="0"
+                       placeholder="Transport (lei)" style="display:none;width:150px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;">
                 <select name="bulk_status" id="orders-bulk-status" style="display:none;">
                     <option value="">Alege status</option>
                     <?php foreach ($bulkStatusOptions as $statusOption): ?>
@@ -544,13 +547,18 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
         if (!isStatusAction) {
             bulkStatus.value = '';
         }
+        const bulkShipping = document.getElementById('orders-bulk-shipping');
+        if (bulkShipping instanceof HTMLInputElement) {
+            const isShippingAction = bulkAction.value === 'shipping';
+            bulkShipping.style.display = isShippingAction ? '' : 'none';
+            bulkShipping.required = isShippingAction;
+            if (!isShippingAction) {
+                bulkShipping.value = '';
+            }
+        }
     };
 
-    bulkAction?.addEventListener('change', () => {
-        if (bulkStatus instanceof HTMLSelectElement) {
-            syncBulkStatusVisibility();
-        }
-    });
+    bulkAction?.addEventListener('change', syncBulkStatusVisibility);
 
     bulkForm?.addEventListener('submit', (event) => {
         if (!(bulkAction instanceof HTMLSelectElement)) {
@@ -579,6 +587,22 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
         if (bulkAction.value === 'awb' && !window.confirm('Generezi AWB FAN pentru comenzile selectate?')) {
             event.preventDefault();
             return;
+        }
+        if (bulkAction.value === 'shipping') {
+            const bulkShipping = document.getElementById('orders-bulk-shipping');
+            const valoare = bulkShipping instanceof HTMLInputElement ? bulkShipping.value.trim() : '';
+            if (valoare === '' || !Number.isFinite(Number(valoare)) || Number(valoare) < 0) {
+                event.preventDefault();
+                window.alert('Scrie valoarea transportului (ex. 30).');
+                return;
+            }
+            // Scrie peste transportul tuturor comenzilor bifate, deci merită o
+            // oprire: o selecție greșită s-ar vedea abia pe facturi.
+            if (!window.confirm('Pui transportul pe ' + Number(valoare).toFixed(2) + ' lei la '
+                + selectedIds.length + ' comenzi? Totalul fiecărei comenzi se reface.')) {
+                event.preventDefault();
+                return;
+            }
         }
 
         if (bulkIds instanceof HTMLElement) {
@@ -771,8 +795,24 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 totalsHtml += `<p><span>Reducere comercială${procentLabel}${motivLabel}</span><strong>- ${formatRon(manualDiscount)}</strong></p>`;
             }
             totalsHtml += `
-                    <p><span>Livrare</span><strong>${shippingLabel}</strong></p>
-                    <p class="total"><span>Total</span><strong>${formatRon(order.total || 0)}</strong></p>
+                    <p>
+                      <span>Livrare</span>
+                      <strong>
+                        <span id="order-shipping-label-${order.id}">${shippingLabel}</span>
+                        <button type="button" onclick="comutaTransport(${order.id})" title="Corectează transportul"
+                                style="margin-left:6px;font-size:11px;padding:1px 6px;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;cursor:pointer;color:#374151;">✎</button>
+                      </strong>
+                    </p>
+                    <p id="order-shipping-form-${order.id}" style="display:none;">
+                      <span>Transport nou</span>
+                      <strong style="display:flex;align-items:center;gap:6px;">
+                        <input type="number" id="order-shipping-input-${order.id}" step="0.01" min="0" value="${shippingCost.toFixed(2)}"
+                               style="width:90px;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;text-align:right;">
+                        <button type="button" onclick="salveazaTransport(${order.id})"
+                                style="padding:4px 10px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">Salvează</button>
+                      </strong>
+                    </p>
+                    <p class="total"><span>Total</span><strong id="order-total-label-${order.id}">${formatRon(order.total || 0)}</strong></p>
             `;
             const shipSame = Number(order.shipping_same_as_billing ?? 1) === 1;
             const shipName = [order.shipping_first_name, order.shipping_last_name].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
@@ -1076,6 +1116,73 @@ async function salveazaFanbox(orderId) {
   } catch (e) {
     alert('Nu am putut salva destinația.');
   }
+}
+
+/**
+ * Corecția transportului pe o comandă.
+ *
+ * Transportul se calcula doar automat; la comenzile la care valoarea a ieșit
+ * greșit nu exista de unde să fie îndreptată, iar reducerea comercială —
+ * singura pârghie apropiată — schimbă cu totul altceva pe document.
+ */
+function comutaTransport(orderId) {
+    const form = document.getElementById('order-shipping-form-' + orderId);
+    if (!form) {
+        return;
+    }
+    const ascuns = form.style.display === 'none';
+    form.style.display = ascuns ? '' : 'none';
+    if (ascuns) {
+        const camp = document.getElementById('order-shipping-input-' + orderId);
+        if (camp) {
+            camp.focus();
+            camp.select();
+        }
+    }
+}
+
+async function salveazaTransport(orderId) {
+    const camp = document.getElementById('order-shipping-input-' + orderId);
+    if (!camp) {
+        return;
+    }
+    // `formatRon` din fereastra comenzii trăiește într-o funcție închisă;
+    // aici e nevoie de același format („12.34 RON"), nu de „lei".
+    const inRon = (v) => (Number(v) || 0).toFixed(2) + ' RON';
+    const valoare = String(camp.value || '').trim();
+    if (valoare === '' || !Number.isFinite(Number(valoare)) || Number(valoare) < 0) {
+        window.alert('Scrie o valoare de transport validă.');
+        return;
+    }
+    const date = new FormData();
+    date.append('value', valoare);
+    try {
+        const raspuns = await fetch('/admin/orders/' + orderId + '/shipping', { method: 'POST', body: date });
+        const rezultat = await raspuns.json();
+        if (!rezultat || !rezultat.ok) {
+            window.alert((rezultat && rezultat.error) || 'Nu am putut salva transportul.');
+            return;
+        }
+        const eticheta = document.getElementById('order-shipping-label-' + orderId);
+        if (eticheta) {
+            eticheta.textContent = Number(rezultat.shipping) <= 0.004 ? 'GRATUIT' : inRon(rezultat.shipping);
+        }
+        const totalEticheta = document.getElementById('order-total-label-' + orderId);
+        if (totalEticheta) {
+            totalEticheta.textContent = inRon(rezultat.total);
+        }
+        comutaTransport(orderId);
+        // Rambursul de pe AWB și banii de dat înapoi nu se rezolvă singuri.
+        const mesaje = (rezultat.warnings || []).slice();
+        if (rezultat.erp_note) {
+            mesaje.push(rezultat.erp_note);
+        }
+        if (mesaje.length) {
+            window.alert(mesaje.join('\n\n'));
+        }
+    } catch (eroare) {
+        window.alert('Nu am putut salva transportul.');
+    }
 }
 
 function toggleAddressEdit(orderId) {

@@ -5498,6 +5498,147 @@ final class AdminController
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
+
+    /**
+     * Scrie transportul pe o comandă, la o valoare dată de operator.
+     *
+     * Transportul se calcula până acum doar automat (praguri, preț fix, tarif
+     * FAN). Când valoarea ieșită la plasarea comenzii e greșită — comenzi vechi,
+     * un tarif prins aiurea — nu exista niciun loc din care să fie corectată:
+     * singura pârghie era reducerea comercială, care schimbă altceva.
+     *
+     * Totalul se reface după aceeași regulă ca la reducerea comercială, ca cele
+     * două să nu ajungă la rezultate diferite pentru aceeași comandă.
+     */
+    private function seteazaTransportComanda(
+        PDO $db,
+        int $orderId,
+        float $transport,
+        array $settings
+    ): array {
+        $stmt = $db->prepare(
+            'SELECT id, order_number, status, payment_status, paid_amount, subtotal,
+                    discount_total, loyalty_points_discount, manual_discount,
+                    shipping_cost, total, fan_awb
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            return ['ok' => false, 'error' => 'Comanda nu a fost găsită.'];
+        }
+
+        $status = strtolower(trim((string) ($order['status'] ?? '')));
+        if (in_array($status, ['cancelled', 'refunded'], true)) {
+            return ['ok' => false, 'error' => 'Comanda e anulată/returnată — nu se mai atinge.'];
+        }
+
+        $transport = round(max(0.0, $transport), 2);
+        $transportVechi = round((float) ($order['shipping_cost'] ?? 0), 2);
+        $subtotal = round((float) ($order['subtotal'] ?? 0), 2);
+        $reduceri = round((float) ($order['discount_total'] ?? 0), 2)
+            + round((float) ($order['loyalty_points_discount'] ?? 0), 2)
+            + round((float) ($order['manual_discount'] ?? 0), 2);
+        $total = round(max(0.0, $subtotal - min($reduceri, $subtotal) + $transport), 2);
+        $totalVechi = round((float) ($order['total'] ?? 0), 2);
+
+        try {
+            $db->prepare('UPDATE orders SET shipping_cost = :ship, total = :total WHERE id = :id')
+               ->execute(['ship' => $transport, 'total' => $total, 'id' => $orderId]);
+        } catch (Throwable) {
+            return ['ok' => false, 'error' => 'Nu am putut salva transportul.'];
+        }
+
+        AdminActivityLog::log($db, 'comanda_transport_corectat', [
+            'comanda' => (string) ($order['order_number'] ?? $orderId),
+            'transport_vechi' => number_format($transportVechi, 2, '.', ''),
+            'transport_nou' => number_format($transport, 2, '.', ''),
+            'total_vechi' => number_format($totalVechi, 2, '.', ''),
+            'total_nou' => number_format($total, 2, '.', ''),
+        ]);
+
+        // Comanda aprobată în ERP are deja factură: ERP-ul refuză modificarea,
+        // așa că nici nu o mai încercăm — dar spunem limpede ce a rămas de făcut.
+        $erpSync = null;
+        $erpNota = '';
+        if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+            if (in_array($status, ['processing', 'completed'], true)) {
+                $erpNota = 'Comanda e deja procesată în ERP: acolo corectează separat, pe factură.';
+            } else {
+                try {
+                    $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+                } catch (Throwable $e) {
+                    $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+                }
+            }
+        }
+
+        // AWB-ul deja emis păstrează rambursul vechi: curierul ar încasa suma
+        // dinainte de corecție, deci diferența trebuie rezolvată la FAN.
+        $awb = trim((string) ($order['fan_awb'] ?? ''));
+        $avertismente = [];
+        if ($awb !== '' && abs($total - $totalVechi) > 0.009) {
+            $avertismente[] = 'AWB-ul ' . $awb . ' a fost deja generat cu totalul vechi ('
+                . number_format($totalVechi, 2) . ' lei). Dacă plata e la livrare, rambursul de pe AWB'
+                . ' NU se schimbă singur — anulează și regenerează AWB-ul sau anunță FAN.';
+        }
+        $incasat = $order['paid_amount'] ?? null;
+        $incasat = ($incasat === null || $incasat === '') ? null : round((float) $incasat, 2);
+        if (strtolower((string) ($order['payment_status'] ?? '')) === 'paid'
+            && $incasat !== null
+            && $incasat - $total > 0.009
+        ) {
+            $avertismente[] = 'Clientul a plătit ' . number_format($incasat, 2)
+                . ' lei, iar totalul nou e ' . number_format($total, 2)
+                . ' lei. Diferența de ' . number_format($incasat - $total, 2) . ' lei i se cuvine înapoi.';
+        }
+
+        return [
+            'ok' => true,
+            'shipping' => $transport,
+            'shipping_old' => $transportVechi,
+            'total' => $total,
+            'total_old' => $totalVechi,
+            'erp_sync' => $erpSync,
+            'erp_note' => $erpNota,
+            'warnings' => $avertismente,
+        ];
+    }
+
+    /** Corectarea transportului pe o singură comandă (din fereastra comenzii). */
+    public function orderShippingSave(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+
+        $brut = trim((string) ($_POST['value'] ?? ''));
+        if ($brut === '' || !is_numeric(str_replace(',', '.', $brut))) {
+            echo json_encode(['ok' => false, 'error' => 'Scrie o valoare numerică pentru transport.']);
+            return;
+        }
+        $transport = (float) str_replace(',', '.', $brut);
+        if ($transport < 0) {
+            echo json_encode(['ok' => false, 'error' => 'Transportul nu poate fi negativ.']);
+            return;
+        }
+        if ($transport > 10000) {
+            echo json_encode(['ok' => false, 'error' => 'Valoare prea mare pentru transport.']);
+            return;
+        }
+
+        $rezultat = $this->seteazaTransportComanda($db, $orderId, $transport, Settings::all($db));
+        echo json_encode($rezultat, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     public function orderItemsSave(array $params): void
     {
         if (!$this->guard()) {
@@ -6067,6 +6208,64 @@ final class AdminController
                     $message .= ' ' . implode(' | ', $errors);
                 }
                 Flash::set('error', $message);
+            }
+            header('Location: ' . $backUrl);
+            return;
+        }
+
+        if ($action === 'shipping') {
+            // Corecția de transport vine, de regulă, pe un pachet de comenzi
+            // vechi cu același tarif greșit; una câte una ar fi o seară pierdută.
+            $brut = trim((string) ($_POST['bulk_shipping_value'] ?? ''));
+            if ($brut === '' || !is_numeric(str_replace(',', '.', $brut))) {
+                Flash::set('error', 'Scrie valoarea transportului (ex. 30).');
+                header('Location: ' . $backUrl);
+                return;
+            }
+            $transport = (float) str_replace(',', '.', $brut);
+            if ($transport < 0 || $transport > 10000) {
+                Flash::set('error', 'Valoare de transport în afara limitelor.');
+                header('Location: ' . $backUrl);
+                return;
+            }
+
+            $settings = Settings::all($db);
+            $actualizate = 0;
+            $erori = [];
+            $atentionari = [];
+            foreach ($orderIds as $orderId) {
+                $rezultat = $this->seteazaTransportComanda($db, $orderId, $transport, $settings);
+                if (!empty($rezultat['ok'])) {
+                    $actualizate++;
+                    foreach ((array) ($rezultat['warnings'] ?? []) as $avertisment) {
+                        $atentionari[] = (string) $avertisment;
+                    }
+                    if (trim((string) ($rezultat['erp_note'] ?? '')) !== '') {
+                        $atentionari[] = (string) $rezultat['erp_note'];
+                    }
+                } else {
+                    $erori[] = '#' . $orderId . ': ' . (string) ($rezultat['error'] ?? 'eroare');
+                }
+            }
+
+            if ($actualizate > 0) {
+                $mesaj = 'Transport pus pe ' . number_format($transport, 2) . ' lei la '
+                    . $actualizate . ' ' . ($actualizate === 1 ? 'comandă' : 'comenzi') . '.';
+                if ($erori !== []) {
+                    $mesaj .= ' Nemodificate: ' . implode('; ', array_slice($erori, 0, 5)) . '.';
+                }
+                // Rambursul de pe AWB și banii de dat înapoi nu se rezolvă
+                // singuri: dacă nu sunt spuse aici, se pierd.
+                if ($atentionari !== []) {
+                    $atentionari = array_values(array_unique($atentionari));
+                    $mesaj .= ' De verificat: ' . implode(' ', array_slice($atentionari, 0, 5));
+                    if (count($atentionari) > 5) {
+                        $mesaj .= ' (și încă ' . (count($atentionari) - 5) . ')';
+                    }
+                }
+                Flash::set('success', $mesaj);
+            } else {
+                Flash::set('error', 'Nicio comandă modificată. ' . implode('; ', array_slice($erori, 0, 5)));
             }
             header('Location: ' . $backUrl);
             return;

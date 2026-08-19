@@ -257,6 +257,7 @@ $router->post('/admin/orders/{id}/promo', [AdminController::class, 'orderPromoSa
 $router->post('/admin/orders/{id}/items', [AdminController::class, 'orderItemsSave']);
 $router->post('/admin/orders/{id}/fanbox', [AdminController::class, 'orderFanboxSave']);
 $router->post('/admin/orders/{id}/discount', [AdminController::class, 'orderDiscountSave']);
+$router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);
 $router->post('/admin/orders/{id}/payment-link', [AdminController::class, 'orderPaymentLinkSend']);
 $router->get('/admin/orders/{id}/client-promo', [AdminController::class, 'orderClientPromo']);
 $router->get('/admin/promo-products/search', [AdminController::class, 'promoClientSearchApi']);
