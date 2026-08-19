@@ -8452,6 +8452,10 @@ final class AdminController
             'fan_parcel_count' => (string) $parcelCount,
             'fan_envelope_count' => (string) $envelopeCount,
             'fan_option_codes' => $this->fanNormalizeSelectedOptions((array) ($_POST['fan_option_codes'] ?? [])),
+            'fan_cod_bank' => mb_substr(trim((string) ($_POST['fan_cod_bank'] ?? '')), 0, 120),
+            'fan_cod_iban' => strtoupper(
+                preg_replace('/\s+/', '', trim((string) ($_POST['fan_cod_iban'] ?? ''))) ?? ''
+            ),
             'fan_cod_payer' => in_array(
                 trim((string) ($_POST['fan_cod_payer'] ?? 'sender')),
                 ['sender', 'recipient', 'third_party'],
@@ -13955,11 +13959,17 @@ HTML;
         $contentSuffix = trim((string) ($override['content_suffix'] ?? ''));
         $contentLabel = 'Comanda ' . (string) ($order['order_number'] ?? '') . ($contentSuffix !== '' ? ' ' . $contentSuffix : '');
 
+        // Contul în care FAN virează rambursul. Trimis gol, FAN alege singur cum
+        // întoarce banii și îi poate aduce cash, prin curier — de aceea se
+        // completează explicit din Setări livrare.
+        $codBank = trim((string) ($settings['fan_cod_bank'] ?? ''));
+        $codIban = strtoupper(preg_replace('/\s+/', '', trim((string) ($settings['fan_cod_iban'] ?? ''))) ?? '');
+
         $shipment = [
             'info' => [
                 'service' => $service,
-                'bank' => '',
-                'bankAccount' => '',
+                'bank' => $cod > 0 ? $codBank : '',
+                'bankAccount' => $cod > 0 ? $codIban : '',
                 'packages' => [
                     'parcel' => $parcelCount,
                     'envelope' => $envelopeCount,

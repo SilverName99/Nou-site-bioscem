@@ -380,6 +380,20 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
             </select>
         </div>
         <div class="field">
+            <label>Bancă ramburs</label>
+            <input type="text" name="fan_cod_bank" maxlength="120"
+                   value="<?= htmlspecialchars((string) ($settings['fan_cod_bank'] ?? ''), ENT_QUOTES) ?>"
+                   placeholder="ex. Banca Transilvania">
+        </div>
+        <div class="field">
+            <label>IBAN ramburs</label>
+            <input type="text" name="fan_cod_iban" maxlength="34"
+                   value="<?= htmlspecialchars((string) ($settings['fan_cod_iban'] ?? ''), ENT_QUOTES) ?>"
+                   placeholder="RO00BTRL...">
+            <small>Contul în care FAN virează rambursul încasat. Lăsat gol, FAN
+            decide singur cum întoarce banii — îi poate aduce și cash, prin curier.</small>
+        </div>
+        <div class="field">
             <label>Tip expediere pentru cotație</label>
             <?php $fanShipmentType = trim((string) ($settings['fan_shipment_type'] ?? 'parcel')); ?>
             <select name="fan_shipment_type">

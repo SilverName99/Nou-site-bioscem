@@ -29,6 +29,10 @@ final class Settings
         'fan_service_type' => 'Standard',
         'fan_shipping_payer' => 'recipient',
         'fan_cod_payer' => 'sender',
+        // Contul în care FAN virează rambursul încasat. Lăsate goale, FAN
+        // decide singur cum întoarce banii — inclusiv cash, prin curier.
+        'fan_cod_bank' => '',
+        'fan_cod_iban' => '',
         'fan_shipment_type' => 'parcel',
         'fan_parcel_count' => '1',
         'fan_envelope_count' => '0',
