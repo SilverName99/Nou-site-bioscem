@@ -13794,8 +13794,13 @@ HTML;
 
     private function loadOrderForFan(PDO $db, int $orderId): ?array
     {
+        // `paid_amount` e adăugată de sincronizarea cu ERP-ul; fără apelul ăsta,
+        // interogarea de mai jos ar pica pe o instanță care n-a rulat-o încă.
+        \App\Support\ErpSync::ensureSchema($db);
         $stmt = $db->prepare(
-            'SELECT id, order_number, status, payment_method, total,
+            // `payment_status` și `paid_amount` decid rambursul: o comandă cu
+            // plata la livrare, achitată între timp, nu mai are ce încasa.
+            'SELECT id, order_number, status, payment_method, payment_status, paid_amount, total,
                     billing_first_name, billing_last_name, billing_phone, billing_email,
                     billing_address_line1, billing_city, billing_county, billing_postcode,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
@@ -13833,6 +13838,26 @@ HTML;
      *   - sender_gestiune_id: depozitul de ridicare (adresa lui din
      *     Setări livrare), în locul căutării după județul de livrare.
      */
+    /**
+     * Cât mai are de încasat curierul: totalul minus ce s-a plătit deja.
+     *
+     * `paid_amount` se scrie la confirmarea plății și rămâne acolo; pentru
+     * comenzile plătite înainte de introducerea coloanei cădem pe total, ca la
+     * trimiterea în ERP.
+     */
+    private function restDeIncasat(array $order): float
+    {
+        $total = round((float) ($order['total'] ?? 0), 2);
+        if (strtolower(trim((string) ($order['payment_status'] ?? ''))) !== 'paid') {
+            return $total;
+        }
+        $incasat = $order['paid_amount'] ?? null;
+        $incasat = ($incasat === null || $incasat === '')
+            ? $total
+            : round((float) $incasat, 2);
+        return max(0.0, round($total - $incasat, 2));
+    }
+
     private function buildFanShipmentPayload(array $order, array $settings, int $clientId, array $override = []): array
     {
         $service = trim((string) ($settings['fan_service_type'] ?? 'Standard'));
@@ -13913,7 +13938,13 @@ HTML;
         // Emailul de notificare rămâne cel al clientului (nu există câmp separat la livrare).
         $recipientEmail = trim((string) ($order['billing_email'] ?? ''));
 
-        $cod = ((string) ($order['payment_method'] ?? '') === 'cod') ? (float) ($order['total'] ?? 0) : 0.0;
+        // Rambursul e ce a MAI RĂMAS de încasat, nu totalul comenzii. O comandă
+        // cu plata la livrare poate fi achitată între timp printr-un link de
+        // plată — care lasă metoda „ramburs", dar marchează comanda plătită.
+        // Cu totalul pus orbește, curierul ar fi încasat banii a doua oară.
+        $cod = ((string) ($order['payment_method'] ?? '') === 'cod')
+            ? $this->restDeIncasat($order)
+            : 0.0;
         if (array_key_exists('cod', $override) && $override['cod'] !== null) {
             $cod = (float) $override['cod'];
         }
