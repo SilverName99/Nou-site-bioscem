@@ -906,6 +906,7 @@ final class SiteController
         }
 
         Cart::setCounty($billing['billing_county']);
+        CheckoutCalculator::setLocalitate((string) ($billing['billing_city'] ?? ''));
         $settings = Settings::all($db);
         $summary = CheckoutCalculator::buildSummary($db, $settings);
         $requiresShippingCharge = $this->requiresFanLiveShippingCharge($settings, $summary);
@@ -3307,6 +3308,10 @@ final class SiteController
             (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0),
             $fanboxBifat === null ? null : (bool) (int) $fanboxBifat
         );
+        // Taxa de km suplimentari depinde de localitate: fără ea, sumarul ar
+        // arăta prețul de bază, iar la finalizare s-ar adăuga taxa.
+        \App\Support\Cart::setCounty($payload['billing_county']);
+        \App\Support\CheckoutCalculator::setLocalitate($payload['billing_city']);
         $result = $this->checkoutShippingQuoteForPayload($payload);
         $status = trim((string) ($result['error'] ?? '')) === 'Conexiunea DB nu este disponibilă.' ? 503 : 200;
         $this->jsonResponse($result, $status);

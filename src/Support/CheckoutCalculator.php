@@ -17,6 +17,15 @@ final class CheckoutCalculator
     private const FANBOX_INTENT_KEY = 'checkout_fanbox_mod';
 
     /**
+     * Localitatea completată în checkout.
+     *
+     * Taxa de km suplimentari depinde de localitate, nu doar de județ. Fără ea,
+     * sumarul arăta prețul de bază (19 lei), iar la finalizare se adăuga taxa
+     * (încă 11 lei) — clientul vedea un total și plătea altul.
+     */
+    private const LOCALITATE_KEY = 'checkout_localitate';
+
+    /**
      * Clientul a ales livrarea la FANbox pentru comanda curentă?
      *
      * Alegerea trăiește în sesiune cât timp se completează checkout-ul, ca
@@ -44,6 +53,22 @@ final class CheckoutCalculator
      * prima. `null` la `$laFanbox` păstrează modul dedus din id, pentru
      * apelurile vechi care trimit doar lockerul.
      */
+    /** Reține localitatea din formular, pentru calculul taxei de km. */
+    public static function setLocalitate(string $localitate): void
+    {
+        $valoare = trim($localitate);
+        if ($valoare === '') {
+            unset($_SESSION[self::LOCALITATE_KEY]);
+            return;
+        }
+        $_SESSION[self::LOCALITATE_KEY] = mb_substr($valoare, 0, 190);
+    }
+
+    public static function localitate(): string
+    {
+        return trim((string) ($_SESSION[self::LOCALITATE_KEY] ?? ''));
+    }
+
     public static function alegeFanbox(int $lockerId, ?bool $laFanbox = null): void
     {
         $activ = $laFanbox ?? ($lockerId > 0);
@@ -234,7 +259,7 @@ final class CheckoutCalculator
 
         $county = Cart::county();
         $shippingDiscountReference = $discount + $pointsDiscount;
-        $shipping = self::calculateShipping($settings, $county, $subtotal, $shippingDiscountReference);
+        $shipping = self::calculateShipping($db, $settings, $county, $subtotal, $shippingDiscountReference);
         $isBucharest = mb_strtolower(trim($county)) === 'bucuresti';
         $includeCoupons = ((string) ($settings['shipping_include_coupons'] ?? '1')) === '1';
         $shippingFreeThreshold = $isBucharest
@@ -1024,14 +1049,15 @@ final class CheckoutCalculator
         return isset($allowedUserIds[$userId]);
     }
 
-    private static function calculateShipping(array $settings, string $county, float $subtotal, float $discount): float
+    private static function calculateShipping(?PDO $db, array $settings, string $county, float $subtotal, float $discount): float
     {
         $isBucharest = strtolower(trim($county)) === 'bucuresti';
 
-        // Prețul fix are prioritate: se afișează în sumar prețul de bază, iar
-        // eventuala taxă de km suplimentari se adaugă la finalizarea comenzii,
-        // când se cunoaște localitatea exactă.
-        $pretFix = ShippingPricing::pretDeBaza($settings, self::livrareAleasaLaFanbox());
+        // Prețul fix are prioritate. Include și taxa de km suplimentari, dacă
+        // localitatea completată în formular e în lista importată de la FAN:
+        // sumarul trebuie să arate exact cât se va plăti, nu prețul de bază.
+        $laFanbox = self::livrareAleasaLaFanbox();
+        $pretFix = ShippingPricing::pret($db, $settings, $county, self::localitate(), $laFanbox);
         if ($pretFix !== null) {
             return self::transportGratuit($settings, $isBucharest, $subtotal, $discount)
                 ? 0.0
