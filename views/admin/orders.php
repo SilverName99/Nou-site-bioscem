@@ -332,7 +332,20 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             <?php endif; ?>
                         </td>
                         <td><?= htmlspecialchars($formatDateTime((string) ($order['created_at'] ?? '')), ENT_QUOTES) ?></td>
-                        <td><strong><?= number_format((float) ($order['total'] ?? 0), 2) ?> RON</strong></td>
+                        <td>
+                            <strong><?= number_format((float) ($order['total'] ?? 0), 2) ?> RON</strong>
+                            <?php
+                                // Transportul e inclus în total, dar până acum se vedea
+                                // doar deschizând comanda. Aceeași regulă de „gratuit" ca
+                                // în fereastra comenzii, ca cifrele să nu se contrazică.
+                                $transportComanda = (float) ($order['shipping_cost'] ?? 0);
+                            ?>
+                            <?php if ($transportComanda > 0.004): ?>
+                                <small style="display:block;color:#64748b;">din care transport: <?= number_format($transportComanda, 2) ?> RON</small>
+                            <?php else: ?>
+                                <small style="display:block;color:#64748b;">transport gratuit</small>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <div class="orders-status-stack">
                                 <span class="status-pill status-pill--<?= htmlspecialchars($statusPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($statusLabels[$statusRaw] ?? $statusRaw), ENT_QUOTES) ?></span>
