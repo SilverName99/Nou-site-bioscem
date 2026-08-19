@@ -1196,6 +1196,12 @@ final class SiteController
             } catch (Throwable) {
                 // Keep checkout success page accessible even if Stripe sync fails.
             }
+        }
+        // Coșul se marchează convertit la ORICE întoarcere de pe pagina de
+        // plată, nu doar la Stripe. Altfel, clienții care plătesc prin
+        // EuPlătesc — procesatorul implicit — rămâneau cu coșul „abandonat" și
+        // primeau ulterior emailul „ați uitat produse în coș", deși plătiseră.
+        if ($db instanceof PDO && ($stripeReturn || $euplatescReturn)) {
             EmailAutomation::markCartConverted($db, session_id());
         }
 

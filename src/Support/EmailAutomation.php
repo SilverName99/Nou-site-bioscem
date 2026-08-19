@@ -504,15 +504,27 @@ final class EmailAutomation
         $limit = max(1, min(1000, $limit));
         $thresholdAt = (new DateTimeImmutable('now'))->modify("-{$minutes} minutes")->format('Y-m-d H:i:s');
 
+        // Plasă de siguranță peste marcajul de conversie: dacă pe adresa asta
+        // există o comandă plasată după ce a început coșul, clientul a cumpărat
+        // — indiferent dacă s-a mai întors pe site după plată sau dacă marcajul
+        // s-a pierdut. Fără verificarea asta, cine plătea cu cardul și închidea
+        // pagina primea „ați uitat produse în coș".
         $stmt = $db->prepare(
-            'SELECT id, session_id, email, customer_name, cart_snapshot
-             FROM cart_abandonments
-             WHERE converted_at IS NULL
-               AND abandoned_email_sent_at IS NULL
-               AND email IS NOT NULL
-               AND email <> ""
-               AND last_seen_at <= :threshold_at
-             ORDER BY last_seen_at ASC
+            'SELECT ca.id, ca.session_id, ca.email, ca.customer_name, ca.cart_snapshot
+             FROM cart_abandonments ca
+             WHERE ca.converted_at IS NULL
+               AND ca.abandoned_email_sent_at IS NULL
+               AND ca.email IS NOT NULL
+               AND ca.email <> ""
+               AND ca.last_seen_at <= :threshold_at
+               AND NOT EXISTS (
+                   SELECT 1 FROM orders o
+                   WHERE o.billing_email = ca.email
+                     AND o.deleted_at IS NULL
+                     AND o.status NOT IN ("cancelled", "failed", "refunded")
+                     AND o.created_at >= ca.created_at
+               )
+             ORDER BY ca.last_seen_at ASC
              LIMIT :limit'
         );
         $stmt->bindValue(':threshold_at', $thresholdAt);
