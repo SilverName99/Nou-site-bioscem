@@ -6741,9 +6741,11 @@ final class AdminController
         if ($order === null) {
             return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
         }
-        if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
-            return ['ok' => false, 'message' => 'Comanda are deja un AWB FAN generat.'];
-        }
+        // Un AWB emis greșit (serviciu nepotrivit, adresă corectată după) nu se
+        // poate repara la FAN: singura cale e altul nou. Refuzul de aici lăsa
+        // comanda blocată, așa că reemiterea e permisă — dar AWB-ul vechi se
+        // păstrează, fiindcă la FAN el continuă să existe până e anulat.
+        $awbInlocuit = trim((string) ($order['fan_awb'] ?? ''));
 
         $settings = Settings::all($db);
         $credentials = $this->fanCredentialsFromSettings($settings);
@@ -6763,12 +6765,33 @@ final class AdminController
 
             $previousStatus = trim((string) ($order['status'] ?? ''));
 
+            $istoricAwb = null;
+            if ($awbInlocuit !== '' && $awbInlocuit !== $awb) {
+                $inlocuite = json_decode((string) ($order['fan_awb_inlocuite'] ?? ''), true);
+                if (!is_array($inlocuite)) {
+                    $inlocuite = [];
+                }
+                // Cine a reemis se vede în jurnalul de activitate; aici rămâne
+                // doar numărul și momentul, ca să nu ținem aceeași informație
+                // în două locuri care pot ajunge să se contrazică.
+                $inlocuite[] = [
+                    'awb' => $awbInlocuit,
+                    'inlocuit_la' => date('Y-m-d H:i:s'),
+                ];
+                $istoricAwb = json_encode(
+                    array_slice($inlocuite, -20),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
+            }
+
             $stmt = $db->prepare(
                 'UPDATE orders
                  SET fan_awb = :fan_awb,
                      fan_tracking_url = :fan_tracking_url,
                      fan_tracking_status = :fan_tracking_status,
                      fan_tracking_synced_at = NOW(),
+                     fan_tracking_last_event_at = NULL,
+                     fan_awb_inlocuite = COALESCE(:inlocuite, fan_awb_inlocuite),
                      status = :status
                  WHERE id = :id'
             );
@@ -6776,13 +6799,31 @@ final class AdminController
                 'fan_awb' => $awb,
                 'fan_tracking_url' => FanCourierGateway::trackingUrl($awb),
                 'fan_tracking_status' => 'AWB generat',
+                'inlocuite' => $istoricAwb,
                 'status' => 'completed',
                 'id' => $orderId,
             ]);
+
+            if ($awbInlocuit !== '' && $awbInlocuit !== $awb) {
+                AdminActivityLog::log($db, 'comanda_awb_reemis', [
+                    'comanda' => (string) ($order['order_number'] ?? $orderId),
+                    'awb_vechi' => $awbInlocuit,
+                    'awb_nou' => $awb,
+                ]);
+            }
             if ($previousStatus !== 'completed') {
                 $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, 'completed');
             }
             EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+
+            if ($awbInlocuit !== '' && $awbInlocuit !== $awb) {
+                // FAN nu află din reemitere că vechiul AWB nu mai e bun: coletul
+                // lui rămâne activ și poate pleca în paralel cu cel nou.
+                return ['ok' => true, 'message' => 'AWB FAN nou: ' . $awb
+                    . '. AWB-ul anterior (' . $awbInlocuit . ') NU a fost anulat la FAN — anulează-l în SelfAWB,'
+                    . ' altfel rămân două expedieri pe aceeași comandă. Clientul a primit pe email noul număr.'
+                    . $awbServiceFallbackNote];
+            }
 
             return ['ok' => true, 'message' => 'AWB FAN generat: ' . $awb . '. Status comandă: completed.' . $awbServiceFallbackNote];
         } catch (RuntimeException $exception) {
@@ -14002,14 +14043,24 @@ HTML;
         // `paid_amount` e adăugată de sincronizarea cu ERP-ul; fără apelul ăsta,
         // interogarea de mai jos ar pica pe o instanță care n-a rulat-o încă.
         \App\Support\ErpSync::ensureSchema($db);
+        // Coloanele de locker vin din migrarea de livrare, nu din schema de bază.
+        \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
+        $this->ensureOptionalSchema($db);
         $stmt = $db->prepare(
             // `payment_status` și `paid_amount` decid rambursul: o comandă cu
             // plata la livrare, achitată între timp, nu mai are ce încasa.
+            //
+            // Câmpurile de locker sunt citite de payload ca să trimită coletul
+            // la punctul FANbox ales. Lipsind din interogare, livrarea în locker
+            // ieșea tăcut ca livrare la adresa de acasă a clientului.
             'SELECT id, order_number, status, payment_method, payment_status, paid_amount, total,
                     billing_first_name, billing_last_name, billing_phone, billing_email,
                     billing_address_line1, billing_city, billing_county, billing_postcode,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
-                    shipping_address_line1, shipping_city, shipping_county, shipping_postcode, fan_awb
+                    shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
+                    fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
+                    fan_locker_county, fan_locker_postcode,
+                    fan_awb, fan_awb_inlocuite
              FROM orders
              WHERE id = :id AND deleted_at IS NULL
              LIMIT 1'
@@ -18102,6 +18153,13 @@ HTML;
     {
         try {
             $db->exec('ALTER TABLE orders ADD COLUMN ad_source VARCHAR(50) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        // AWB-urile înlocuite, cu momentul și operatorul. Un AWB emis greșit se
+        // reemite, iar `fan_awb` ține doar ultimul; fără istoricul ăsta numărul
+        // vechi s-ar pierde, deși coletul lui există în continuare la FAN.
+        try {
+            $db->exec('ALTER TABLE orders ADD COLUMN fan_awb_inlocuite TEXT DEFAULT NULL');
         } catch (Throwable) {
         }
         // Reducere comercială acordată manual pe o comandă deja plasată. Se ține

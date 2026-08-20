@@ -409,12 +409,21 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 <div class="order-actions">
                                     <button type="button" class="order-action-btn view-order-btn" data-order="<?= $orderJson ?>" title="Detalii">👁</button>
                                     <button type="button" class="order-action-btn client-promo-btn" data-order-id="<?= $orderId ?>" title="Toate promoționalele clientului">🎁</button>
-                                    <?php if ($awb === ''): ?>
-                                        <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" onsubmit="return confirm('Sigur vrei să generezi AWB FAN pentru această comandă?');">
-                                            <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
-                                            <button type="submit" class="order-action-btn" title="Generează AWB FAN">🚚</button>
-                                        </form>
-                                    <?php endif; ?>
+                                    <?php
+                                        // Butonul rămâne și după emitere: un AWB greșit (serviciu
+                                        // nepotrivit, adresă corectată ulterior) nu se poate repara
+                                        // la FAN, doar înlocuit cu altul. Ascuns, comanda rămânea
+                                        // blocată cu eticheta greșită.
+                                        $confirmareAwb = $awb === ''
+                                            ? 'Sigur vrei să generezi AWB FAN pentru această comandă?'
+                                            : 'Comanda are deja AWB-ul ' . $awb . '. Emiți ALT AWB? '
+                                                . 'Cel vechi NU se anulează automat la FAN — anulează-l în SelfAWB, '
+                                                . 'altfel rămân două expedieri pe aceeași comandă.';
+                                    ?>
+                                    <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" onsubmit="return confirm('<?= htmlspecialchars(addslashes($confirmareAwb), ENT_QUOTES) ?>');">
+                                        <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
+                                        <button type="submit" class="order-action-btn" title="<?= $awb === '' ? 'Generează AWB FAN' : 'Emite alt AWB (îl înlocuiește pe ' . htmlspecialchars($awb, ENT_QUOTES) . ')' ?>">🚚</button>
+                                    </form>
                                     <?php if ($erpEnabled && !in_array($erpStatus, ['sent', 'skipped'], true)): ?>
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">
                                             <button type="submit" class="order-action-btn" title="Retrimite în ERP<?= $erpError !== '' ? (' — ultima eroare: ' . htmlspecialchars($erpError, ENT_QUOTES)) : '' ?>">🔄</button>
