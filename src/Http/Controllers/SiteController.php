@@ -9576,12 +9576,24 @@ CSS;
             return;
         }
 
+        // `paid_amount` și `fan_locker_id` se adaugă prin migrare, nu sunt în
+        // schema de bază: fără asigurarea lor, interogarea de mai jos crapă.
+        \App\Support\ErpSync::ensureSchema($db);
+        CheckoutCalculator::ensureOrderShippingSchema($db);
+
         $order = $this->loadOrderForFanAwb($db, $orderNumber, $orderId);
         if (!is_array($order)) {
             return;
         }
 
         if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
+            return;
+        }
+
+        // Emiterea automată nu știe de lockere: ar trimite coletul la adresa de
+        // acasă a clientului, pe serviciul de livrare la adresă. Comenzile la
+        // FANbox rămân pe butonul din administrare, care le duce unde trebuie.
+        if ((int) ($order['fan_locker_id'] ?? 0) > 0) {
             return;
         }
 
@@ -9623,7 +9635,8 @@ CSS;
 
         if ($orderNumber !== '') {
             $stmt = $db->prepare(
-                'SELECT id, order_number, payment_method, total, fan_awb,
+                'SELECT id, order_number, payment_method, payment_status, paid_amount,
+                        total, fan_awb, fan_locker_id,
                         billing_first_name, billing_last_name, billing_phone, billing_email,
                         billing_address_line1, billing_city, billing_county, billing_postcode,
                         shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
@@ -9635,7 +9648,8 @@ CSS;
             $stmt->execute(['order_number' => $orderNumber]);
         } else {
             $stmt = $db->prepare(
-                'SELECT id, order_number, payment_method, total, fan_awb,
+                'SELECT id, order_number, payment_method, payment_status, paid_amount,
+                        total, fan_awb, fan_locker_id,
                         billing_first_name, billing_last_name, billing_phone, billing_email,
                         billing_address_line1, billing_city, billing_county, billing_postcode,
                         shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
@@ -9720,7 +9734,38 @@ CSS;
         }
         $recipientEmail = trim((string) ($order['billing_email'] ?? ''));
 
-        $cod = ((string) ($order['payment_method'] ?? '') === 'cod') ? (float) ($order['total'] ?? 0) : 0.0;
+        // Rambursul e ce a MAI RĂMAS de încasat, nu totalul: o comandă cu plata
+        // la livrare poate fi achitată între timp printr-un link de plată, iar
+        // cu totalul pus orbește curierul ar încasa banii a doua oară.
+        $cod = 0.0;
+        if ((string) ($order['payment_method'] ?? '') === 'cod') {
+            $totalComanda = round((float) ($order['total'] ?? 0), 2);
+            if (strtolower((string) ($order['payment_status'] ?? '')) === 'paid') {
+                $incasat = $order['paid_amount'] ?? null;
+                $incasat = ($incasat === null || $incasat === '')
+                    ? $totalComanda
+                    : round((float) $incasat, 2);
+                $cod = max(0.0, round($totalComanda - $incasat, 2));
+            } else {
+                $cod = $totalComanda;
+            }
+        }
+
+        // Coletul cu ramburs merge pe serviciul de „Cont Colector": doar pe el
+        // FAN virează încasarea în contul din setări.
+        if ($cod > 0) {
+            $serviciuRamburs = trim((string) ($settings['fan_service_type_ramburs'] ?? ''));
+            if ($serviciuRamburs !== '') {
+                $service = $serviciuRamburs;
+            }
+        }
+
+        // Contul în care FAN virează rambursul. Trimis gol, FAN alege singur cum
+        // întoarce banii și îi poate aduce cash, prin curier.
+        $codBank = $cod > 0 ? trim((string) ($settings['fan_cod_bank'] ?? '')) : '';
+        $codIban = $cod > 0
+            ? strtoupper(preg_replace('/\s+/', '', trim((string) ($settings['fan_cod_iban'] ?? ''))) ?? '')
+            : '';
 
         $db = $this->db();
         $resolvedRecipient = $this->resolveFanAddressForApi(
@@ -9733,8 +9778,8 @@ CSS;
         $shipment = [
             'info' => [
                 'service' => $service,
-                'bank' => '',
-                'bankAccount' => '',
+                'bank' => $codBank,
+                'bankAccount' => $codIban,
                 'packages' => [
                     'parcel' => $parcelCount,
                     'envelope' => $envelopeCount,
