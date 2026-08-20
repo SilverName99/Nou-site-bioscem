@@ -4439,6 +4439,100 @@ body > main.container {
     margin: 0;
 }
 
+/* Coșul de comenzi are alt cap de tabel decât lista principală: doar trei
+   coloane. Pe grila de 5 coloane a listei, numele clientului nimerea în
+   coloana de 42px rezervată bifei și se rupea literă cu literă. */
+.trash-list {
+    display: grid;
+    gap: 10px;
+}
+
+.trash-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px 16px;
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.trash-row:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 16px rgba(15,23,42,.06);
+}
+
+.trash-row__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.trash-row__number {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.trash-row__client {
+    margin: 0 0 4px;
+    font-weight: 600;
+    color: #1f2933;
+}
+
+.trash-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: .82rem;
+    color: #64748b;
+}
+
+.trash-row__deleted {
+    color: #b91c1c;
+    font-weight: 600;
+}
+
+.trash-row__total {
+    font-size: 1.2rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.trash-row__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trash-row__actions form {
+    margin: 0;
+}
+
+.trash-empty {
+    border: 1px dashed #d1d5db;
+    border-radius: 12px;
+    padding: 28px;
+    text-align: center;
+    color: #64748b;
+    background: #fafafa;
+}
+
+@media (max-width: 720px) {
+    .trash-row {
+        grid-template-columns: 1fr auto;
+        row-gap: 10px;
+    }
+
+    .trash-row__actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+}
+
 .order-modal-card {
     max-width: 700px;
 }
