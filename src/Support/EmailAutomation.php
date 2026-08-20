@@ -509,6 +509,14 @@ final class EmailAutomation
         // — indiferent dacă s-a mai întors pe site după plată sau dacă marcajul
         // s-a pierdut. Fără verificarea asta, cine plătea cu cardul și închidea
         // pagina primea „ați uitat produse în coș".
+        //
+        // Verificarea „comandă după începerea coșului" nu era însă de ajuns:
+        // clientul care comandă, plătește și se mai întoarce pe site pornește un
+        // coș NOU, ulterior comenzii. Pentru acel coș nu există nicio comandă mai
+        // nouă, așa că emailul pleca — exact la oamenii care tocmai cumpăraseră,
+        // iar ei sunau să întrebe ce n-a mers. De aceea fereastra se lărgește la
+        // ultimele zile: o adresă care a comandat de curând nu primește
+        // „ați uitat produse în coș", oricând ar fi început coșul.
         $stmt = $db->prepare(
             'SELECT ca.id, ca.session_id, ca.email, ca.customer_name, ca.cart_snapshot
              FROM cart_abandonments ca
@@ -522,7 +530,7 @@ final class EmailAutomation
                    WHERE o.billing_email = ca.email
                      AND o.deleted_at IS NULL
                      AND o.status NOT IN ("cancelled", "failed", "refunded")
-                     AND o.created_at >= ca.created_at
+                     AND o.created_at >= LEAST(ca.created_at, NOW() - INTERVAL 7 DAY)
                )
              ORDER BY ca.last_seen_at ASC
              LIMIT :limit'
