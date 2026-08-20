@@ -235,6 +235,9 @@
                             <div class="field">
                                 <label>Stoc</label>
                                 <input type="number" name="stock" id="p_stock">
+                                <small class="muted" id="p_stock_erp" style="display:none;color:#0f766e;">
+                                    Stocul vine din ERP (gestiune) și nu se editează aici. Corectează-l în ERP.
+                                </small>
                             </div>
                             <div class="field">
                                 <label>Greutate (g)</label>
@@ -1101,7 +1104,22 @@
             if (badgeModeInput instanceof HTMLSelectElement) {
                 badgeModeInput.value = String(product.discount_badge_mode || 'percent') === 'value' ? 'value' : 'percent';
             }
-            document.getElementById('p_stock').value = product.stock || '';
+            // Cu ERP-ul conectat, cifra de aici e cea din gestiune. Lăsat editabil,
+            // câmpul promitea o modificare care oricum nu s-ar fi văzut nicăieri:
+            // site-ul afișează stocul din ERP, nu pe cel din fișă.
+            (function () {
+                var camp = document.getElementById('p_stock');
+                var nota = document.getElementById('p_stock_erp');
+                var dinErp = Number(product.stock_from_erp || 0) === 1;
+                camp.value = product.stock === null || product.stock === undefined ? '' : product.stock;
+                camp.readOnly = dinErp;
+                // `readOnly` singur ar lăsa valoarea să plece la salvare; câmpul
+                // dezactivat n-ar mai fi trimis deloc, iar salvarea l-ar goli.
+                camp.style.background = dinErp ? '#f1f5f9' : '';
+                camp.style.color = dinErp ? '#475569' : '';
+                camp.title = dinErp ? 'Stoc din ERP — se modifică în ERP, nu aici.' : '';
+                if (nota) { nota.style.display = dinErp ? 'block' : 'none'; }
+            })();
             document.getElementById('p_weight_grams').value = product.weight_grams || '';
             document.getElementById('p_short_description').value = product.short_description || '';
             document.getElementById('p_description').value = product.description || '';

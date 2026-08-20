@@ -6692,8 +6692,29 @@ final class AdminController
                 );
             }
 
+            // Comandă scoasă dintr-o stare de anulare: în ERP a rămas anulată,
+            // fiindcă acolo a fost trimisă anularea. O readucem, altfel comanda
+            // trăiește pe site și e moartă în ERP, iar nimic nu arată diferența.
+            $inactive = ['cancelled', 'refunded', 'failed'];
+            $erpMesaj = '';
+            if (in_array($previousStatus, $inactive, true) && !in_array($status, $inactive, true)) {
+                $settings = Settings::all($db);
+                if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
+                    try {
+                        $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
+                        $erpMesaj = !empty($rezultat['ok'])
+                            ? ' Comanda a fost retrimisă în ERP.'
+                            : ' ERP: ' . trim((string) ($rezultat['message'] ?? 'retrimiterea a eșuat'))
+                                . ' — poți reîncerca din butonul de resincronizare.';
+                    } catch (Throwable $e) {
+                        $erpMesaj = ' ERP: ' . $e->getMessage()
+                            . ' — poți reîncerca din butonul de resincronizare.';
+                    }
+                }
+            }
+
             $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, $status);
-            return ['ok' => true, 'message' => 'Statusul comenzii a fost actualizat.'];
+            return ['ok' => true, 'message' => 'Statusul comenzii a fost actualizat.' . $erpMesaj];
         } catch (Throwable $exception) {
             return ['ok' => false, 'message' => 'Statusul nu a putut fi actualizat: ' . $exception->getMessage()];
         }

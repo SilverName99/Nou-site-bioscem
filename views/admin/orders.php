@@ -404,7 +404,25 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         </td>
                         <td class="orders-col-actions">
                             <?php if ($isCancelled): ?>
-                                <span class="orders-actions-disabled">Comandă anulată</span>
+                                <?php /* Anularea nu mai e fundătură: comanda se poate vedea
+                                        și readuce într-o stare de lucru. Fără butoanele astea,
+                                        o comandă anulată din greșeală rămânea așa pentru
+                                        totdeauna, iar singura ieșire era prin baza de date. */ ?>
+                                <div class="order-actions">
+                                    <button type="button" class="order-action-btn view-order-btn" data-order="<?= $orderJson ?>" title="Detalii">👁</button>
+                                    <button
+                                        type="button"
+                                        class="order-action-btn order-action-btn--edit"
+                                        data-action="open-order-actions"
+                                        data-order-id="<?= $orderId ?>"
+                                        data-order-number="<?= htmlspecialchars((string) ($order['order_number'] ?? ''), ENT_QUOTES) ?>"
+                                        data-current-status="<?= htmlspecialchars($statusRaw, ENT_QUOTES) ?>"
+                                        data-tracking-url="<?= htmlspecialchars($trackingUrl, ENT_QUOTES) ?>"
+                                        title="Restaurează comanda (alege alt status)"
+                                    >
+                                        ↩️
+                                    </button>
+                                </div>
                             <?php else: ?>
                                 <div class="order-actions">
                                     <button type="button" class="order-action-btn view-order-btn" data-order="<?= $orderJson ?>" title="Detalii">👁</button>
