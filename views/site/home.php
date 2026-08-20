@@ -953,8 +953,15 @@ $whyItems = [
                 <span><?= number_format($price, 2, ',', '.') ?> lei</span>
               </p>
 
+              <?php
+                  $cereOferta = (bool) ($product['requires_bbd_selection'] ?? false)
+                      || ((int) ($product['bbd_enabled'] ?? 0) === 1
+                          && trim((string) ($product['bbd_entries_json'] ?? '')) !== '');
+              ?>
               <?php if ((int) ($product['out_of_stock'] ?? 0) === 1): ?>
                 <span class="bs-product-card__out">Stoc epuizat</span>
+              <?php elseif ($cereOferta): ?>
+                <a class="bs-product-card__cart" href="/produs/<?= rawurlencode((string) ($product['slug'] ?? '')) ?>">Alege oferta</a>
               <?php else: ?>
                 <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
                   <button class="bs-product-card__cart" type="submit">

@@ -157,6 +157,16 @@ if ($sortOptions === []) {
               </p>
               <?php if ($outOfStock): ?>
                 <span class="bv-popular-card__stock-out">Stoc epuizat</span>
+              <?php elseif ($hasBbdOffers): ?>
+                <?php /* Produsul are oferte cu dată de expirare, deci nu poate fi
+                        adăugat fără să fie aleasă una. Butonul de coș trimitea
+                        formularul fără alegere: vizitatorul era întors la pagina
+                        produsului, iar el credea că l-a pus în coș. Aici îl ducem
+                        direct acolo unde alege. */ ?>
+                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
+                   href="/produs/<?= rawurlencode($slug) ?>" aria-label="Alege oferta">
+                  Alege oferta
+                </a>
               <?php else: ?>
                 <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
                   <button type="submit" class="bv-popular-card__cart-btn" aria-label="Adaugă în coș">

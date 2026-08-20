@@ -45,8 +45,17 @@
                     </p>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <a class="btn btn-secondary" href="/produs/<?= urlencode((string) ($product['slug'] ?? '')) ?>">Vezi produs</a>
+                        <?php
+                            // Cu oferte pe dată de expirare, adăugarea directă e
+                            // refuzată: alegerea se face pe pagina produsului.
+                            $cereOferta = (bool) ($product['requires_bbd_selection'] ?? false)
+                                || ((int) ($product['bbd_enabled'] ?? 0) === 1
+                                    && trim((string) ($product['bbd_entries_json'] ?? '')) !== '');
+                        ?>
                         <?php if ((int) ($product['out_of_stock'] ?? 0) === 1): ?>
                             <span class="btn btn-secondary" style="opacity:.9;cursor:default;pointer-events:none;">Stoc epuizat</span>
+                        <?php elseif ($cereOferta): ?>
+                            <a class="btn btn-primary" href="/produs/<?= rawurlencode((string) ($product['slug'] ?? '')) ?>">Alege oferta</a>
                         <?php else: ?>
                             <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
                                 <button class="btn" type="submit">Adaugă în coș</button>
