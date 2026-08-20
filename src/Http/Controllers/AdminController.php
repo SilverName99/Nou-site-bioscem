@@ -14184,10 +14184,33 @@ HTML;
         // FAN nu acceptă opțiunea de FANbox pe orice serviciu: livrarea în locker
         // are propriul tip de serviciu. Se schimbă doar pentru aceste comenzi,
         // ca livrările obișnuite să rămână pe serviciul normal.
+        $codLocker = '';
         if ($laFanbox) {
             $serviciuFanbox = trim((string) ($settings['fan_service_type_fanbox'] ?? 'FANbox'));
             if ($serviciuFanbox !== '') {
                 $service = $serviciuFanbox;
+            }
+
+            // FAN identifică punctul de ridicare după CODUL lui, nu după adresă.
+            // Fără el, cererea e respinsă cu „fanBoxIsInvalid" pe câmpul
+            // `recipient.address.pickupLocation`. Comanda ține doar id-ul din
+            // nomenclatorul local, așa că mai întâi îl traducem în cod.
+            $dbLocker = $this->db();
+            if ($dbLocker instanceof PDO) {
+                $punct = \App\Support\FanLockers::dupaId(
+                    $dbLocker,
+                    (int) ($order['fan_locker_id'] ?? 0)
+                );
+                $codLocker = trim((string) ($punct['code'] ?? ''));
+            }
+            if ($codLocker === '') {
+                // Mai bine oprim aici decât să trimitem un colet fără punct:
+                // FAN l-ar refuza oricum, iar mesajul lui nu spune ce e de făcut.
+                throw new RuntimeException(
+                    'Punctul FANbox al comenzii nu mai există în nomenclator (id '
+                    . (int) ($order['fan_locker_id'] ?? 0) . '). Reimportă punctele FANbox '
+                    . 'din Setări livrare sau schimbă destinația comenzii pe livrare la adresă.'
+                );
             }
         }
 
@@ -14266,7 +14289,7 @@ HTML;
                     // număr fictiv, altfel FAN tipărește un „Nr. 1" greșit pe AWB.
                     'streetNo' => '',
                     'zipCode' => $recipientZip,
-                ],
+                ] + ($codLocker !== '' ? ['pickupLocation' => $codLocker] : []),
             ],
         ];
         if (($dimensions['length'] ?? 0) > 0 && ($dimensions['width'] ?? 0) > 0 && ($dimensions['height'] ?? 0) > 0) {
