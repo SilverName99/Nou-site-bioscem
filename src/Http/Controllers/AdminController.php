@@ -14385,11 +14385,12 @@ HTML;
                     // număr fictiv, altfel FAN tipărește un „Nr. 1" greșit pe AWB.
                     'streetNo' => '',
                     'zipCode' => $recipientZip,
-                    // Documentația FAN v2 numește câmpul `pickupLocationId`, dar
-                    // răspunsurile lor de eroare vin pe `pickupLocation`: sunt
-                    // versiuni diferite ale aceleiași validări, iar contul poate
-                    // fi pe oricare. Trimitem aceeași valoare pe ambele nume.
-                ] + ($codLocker !== '' ? ['pickupLocationId' => $codLocker, 'pickupLocation' => $codLocker] : []),
+                    // Punctul FANbox se trimite DOAR pe `pickupLocationId`.
+                    // Trimis și pe `pickupLocation`, FAN vede două destinații
+                    // pentru același colet și respinge cererea cu
+                    // „locationNotAllowedWithLocationId" — chiar dacă valoarea
+                    // e aceeași pe ambele chei.
+                ] + ($codLocker !== '' ? ['pickupLocationId' => $codLocker] : []),
             ],
         ];
         if (($dimensions['length'] ?? 0) > 0 && ($dimensions['width'] ?? 0) > 0 && ($dimensions['height'] ?? 0) > 0) {
