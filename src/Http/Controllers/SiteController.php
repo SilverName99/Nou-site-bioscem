@@ -942,6 +942,19 @@ final class SiteController
         // în coș și plasare, altcineva putea cumpăra ultimele bucăți.
         foreach ($summary['lines'] as $linie) {
             $produsStoc = $this->findProductById((int) ($linie['id'] ?? 0));
+            // Coșul arată acum și produsele marcate epuizate în fișa de pe site
+            // (înainte dispăreau tăcut din listă, deși contorul le număra), deci
+            // oprirea lor se face aici, la finalizare, cu mesaj — nu prin
+            // ștergerea lor pe nesimțite din coș.
+            if (is_array($produsStoc) && (int) ($produsStoc['out_of_stock'] ?? 0) === 1) {
+                Flash::set(
+                    'error',
+                    trim((string) ($linie['name'] ?? 'Un produs')) . ': produsul este epuizat momentan.'
+                        . ' Scoate-l din coș ca să poți finaliza comanda.'
+                );
+                header('Location: /cos');
+                return;
+            }
             $limitaStoc = is_array($produsStoc) ? $this->limitaStocProdus($produsStoc) : null;
             if ($limitaStoc !== null && (int) ($linie['quantity'] ?? 0) > $limitaStoc) {
                 Flash::set(

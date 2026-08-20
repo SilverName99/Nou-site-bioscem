@@ -303,12 +303,23 @@ final class CheckoutCalculator
 
         self::ensureProductVatSchema($db);
 
+        // Disponibilitatea NU e criteriu de vizibilitate aici. Interogarea cerea
+        // `out_of_stock = 0`, adică steagul din fișa produsului de pe site — dar
+        // pagina produsului și adăugarea în coș se uită la disponibilul din
+        // gestiune, care îl suprascrie. Un produs marcat epuizat pe site și
+        // disponibil în ERP se putea deci adăuga (contorul creștea), însă la
+        // citirea coșului dispărea din listă: coșul arăta gol, cu bulina pe 3.
+        //
+        // Rândurile se încarcă acum indiferent de steag, iar adevărul despre
+        // stoc îl pune `ErpStock` mai jos. Comanda rămâne oprită la finalizare
+        // dacă produsul chiar n-are stoc — acolo e locul verificării, nu aici.
+
         $placeholders = implode(',', array_fill(0, count($safeIds), '?'));
         try {
             $stmt = $db->prepare(
                 "SELECT id, name, slug, category_id, short_description, price, sale_price, sale_price_periods_json, bbd_enabled, bbd_entries_json, vat_percent, vat_included, stock, out_of_stock, weight_grams, image_url
                  FROM products
-                 WHERE is_active = 1 AND deleted_at IS NULL AND out_of_stock = 0 AND id IN ($placeholders)"
+                 WHERE is_active = 1 AND deleted_at IS NULL AND id IN ($placeholders)"
             );
             $stmt->execute($safeIds);
         } catch (Throwable) {
