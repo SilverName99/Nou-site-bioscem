@@ -33,6 +33,34 @@ final class FanCourierGateway
         }
     }
 
+    /**
+     * Nomenclatorul oficial de puncte FANbox / PayPoint / oficii.
+     *
+     * E singura sursă bună pentru `pickupLocationId`: la emiterea AWB-ului FAN
+     * cere ID-ul punctului din lista ASTA, nu un cod inventat de noi și nu
+     * adresa lui. Un id care nu vine de aici e respins cu „fanBoxIsInvalid".
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function pickupPoints(array $credentials, string $type = 'fanbox'): array
+    {
+        $tip = in_array($type, ['fanbox', 'paypoint', 'office'], true) ? $type : 'fanbox';
+        $response = self::request('GET', '/reports/pickup-points?' . http_build_query(['type' => $tip]), $credentials);
+        $data = self::extractData($response);
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($data as $rand) {
+            if (is_array($rand)) {
+                $out[] = $rand;
+            }
+        }
+
+        return $out;
+    }
+
     public static function createInternalAwb(array $credentials, array $payload): array
     {
         $response = self::request('POST', '/intern-awb', $credentials, $payload);

@@ -52,6 +52,11 @@ final class FanLockers
             'ALTER TABLE fan_lockers ADD COLUMN postcode VARCHAR(20) NOT NULL DEFAULT "" AFTER address',
             'ALTER TABLE fan_lockers ADD COLUMN lat DECIMAL(10, 7) DEFAULT NULL AFTER postcode',
             'ALTER TABLE fan_lockers ADD COLUMN lng DECIMAL(10, 7) DEFAULT NULL AFTER lat',
+            // Id-ul punctului la FAN. Separat de `code` pentru că `code` e doar
+            // cheia noastră de deduplicare la import, în timp ce AICI trebuie să
+            // ajungă exact numărul din nomenclatorul FAN: doar el e acceptat la
+            // emiterea AWB-ului. Gol = punctul n-a fost sincronizat din API.
+            'ALTER TABLE fan_lockers ADD COLUMN fan_id VARCHAR(60) NOT NULL DEFAULT "" AFTER code',
         ] as $sql) {
             try {
                 $db->exec($sql);
@@ -221,7 +226,7 @@ final class FanLockers
         try {
             self::ensureSchema($db);
             $stmt = $db->prepare(
-                'SELECT id, code, name, county, locality, address, postcode, lat, lng
+                'SELECT id, code, fan_id, name, county, locality, address, postcode, lat, lng
                  FROM fan_lockers
                  WHERE id = :id AND active = 1
                  LIMIT 1'
@@ -238,6 +243,7 @@ final class FanLockers
         return [
             'id' => (int) ($r['id'] ?? 0),
             'code' => (string) ($r['code'] ?? ''),
+            'fan_id' => (string) ($r['fan_id'] ?? ''),
             'name' => (string) ($r['name'] ?? ''),
             'county' => (string) ($r['county'] ?? ''),
             'locality' => (string) ($r['locality'] ?? ''),
@@ -531,5 +537,267 @@ final class FanLockers
         }
 
         return ['importate' => $importate, 'dezactivate' => $dezactivate];
+    }
+
+    /**
+     * Traduce un punct așa cum îl dă API-ul FAN în rândul nostru.
+     * Adresa vine când ca text, când desfăcută pe câmpuri — le acceptăm pe
+     * amândouă, ca o schimbare de formă la ei să nu golească nomenclatorul.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function dinPunctApi(array $p): ?array
+    {
+        $fanId = trim((string) ($p['id'] ?? ''));
+        if ($fanId === '') {
+            return null;
+        }
+
+        $adresa = $p['address'] ?? null;
+        $judet = '';
+        $localitate = '';
+        $strada = '';
+        $codPostal = '';
+        if (is_array($adresa)) {
+            $judet = trim((string) ($adresa['county'] ?? $adresa['countyName'] ?? ''));
+            $localitate = trim((string) ($adresa['locality'] ?? $adresa['localityName'] ?? $adresa['city'] ?? ''));
+            $strada = trim((string) ($adresa['street'] ?? ''));
+            $numar = trim((string) ($adresa['streetNo'] ?? $adresa['number'] ?? ''));
+            if ($numar !== '') {
+                $strada = trim($strada . ' ' . $numar);
+            }
+            $codPostal = trim((string) ($adresa['zipCode'] ?? $adresa['postalCode'] ?? ''));
+        } elseif (is_string($adresa)) {
+            $strada = trim($adresa);
+        }
+        if ($judet === '') {
+            $judet = trim((string) ($p['county'] ?? ''));
+        }
+        if ($localitate === '') {
+            $localitate = trim((string) ($p['locality'] ?? $p['city'] ?? ''));
+        }
+        if ($judet === '' || $localitate === '') {
+            return null;
+        }
+
+        $denumire = trim((string) ($p['name'] ?? ''));
+        if ($denumire === '') {
+            $denumire = $localitate;
+        }
+        if ($strada === '') {
+            $strada = trim((string) ($p['description'] ?? ''));
+        }
+
+        return [
+            'fan_id' => mb_substr($fanId, 0, 60),
+            'code' => mb_substr('fan-' . $fanId, 0, 60),
+            'name' => mb_substr($denumire, 0, 190),
+            'county' => mb_substr($judet, 0, 120),
+            'locality' => mb_substr($localitate, 0, 190),
+            'address' => mb_substr($strada, 0, 255),
+            'postcode' => mb_substr($codPostal, 0, 20),
+            'lat' => self::coordonata($p['latitude'] ?? null),
+            'lng' => self::coordonata($p['longitude'] ?? null),
+        ];
+    }
+
+    /**
+     * Aduce nomenclatorul la zi din API-ul FAN.
+     *
+     * Punctele deja existente se actualizează PE LOC (același rând, același id
+     * local), nu se șterg și se re-creează: comenzile vechi păstrează
+     * `fan_locker_id`, deci un AWB se poate reemite și după sincronizare.
+     *
+     * @param list<array<string, mixed>> $puncte
+     * @return array{importate:int, actualizate:int, adaugate:int, dezactivate:int}
+     */
+    public static function sincronizeazaDinApi(PDO $db, array $puncte): array
+    {
+        self::ensureSchema($db);
+        $acum = date('Y-m-d H:i:s');
+
+        $dupaFanId = $db->prepare('SELECT id FROM fan_lockers WHERE fan_id = :fan_id LIMIT 1');
+        $dupaNume = $db->prepare(
+            'SELECT id FROM fan_lockers
+             WHERE county_norm = :county_norm AND locality_norm = :locality_norm AND name = :name
+             ORDER BY active DESC, id ASC
+             LIMIT 1'
+        );
+        $dupaCod = $db->prepare('SELECT id FROM fan_lockers WHERE code = :code LIMIT 1');
+        $actualizeaza = $db->prepare(
+            'UPDATE fan_lockers
+                SET fan_id = :fan_id, name = :name, county = :county, locality = :locality,
+                    address = :address, postcode = :postcode, lat = :lat, lng = :lng,
+                    county_norm = :county_norm, locality_norm = :locality_norm,
+                    active = 1, updated_at = :updated_at
+              WHERE id = :id'
+        );
+        $adauga = $db->prepare(
+            'INSERT INTO fan_lockers
+                (code, fan_id, name, county, locality, address, postcode, lat, lng,
+                 county_norm, locality_norm, active, created_at, updated_at)
+             VALUES (:code, :fan_id, :name, :county, :locality, :address, :postcode, :lat, :lng,
+                 :county_norm, :locality_norm, 1, :created_at, :updated_at)'
+        );
+
+        $atinse = [];
+        $actualizate = 0;
+        $adaugate = 0;
+        foreach ($puncte as $punct) {
+            if (!is_array($punct)) {
+                continue;
+            }
+            $r = self::dinPunctApi($punct);
+            if ($r === null) {
+                continue;
+            }
+
+            $comune = [
+                'fan_id' => $r['fan_id'],
+                'name' => $r['name'],
+                'county' => $r['county'],
+                'locality' => $r['locality'],
+                'address' => $r['address'],
+                'postcode' => $r['postcode'],
+                'lat' => $r['lat'],
+                'lng' => $r['lng'],
+                'county_norm' => mb_substr(self::normalizeaza($r['county']), 0, 120),
+                'locality_norm' => mb_substr(self::normalizeaza($r['locality']), 0, 190),
+                'updated_at' => $acum,
+            ];
+
+            try {
+                $idLocal = 0;
+                $dupaFanId->execute(['fan_id' => $r['fan_id']]);
+                $idLocal = (int) ($dupaFanId->fetchColumn() ?: 0);
+
+                if ($idLocal <= 0) {
+                    // Punct importat înainte din fișier: are toate datele, dar nu
+                    // și id-ul FAN. Îl recunoaștem după județ, localitate și
+                    // denumire, ca să-i completăm id-ul fără să pierdem rândul.
+                    $dupaNume->execute([
+                        'county_norm' => $comune['county_norm'],
+                        'locality_norm' => $comune['locality_norm'],
+                        'name' => $comune['name'],
+                    ]);
+                    $idLocal = (int) ($dupaNume->fetchColumn() ?: 0);
+                }
+                if ($idLocal <= 0) {
+                    $dupaCod->execute(['code' => $r['code']]);
+                    $idLocal = (int) ($dupaCod->fetchColumn() ?: 0);
+                }
+
+                if ($idLocal > 0) {
+                    $actualizeaza->execute($comune + ['id' => $idLocal]);
+                    $actualizate++;
+                } else {
+                    $adauga->execute($comune + [
+                        'code' => $r['code'],
+                        'created_at' => $acum,
+                    ]);
+                    $idLocal = (int) $db->lastInsertId();
+                    $adaugate++;
+                }
+                if ($idLocal > 0) {
+                    $atinse[] = $idLocal;
+                }
+            } catch (Throwable) {
+            }
+        }
+
+        $dezactivate = 0;
+        if ($atinse !== []) {
+            try {
+                $placeholders = implode(',', array_fill(0, count($atinse), '?'));
+                $off = $db->prepare(
+                    "UPDATE fan_lockers SET active = 0, updated_at = ? WHERE active = 1 AND id NOT IN ($placeholders)"
+                );
+                $off->execute(array_merge([$acum], $atinse));
+                $dezactivate = $off->rowCount();
+            } catch (Throwable) {
+            }
+        }
+
+        return [
+            'importate' => count($atinse),
+            'actualizate' => $actualizate,
+            'adaugate' => $adaugate,
+            'dezactivate' => $dezactivate,
+        ];
+    }
+
+    /** Câte puncte au id-ul de la FAN (doar ele pot primi AWB). */
+    public static function numarCuIdFan(?PDO $db): int
+    {
+        if (!$db instanceof PDO) {
+            return 0;
+        }
+        try {
+            self::ensureSchema($db);
+            return (int) ($db->query(
+                'SELECT COUNT(*) FROM fan_lockers WHERE active = 1 AND fan_id <> ""'
+            )->fetchColumn() ?: 0);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Caută un punct după datele păstrate pe comandă.
+     *
+     * Folosit la reemiterea unui AWB: dacă între timp nomenclatorul a fost
+     * sincronizat, rândul la care trimitea comanda poate fi dezactivat, dar
+     * punctul există sub alt rând. Fără asta, comenzile vechi ar rămâne
+     * blocate.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function potrivestePunct(?PDO $db, string $nume, string $localitate, string $judet): ?array
+    {
+        if (!$db instanceof PDO) {
+            return null;
+        }
+        $nume = trim($nume);
+        $localitate = trim($localitate);
+        if ($nume === '' || $localitate === '') {
+            return null;
+        }
+        try {
+            self::ensureSchema($db);
+            $stmt = $db->prepare(
+                'SELECT id, code, fan_id, name, county, locality, address, postcode
+                 FROM fan_lockers
+                 WHERE active = 1 AND fan_id <> "" AND locality_norm = :locality_norm
+                   AND (:county_norm = "" OR county_norm = :county_norm2)
+                 ORDER BY id ASC'
+            );
+            $judetNorm = self::normalizeaza($judet);
+            $stmt->execute([
+                'locality_norm' => self::normalizeaza($localitate),
+                'county_norm' => $judetNorm,
+                'county_norm2' => $judetNorm,
+            ]);
+            $randuri = $stmt->fetchAll();
+        } catch (Throwable) {
+            return null;
+        }
+
+        $numeNorm = self::normalizeaza($nume);
+        foreach ($randuri as $r) {
+            if (self::normalizeaza((string) ($r['name'] ?? '')) === $numeNorm) {
+                return [
+                    'id' => (int) ($r['id'] ?? 0),
+                    'code' => (string) ($r['code'] ?? ''),
+                    'fan_id' => (string) ($r['fan_id'] ?? ''),
+                    'name' => (string) ($r['name'] ?? ''),
+                    'county' => (string) ($r['county'] ?? ''),
+                    'locality' => (string) ($r['locality'] ?? ''),
+                    'address' => (string) ($r['address'] ?? ''),
+                    'postcode' => (string) ($r['postcode'] ?? ''),
+                ];
+            }
+        }
+
+        return null;
     }
 }

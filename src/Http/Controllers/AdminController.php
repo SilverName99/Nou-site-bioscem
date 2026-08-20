@@ -8458,6 +8458,7 @@ final class AdminController
             'fanExtraKmCount' => $kmLocalitiesCount,
             'fanLockersCount' => \App\Support\FanLockers::numar($db),
             'fanLockersCuCoordonate' => \App\Support\FanLockers::numarCuCoordonate($db),
+            'fanLockersCuIdFan' => \App\Support\FanLockers::numarCuIdFan($db),
             'fanLockersJudete' => \App\Support\FanLockers::peJudete($db),
             'fanJudete' => $this->fanCountyList($db),
             'erpDepozite' => $erpDepozite,
@@ -9029,6 +9030,67 @@ final class AdminController
         if ($rezultat['dezactivate'] > 0) {
             $mesaj .= ' ' . $rezultat['dezactivate'] . ' puncte care nu mai apar în fișier au fost dezactivate.';
         }
+        Flash::set('success', $mesaj);
+        ResponseCache::purgePageCache();
+        header('Location: /admin/settings/shipping?tab=fanbox');
+    }
+
+    /**
+     * Aduce punctele FANbox direct din API-ul FAN.
+     *
+     * Fișierul primit de la ei nu conține id-ul punctului, iar fără id AWB-ul
+     * pentru un colet la locker e respins („fanBoxIsInvalid"). Lista din API e
+     * singura care are id-urile, așa că sincronizarea de aici e calea corectă,
+     * iar importul din fișier rămâne doar pentru completat adrese.
+     */
+    public function fanLockersSync(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        $settings = Settings::all($db);
+        $credentials = $this->fanCredentialsFromSettings($settings);
+        if ($credentials === null) {
+            Flash::set('error', 'Completează întâi datele de acces FAN (client ID, utilizator, parolă) în Setări livrare.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        try {
+            $puncte = FanCourierGateway::pickupPoints($credentials, 'fanbox');
+        } catch (Throwable $exception) {
+            Flash::set('error', 'FAN nu a returnat lista de puncte: ' . $exception->getMessage());
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        if ($puncte === []) {
+            Flash::set('error', 'FAN a returnat o listă goală de puncte FANbox. Verifică dacă contul are serviciul activ.');
+            header('Location: /admin/settings/shipping?tab=fanbox');
+            return;
+        }
+
+        $rezultat = \App\Support\FanLockers::sincronizeazaDinApi($db, $puncte);
+        $mesaj = 'Puncte FANbox sincronizate din FAN: ' . $rezultat['importate']
+            . ' (' . $rezultat['adaugate'] . ' noi, ' . $rezultat['actualizate'] . ' actualizate).';
+        if ($rezultat['dezactivate'] > 0) {
+            $mesaj .= ' ' . $rezultat['dezactivate'] . ' puncte care nu mai sunt la FAN au fost dezactivate.';
+        }
+
+        AdminActivityLog::log($db, 'fan_lockers_sync', [
+            'importate' => $rezultat['importate'],
+            'adaugate' => $rezultat['adaugate'],
+            'actualizate' => $rezultat['actualizate'],
+            'dezactivate' => $rezultat['dezactivate'],
+        ]);
         Flash::set('success', $mesaj);
         ResponseCache::purgePageCache();
         header('Location: /admin/settings/shipping?tab=fanbox');
@@ -14212,25 +14274,38 @@ HTML;
                 $service = $serviciuFanbox;
             }
 
-            // FAN identifică punctul de ridicare după CODUL lui, nu după adresă.
-            // Fără el, cererea e respinsă cu „fanBoxIsInvalid" pe câmpul
-            // `recipient.address.pickupLocation`. Comanda ține doar id-ul din
-            // nomenclatorul local, așa că mai întâi îl traducem în cod.
+            // FAN identifică punctul de ridicare după ID-ul LUI, din nomenclatorul
+            // lui (`/reports/pickup-points`) — nu după adresă și nu după un cod
+            // pe care îl inventăm noi la importul dintr-un fișier. Orice altceva
+            // e respins cu „fanBoxIsInvalid" pe `recipient.address.pickupLocation`.
             $dbLocker = $this->db();
             if ($dbLocker instanceof PDO) {
                 $punct = \App\Support\FanLockers::dupaId(
                     $dbLocker,
                     (int) ($order['fan_locker_id'] ?? 0)
                 );
-                $codLocker = trim((string) ($punct['code'] ?? ''));
+                $codLocker = trim((string) ($punct['fan_id'] ?? ''));
+                if ($codLocker === '') {
+                    // Rândul la care trimite comanda poate fi dezactivat după o
+                    // sincronizare, ori poate fi un import vechi fără id FAN.
+                    // Punctul e însă salvat pe comandă, deci îl regăsim după nume.
+                    $altul = \App\Support\FanLockers::potrivestePunct(
+                        $dbLocker,
+                        (string) ($order['fan_locker_name'] ?? ''),
+                        (string) ($order['fan_locker_city'] ?? ''),
+                        (string) ($order['fan_locker_county'] ?? '')
+                    );
+                    $codLocker = trim((string) ($altul['fan_id'] ?? ''));
+                }
             }
             if ($codLocker === '') {
                 // Mai bine oprim aici decât să trimitem un colet fără punct:
                 // FAN l-ar refuza oricum, iar mesajul lui nu spune ce e de făcut.
                 throw new RuntimeException(
-                    'Punctul FANbox al comenzii nu mai există în nomenclator (id '
-                    . (int) ($order['fan_locker_id'] ?? 0) . '). Reimportă punctele FANbox '
-                    . 'din Setări livrare sau schimbă destinația comenzii pe livrare la adresă.'
+                    'Punctul FANbox al comenzii („' . (string) ($order['fan_locker_name'] ?? '')
+                    . '") nu are id-ul de la FAN în nomenclator. Intră în Setări livrare și apasă '
+                    . '„Sincronizează punctele FANbox din FAN", apoi reîncearcă. Dacă nici așa nu apare, '
+                    . 'schimbă destinația comenzii pe livrare la adresă.'
                 );
             }
         }
@@ -14310,7 +14385,11 @@ HTML;
                     // număr fictiv, altfel FAN tipărește un „Nr. 1" greșit pe AWB.
                     'streetNo' => '',
                     'zipCode' => $recipientZip,
-                ] + ($codLocker !== '' ? ['pickupLocation' => $codLocker] : []),
+                    // Documentația FAN v2 numește câmpul `pickupLocationId`, dar
+                    // răspunsurile lor de eroare vin pe `pickupLocation`: sunt
+                    // versiuni diferite ale aceleiași validări, iar contul poate
+                    // fi pe oricare. Trimitem aceeași valoare pe ambele nume.
+                ] + ($codLocker !== '' ? ['pickupLocationId' => $codLocker, 'pickupLocation' => $codLocker] : []),
             ],
         ];
         if (($dimensions['length'] ?? 0) > 0 && ($dimensions['width'] ?? 0) > 0 && ($dimensions['height'] ?? 0) > 0) {

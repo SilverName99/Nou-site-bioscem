@@ -288,6 +288,7 @@ $router->post('/admin/settings/shipping/localities/import', [AdminController::cl
 $router->post('/admin/settings/shipping/streets/import', [AdminController::class, 'shippingStreetsImport']);
 $router->post('/admin/settings/shipping/extra-km/import', [AdminController::class, 'shippingLocalitiesKmImport']);
 $router->post('/admin/settings/shipping/fanbox/import', [AdminController::class, 'shippingFanboxImport']);
+$router->post('/admin/settings/shipping/fanbox/sync', [AdminController::class, 'fanLockersSync']);
 $router->get('/admin/settings/erp', [AdminController::class, 'erpSettingsForm']);
 $router->post('/admin/settings/erp', [AdminController::class, 'erpSettingsSave']);
 $router->get('/admin/settings/payments', [AdminController::class, 'paymentSettingsForm']);

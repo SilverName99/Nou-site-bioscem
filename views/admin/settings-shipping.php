@@ -199,20 +199,37 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
     </article>
 
     <article class="panel shipping-settings-panel" data-shipping-settings-panel="fanbox" <?= $shippingTab !== 'fanbox' ? 'hidden' : '' ?> style="margin:12px 0 16px;background:#f8fafc;border-color:#cbd5e1;">
-        <h3 style="margin:0 0 8px;">Puncte FANbox (Excel/CSV)</h3>
+        <h3 style="margin:0 0 8px;">Puncte FANbox</h3>
+        <?php $cuIdFan = (int) ($fanLockersCuIdFan ?? 0); $totalLockere = (int) ($fanLockersCount ?? 0); ?>
         <p style="margin:0 0 10px;color:#64748b;">
-            Lista lockerelor la care poate alege clientul livrarea. FAN nu o publică printr-un API,
-            deci se încarcă din fișierul primit de la ei. Fișierul are nevoie de un rând de antet cu
-            cel puțin <strong>judet</strong> și <strong>localitate</strong>; opțional
-            <strong>cod</strong>, <strong>denumire</strong> și <strong>adresa</strong>.
+            Lista lockerelor la care poate alege clientul livrarea. Ia-o direct de la FAN:
+            doar acolo vine și <strong>id-ul punctului</strong>, iar fără el AWB-ul pentru un colet
+            la locker este respins de FAN cu „fanBoxIsInvalid".
+        </p>
+        <form method="post" action="/admin/settings/shipping/fanbox/sync" style="margin:0 0 14px;">
+            <button class="btn" type="submit">Sincronizează punctele FANbox din FAN</button>
+        </form>
+        <?php if ($totalLockere > 0 && $cuIdFan === 0): ?>
+            <p style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;">
+                Niciun punct din nomenclator nu are id-ul de la FAN. Comenzile cu livrare la FANbox
+                <strong>nu pot primi AWB</strong> până nu apeși butonul de sincronizare de mai sus.
+            </p>
+        <?php endif; ?>
+        <p style="margin:0 0 10px;color:#64748b;font-size:13px;">
+            Importul din fișierul primit de la FAN rămâne disponibil, dar fișierul lor nu conține
+            id-urile punctelor: e bun doar pentru completat adrese, nu ține locul sincronizării.
+            Are nevoie de un rând de antet cu cel puțin <strong>judet</strong> și
+            <strong>localitate</strong>; opțional <strong>cod</strong>, <strong>denumire</strong>,
+            <strong>adresa</strong>.
         </p>
         <form method="post" action="/admin/settings/shipping/fanbox/import" enctype="multipart/form-data" style="display:grid;gap:8px;max-width:520px;">
             <input type="file" name="fan_lockers_file" accept=".csv,.xlsx" required>
-            <button class="btn" type="submit">Importă puncte FANbox</button>
+            <button class="btn btn-secondary" type="submit">Importă puncte FANbox din fișier</button>
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-            Puncte active în nomenclator: <strong><?= (int) ($fanLockersCount ?? 0) ?></strong>,
-            din care cu coordonate (pentru hartă): <strong><?= (int) ($fanLockersCuCoordonate ?? 0) ?></strong>
+            Puncte active în nomenclator: <strong><?= $totalLockere ?></strong>,
+            din care cu id de la FAN (pot primi AWB): <strong><?= $cuIdFan ?></strong>,
+            cu coordonate (pentru hartă): <strong><?= (int) ($fanLockersCuCoordonate ?? 0) ?></strong>
         </p>
         <?php $judeteLockere = is_array($fanLockersJudete ?? null) ? $fanLockersJudete : []; ?>
         <?php if ($judeteLockere !== []): ?>
