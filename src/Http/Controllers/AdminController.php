@@ -6136,13 +6136,21 @@ final class AdminController
         if ($action === 'delete') {
             $stmt = $db->prepare('UPDATE orders SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL');
             $deleted = 0;
+            $sterse = [];
             foreach ($orderIds as $orderId) {
+                $rezumat = $this->rezumatComandaPentruJurnal($db, $orderId);
                 $stmt->execute(['id' => $orderId]);
                 if ($stmt->rowCount() > 0) {
                     $deleted++;
+                    $sterse[] = ($rezumat['comanda'] ?? (string) $orderId)
+                        . (isset($rezumat['client']) ? ' (' . $rezumat['client'] . ')' : '');
                 }
             }
             if ($deleted > 0) {
+                AdminActivityLog::log($db, 'comenzi_sterse_in_masa', [
+                    'numar' => (string) $deleted,
+                    'comenzi' => $sterse,
+                ]);
                 Flash::set('success', 'Comenzi mutate în coș: ' . $deleted . '.');
             } else {
                 Flash::set('error', 'Nu s-au putut muta comenzile selectate în coș.');
@@ -7165,6 +7173,51 @@ final class AdminController
         return checkdate($month, $day, $year);
     }
 
+    /**
+     * Datele cu care o comandă rămâne recognoscibilă în jurnal după ce nu mai
+     * există. Se citesc ÎNAINTE de ștergere: după un `DELETE` nu mai are de
+     * unde afla nimeni ce anume s-a șters.
+     *
+     * @return array<string, string>
+     */
+    private function rezumatComandaPentruJurnal(PDO $db, int $id): array
+    {
+        if ($id <= 0) {
+            return [];
+        }
+        try {
+            $stmt = $db->prepare(
+                'SELECT order_number, billing_first_name, billing_last_name, billing_email,
+                        total, status, payment_method, fan_awb
+                 FROM orders WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute(['id' => $id]);
+            $r = $stmt->fetch();
+        } catch (Throwable) {
+            return [];
+        }
+        if (!is_array($r)) {
+            return [];
+        }
+
+        $client = trim((string) ($r['billing_first_name'] ?? '') . ' ' . (string) ($r['billing_last_name'] ?? ''));
+        $rezumat = [
+            'comanda_id' => (string) $id,
+            'comanda' => (string) ($r['order_number'] ?? ''),
+            'client' => $client,
+            'email' => (string) ($r['billing_email'] ?? ''),
+            'total' => number_format((float) ($r['total'] ?? 0), 2, '.', '') . ' RON',
+            'status' => (string) ($r['status'] ?? ''),
+            'plata' => (string) ($r['payment_method'] ?? ''),
+        ];
+        $awb = trim((string) ($r['fan_awb'] ?? ''));
+        if ($awb !== '') {
+            $rezumat['awb'] = $awb;
+        }
+
+        return array_filter($rezumat, static fn($v) => $v !== '');
+    }
+
     public function deleteOrder(array $params): void
     {
         if (!$this->guard()) {
@@ -7176,8 +7229,12 @@ final class AdminController
         $db = $this->db();
         if ($db instanceof PDO && $id > 0) {
             $this->ensureOptionalSchema($db);
+            $rezumat = $this->rezumatComandaPentruJurnal($db, $id);
             $stmt = $db->prepare('UPDATE orders SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL');
             $stmt->execute(['id' => $id]);
+            if ($stmt->rowCount() > 0) {
+                AdminActivityLog::log($db, 'comanda_stearsa', $rezumat);
+            }
             Flash::set('success', 'Comanda a fost mutată în coș.');
         }
 
@@ -7194,8 +7251,12 @@ final class AdminController
         $db = $this->db();
         if ($db instanceof PDO && $id > 0) {
             $this->ensureOptionalSchema($db);
+            $rezumat = $this->rezumatComandaPentruJurnal($db, $id);
             $stmt = $db->prepare('UPDATE orders SET deleted_at = NULL WHERE id = :id AND deleted_at IS NOT NULL');
             $stmt->execute(['id' => $id]);
+            if ($stmt->rowCount() > 0) {
+                AdminActivityLog::log($db, 'comanda_restaurata', $rezumat);
+            }
             Flash::set('success', 'Comanda a fost restaurată.');
         }
 
@@ -7212,8 +7273,12 @@ final class AdminController
         $db = $this->db();
         if ($db instanceof PDO && $id > 0) {
             $this->ensureOptionalSchema($db);
+            $rezumat = $this->rezumatComandaPentruJurnal($db, $id);
             $stmt = $db->prepare('DELETE FROM orders WHERE id = :id AND deleted_at IS NOT NULL');
             $stmt->execute(['id' => $id]);
+            if ($stmt->rowCount() > 0) {
+                AdminActivityLog::log($db, 'comanda_stearsa_definitiv', $rezumat);
+            }
             Flash::set('success', 'Comanda a fost ștearsă definitiv.');
         }
 

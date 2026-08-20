@@ -6,8 +6,48 @@ sort($knownActions);
 
 $actionLabels = [
     'loyalty_settings_save' => 'Setări puncte salvate',
+    'comanda_stearsa' => 'Comandă mutată în coș',
+    'comanda_stearsa_definitiv' => 'Comandă ȘTEARSĂ DEFINITIV',
+    'comanda_restaurata' => 'Comandă restaurată din coș',
+    'comenzi_sterse_in_masa' => 'Comenzi mutate în coș (în masă)',
+    'comanda_awb_reemis' => 'AWB reemis',
+    'comanda_transport_corectat' => 'Transport corectat',
+    'comanda_reducere_comerciala' => 'Reducere comercială aplicată',
+    'comanda_reducere_anulata' => 'Reducere comercială anulată',
+    'order_delivery_change' => 'Destinație livrare schimbată',
+    'fan_lockers_sync' => 'Puncte FANbox sincronizate',
 ];
 $label = static fn(string $a): string => $actionLabels[$a] ?? $a;
+
+/** Numele „tehnic” al unui câmp de context, scris pe înțelesul cititorului. */
+$etichetaCamp = static function (string $cheie): string {
+    $harta = [
+        'comanda' => 'Comanda',
+        'comanda_id' => 'ID intern',
+        'order_id' => 'ID intern',
+        'order_number' => 'Comanda',
+        'client' => 'Client',
+        'email' => 'Email',
+        'total' => 'Total',
+        'status' => 'Status',
+        'plata' => 'Plată',
+        'awb' => 'AWB',
+        'comenzi' => 'Comenzi',
+        'numar' => 'Număr',
+    ];
+    return $harta[$cheie] ?? $cheie;
+};
+
+/** Valorile din context pot fi și liste (de exemplu ștergerile în masă). */
+$valoareCamp = static function (mixed $v): string {
+    if (is_array($v)) {
+        return implode(', ', array_map(static fn($x) => is_scalar($x) ? (string) $x : json_encode($x, JSON_UNESCAPED_UNICODE), $v));
+    }
+    if (is_bool($v)) {
+        return $v ? 'da' : 'nu';
+    }
+    return (string) $v;
+};
 ?>
 <div class="panel" style="margin:0 0 24px;">
     <h2 style="margin-top:0;">Jurnal activitate admin</h2>
@@ -76,7 +116,31 @@ $label = static fn(string $a): string => $actionLabels[$a] ?? $a;
                             <?php endforeach; ?>
                             </ul>
                         <?php elseif ($ctx !== []): ?>
-                            <em style="color:#6b7280;">Fără modificări față de valorile anterioare</em>
+                            <?php
+                            // Nu toate acțiunile au un „înainte → după”: o ștergere,
+                            // o sincronizare sau un AWB reemis au doar context. Înainte
+                            // scria „fără modificări”, deși informația exista în jurnal
+                            // — doar că nu era afișată.
+                            $randuri = [];
+                            foreach ($ctx as $cheie => $valoare) {
+                                if ($cheie === 'changes' || $valoare === null || $valoare === '') {
+                                    continue;
+                                }
+                                $randuri[(string) $cheie] = $valoareCamp($valoare);
+                            }
+                            ?>
+                            <?php if ($randuri !== []): ?>
+                                <ul style="margin:0;padding:0 0 0 16px;list-style:disc;">
+                                    <?php foreach ($randuri as $cheie => $valoare): ?>
+                                        <li>
+                                            <?= htmlspecialchars($etichetaCamp($cheie), ENT_QUOTES) ?>:
+                                            <strong><?= htmlspecialchars($valoare, ENT_QUOTES) ?></strong>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else: ?>
+                                <em style="color:#6b7280;">Fără detalii suplimentare</em>
+                            <?php endif; ?>
                         <?php else: ?>
                             —
                         <?php endif; ?>
