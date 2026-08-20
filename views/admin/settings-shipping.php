@@ -346,7 +346,24 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                     </option>
                 <?php endforeach; ?>
             </select>
-            <small style="display:block;margin-top:4px;color:#64748b;">Pentru livrările la adresă.</small>
+            <small style="display:block;margin-top:4px;color:#64748b;">Pentru livrările la adresă, plătite în avans (card, transfer).</small>
+        </div>
+        <div class="field">
+            <label>Tip serviciu FAN pentru colete cu ramburs</label>
+            <?php $fanServiceRamburs = trim((string) ($settings['fan_service_type_ramburs'] ?? 'Cont Colector')); ?>
+            <select name="fan_service_type_ramburs">
+                <option value="">— la fel ca serviciul de mai sus —</option>
+                <?php foreach ($fanServiceOptions as $service): ?>
+                    <option value="<?= htmlspecialchars($service, ENT_QUOTES) ?>" <?= $service === $fanServiceRamburs ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($service, ENT_QUOTES) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <small style="display:block;margin-top:4px;color:#64748b;">
+                Doar pe serviciile de „Cont Colector” FAN virează rambursul încasat în contul
+                completat mai jos. Pe serviciul obișnuit AWB-ul se emite fără eroare, dar banii
+                rămân fără drum spre bancă.
+            </small>
         </div>
         <div class="field">
             <label>Tip serviciu FAN pentru FANbox</label>
@@ -362,6 +379,19 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                 FAN nu acceptă livrarea în locker pe orice serviciu. Se folosește doar
                 pentru comenzile trimise la FANbox; restul rămân pe serviciul de mai sus.
             </small>
+        </div>
+        <div class="field">
+            <label>Tip serviciu FAN pentru FANbox cu ramburs</label>
+            <?php $fanServiceFanboxRamburs = trim((string) ($settings['fan_service_type_fanbox_ramburs'] ?? 'FANbox Cont Colector')); ?>
+            <select name="fan_service_type_fanbox_ramburs">
+                <option value="">— la fel ca serviciul de FANbox —</option>
+                <?php foreach ($fanServiceOptions as $service): ?>
+                    <option value="<?= htmlspecialchars($service, ENT_QUOTES) ?>" <?= $service === $fanServiceFanboxRamburs ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($service, ENT_QUOTES) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <small style="display:block;margin-top:4px;color:#64748b;">Coletul ridicat din locker și plătit la ridicare.</small>
         </div>
         <div class="field">
             <label>Plata transport (cotație FAN)</label>

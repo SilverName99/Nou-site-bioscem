@@ -27,6 +27,12 @@ final class Settings
         // depozite. Coletele se consolidează înainte de expediere.
         'fan_awb_single' => '1',
         'fan_service_type' => 'Standard',
+        // Serviciul pentru coletele cu ramburs. La FAN, încasarea se virează în
+        // cont doar pe serviciile de „Cont Colector"; pe serviciul obișnuit
+        // AWB-ul pleacă, dar banii n-au drum spre bancă. Gol = se folosește
+        // serviciul obișnuit, fără deosebire.
+        'fan_service_type_ramburs' => 'Cont Colector',
+        'fan_service_type_fanbox_ramburs' => 'FANbox Cont Colector',
         'fan_shipping_payer' => 'recipient',
         'fan_cod_payer' => 'sender',
         // Contul în care FAN virează rambursul încasat. Lăsate goale, FAN

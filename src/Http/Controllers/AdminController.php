@@ -8645,6 +8645,8 @@ final class AdminController
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
             'fan_awb_single' => isset($_POST['fan_awb_single']) ? '1' : '0',
             'fan_service_type' => trim((string) ($_POST['fan_service_type'] ?? 'Standard')),
+            'fan_service_type_ramburs' => trim((string) ($_POST['fan_service_type_ramburs'] ?? '')),
+            'fan_service_type_fanbox_ramburs' => trim((string) ($_POST['fan_service_type_fanbox_ramburs'] ?? '')),
             'fan_service_type_fanbox' => trim((string) ($_POST['fan_service_type_fanbox'] ?? 'FANbox')),
             'fan_shipping_payer' => $shippingPayer,
             'fan_shipment_type' => $packageType,
@@ -14151,6 +14153,19 @@ HTML;
         if (array_key_exists('cod', $override) && $override['cod'] !== null) {
             $cod = (float) $override['cod'];
         }
+        // Coletul cu ramburs merge pe serviciul de „Cont Colector": doar pe el
+        // FAN virează încasarea în contul din setări. Pe serviciul obișnuit
+        // AWB-ul se emite fără să crâcnească, dar banii rămân fără drum spre
+        // bancă — de aceea alegerea nu poate fi o singură setare pentru toate
+        // coletele, ci depinde de cum plătește clientul.
+        if ($cod > 0) {
+            $cheieServiciu = $laFanbox ? 'fan_service_type_fanbox_ramburs' : 'fan_service_type_ramburs';
+            $serviciuRamburs = trim((string) ($settings[$cheieServiciu] ?? ''));
+            if ($serviciuRamburs !== '') {
+                $service = $serviciuRamburs;
+            }
+        }
+
         $declaredValue = round((float) ($order['total'] ?? 0), 2);
         if (isset($override['declared_value']) && (float) $override['declared_value'] > 0) {
             $declaredValue = round((float) $override['declared_value'], 2);
