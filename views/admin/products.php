@@ -31,6 +31,7 @@
         <span>Produs</span>
         <span>Categorie</span>
         <span>Preț</span>
+        <span>TVA</span>
         <span>Stoc</span>
         <span>Status</span>
         <span>Acțiuni</span>
@@ -80,6 +81,19 @@
                     <?php if ($hasSalePrice): ?>
                         <small class="old-price"><?= number_format($basePrice, 2) ?> RON</small>
                     <?php endif; ?>
+                </div>
+                <div class="col-vat">
+                    <?php
+                    // Cota și dacă e inclusă în preț. Scrise aici, se vede pe loc
+                    // când una e greșită — un „10.89%" tastat din greșeală strica
+                    // prețul de raft fără ca nimeni să observe.
+                    $vatPercent = (float) ($product['vat_percent'] ?? 0);
+                    $vatIncluded = ((int) ($product['vat_included'] ?? 1)) === 1;
+                    ?>
+                    <strong><?= rtrim(rtrim(number_format($vatPercent, 2, ',', ''), '0'), ',') ?>%</strong>
+                    <small style="display:block;color:<?= $vatIncluded ? '#64748b' : '#b45309' ?>;">
+                        <?= $vatIncluded ? 'inclus în preț' : 'peste preț' ?>
+                    </small>
                 </div>
                 <div class="col-stock">
                     <?= (int) $product['stock'] ?>

@@ -3689,7 +3689,7 @@ body > main.container {
 
 .product-table-head {
     display: grid;
-    grid-template-columns: 80px 2fr 1.3fr 1fr .6fr .8fr .8fr;
+    grid-template-columns: 80px 2fr 1.3fr 1fr .7fr .6fr .8fr .8fr;
     padding: 6px 10px 10px;
     color: #64748b;
     font-size: 0.8rem;
@@ -3706,7 +3706,7 @@ body > main.container {
 
 .product-row {
     display: grid;
-    grid-template-columns: 80px 2fr 1.3fr 1fr .6fr .8fr .8fr;
+    grid-template-columns: 80px 2fr 1.3fr 1fr .7fr .6fr .8fr .8fr;
     align-items: center;
     gap: 10px;
     border: 1px solid #e5e7eb;
@@ -3911,6 +3911,11 @@ body > main.container {
 .col-product p {
     margin: 3px 0 0;
     color: #64748b;
+}
+
+.col-vat strong {
+    font-size: 0.95rem;
+    color: #0f172a;
 }
 
 .col-price strong {
