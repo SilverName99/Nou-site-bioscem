@@ -351,6 +351,16 @@ final class ErpSync
             'firmaCui' => $esteFirma ? (string) ($order['billing_company_tax_id'] ?? '') : '',
             'firmaRegCom' => $esteFirma ? (string) ($order['billing_company_registration_no'] ?? '') : '',
 
+            // Adresa fiscală a clientului (sediul social), separată de cea de
+            // livrare. Pe factură trebuie asta, nu locul unde ajunge coletul.
+            'facturareAdresa' => trim(
+                (string) ($order['billing_address_line1'] ?? '')
+                . ' ' . (string) ($order['billing_address_line2'] ?? '')
+            ),
+            'facturareOras' => (string) ($order['billing_city'] ?? ''),
+            'facturareJudet' => (string) ($order['billing_county'] ?? ''),
+            'facturareCodPostal' => (string) ($order['billing_postcode'] ?? ''),
+
             'livrareNume' => $livrareNume,
             'livrareAdresa' => $adresa,
             'livrareOras' => (string) ($sameAsBilling ? ($order['billing_city'] ?? '') : ($order['shipping_city'] ?? '')),
