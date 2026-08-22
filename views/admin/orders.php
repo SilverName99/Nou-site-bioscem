@@ -432,16 +432,29 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                         // nepotrivit, adresă corectată ulterior) nu se poate repara
                                         // la FAN, doar înlocuit cu altul. Ascuns, comanda rămânea
                                         // blocată cu eticheta greșită.
+                                        //
+                                        // Din clipa în care curierul a luat coletul, însă, un AWB nou
+                                        // nu mai repară nimic — s-a întâmplat: o comandă deja livrată
+                                        // a primit alt AWB, iar în SelfAWB au rămas două expedieri.
+                                        $poateReemite = \App\Support\FanCourierGateway::poateReemiteAwb($awb, $trackingStatus);
                                         $confirmareAwb = $awb === ''
                                             ? 'Sigur vrei să generezi AWB FAN pentru această comandă?'
                                             : 'Comanda are deja AWB-ul ' . $awb . '. Emiți ALT AWB? '
                                                 . 'Cel vechi NU se anulează automat la FAN — anulează-l în SelfAWB, '
                                                 . 'altfel rămân două expedieri pe aceeași comandă.';
                                     ?>
-                                    <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" onsubmit="return confirm('<?= htmlspecialchars(addslashes($confirmareAwb), ENT_QUOTES) ?>');">
-                                        <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
-                                        <button type="submit" class="order-action-btn" title="<?= $awb === '' ? 'Generează AWB FAN' : 'Emite alt AWB (îl înlocuiește pe ' . htmlspecialchars($awb, ENT_QUOTES) . ')' ?>">🚚</button>
-                                    </form>
+                                    <?php if ($poateReemite): ?>
+                                        <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" data-awb-form
+                                              data-awb-confirm="<?= htmlspecialchars($confirmareAwb, ENT_QUOTES) ?>">
+                                            <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
+                                            <input type="hidden" name="trimite_email_tracking" value="1" data-awb-email>
+                                            <button type="submit" class="order-action-btn" title="<?= $awb === '' ? 'Generează AWB FAN' : 'Emite alt AWB (îl înlocuiește pe ' . htmlspecialchars($awb, ENT_QUOTES) . ')' ?>">🚚</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <button type="button" class="order-action-btn" disabled
+                                                title="Coletul e deja la curier (<?= htmlspecialchars($trackingStatus, ENT_QUOTES) ?>) — nu se mai poate emite alt AWB. Se poate doar cât timp statusul e „AWB generat" sau indisponibil."
+                                                style="opacity:.4;cursor:not-allowed;">🚚</button>
+                                    <?php endif; ?>
                                     <?php if ($erpEnabled && !in_array($erpStatus, ['sent', 'skipped'], true)): ?>
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">
                                             <button type="submit" class="order-action-btn" title="Retrimite în ERP<?= $erpError !== '' ? (' — ultima eroare: ' . htmlspecialchars($erpError, ENT_QUOTES)) : '' ?>">🔄</button>
@@ -491,6 +504,32 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
             <button type="button" id="client-promo-close" style="border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#6b7280;">&times;</button>
         </div>
         <div id="client-promo-body"></div>
+    </div>
+</div>
+
+<!-- Confirmarea emiterii AWB, cu alegerea trimiterii emailului de tracking. -->
+<div class="modal-overlay" id="awb-modal">
+    <div class="modal-card" style="max-width:520px;">
+        <div class="modal-head">
+            <h3>Emitere AWB FAN</h3>
+            <button type="button" class="icon-btn" id="awb-modal-close" aria-label="Închide">✕</button>
+        </div>
+        <div style="padding:18px 20px;display:grid;gap:14px;">
+            <p id="awb-modal-text" style="margin:0;color:#334155;line-height:1.5;"></p>
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                <input type="checkbox" id="awb-modal-email" checked style="margin-top:3px;">
+                <span>
+                    Trimite email cu tracking clientului
+                    <small style="display:block;color:#64748b;">
+                        Debifează dacă nu vrei să afle acum că a plecat coletul.
+                    </small>
+                </span>
+            </label>
+        </div>
+        <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:10px;padding:0 20px 18px;">
+            <button type="button" class="btn ghost" id="awb-modal-cancel">Anulează</button>
+            <button type="button" class="btn" id="awb-modal-ok">Emite AWB</button>
+        </div>
     </div>
 </div>
 
@@ -663,6 +702,49 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
     const closeBtn = document.getElementById('close-order-modal');
     const title = document.getElementById('order-modal-title');
     const content = document.getElementById('order-modal-content');
+    // ── Emitere AWB: confirmarea, cu alegerea trimiterii emailului ──────
+    // Înlocuiește un `confirm()` simplu, ca să încapă și bifa. Emailul e bifat
+    // din start — clientul îl așteaptă — dar se poate scoate când coletul
+    // pleacă mai târziu sau când s-a anunțat deja pe altă cale.
+    const awbModal = document.getElementById('awb-modal');
+    if (awbModal) {
+        const awbText = document.getElementById('awb-modal-text');
+        const awbEmail = document.getElementById('awb-modal-email');
+        let awbForm = null;
+
+        const inchideAwb = () => {
+            awbModal.classList.remove('open');
+            awbForm = null;
+        };
+        document.getElementById('awb-modal-close').addEventListener('click', inchideAwb);
+        document.getElementById('awb-modal-cancel').addEventListener('click', inchideAwb);
+        awbModal.addEventListener('click', (e) => { if (e.target === awbModal) inchideAwb(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && awbModal.classList.contains('open')) inchideAwb();
+        });
+
+        document.querySelectorAll('form[data-awb-form]').forEach((form) => {
+            form.addEventListener('submit', (e) => {
+                if (form.dataset.awbConfirmat === '1') return; // trimiterea reală
+                e.preventDefault();
+                awbForm = form;
+                awbText.textContent = form.dataset.awbConfirm || '';
+                awbEmail.checked = true;
+                awbModal.classList.add('open');
+            });
+        });
+
+        document.getElementById('awb-modal-ok').addEventListener('click', () => {
+            if (!awbForm) return;
+            const camp = awbForm.querySelector('[data-awb-email]');
+            if (camp) camp.value = awbEmail.checked ? '1' : '0';
+            awbForm.dataset.awbConfirmat = '1';
+            const form = awbForm;
+            inchideAwb();
+            form.submit();
+        });
+    }
+
     const actionsModal = document.getElementById('order-actions-modal');
     const closeActionsModalBtn = document.getElementById('close-order-actions-modal');
     const actionsModalTitle = document.getElementById('order-actions-modal-title');

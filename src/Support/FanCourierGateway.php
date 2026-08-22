@@ -104,6 +104,30 @@ final class FanCourierGateway
         ];
     }
 
+    /**
+     * Se mai poate emite un AWB pentru comanda asta?
+     *
+     * Da, cât timp coletul n-a plecat: fără AWB, cu unul abia generat, sau cu
+     * un status pe care nu l-am putut citi de la FAN. Nu, din clipa în care
+     * curierul l-a luat — ridicat, în depozit, sortat, livrat, retur. Un AWB
+     * nou peste unul deja livrat nu mai repară nimic: coletul e la client, iar
+     * în SelfAWB rămân două expedieri pe aceeași comandă.
+     *
+     * Verificarea se face pe ce NU e permis, nu pe lista de statusuri ale FAN:
+     * ele vin ca text liber, cu sau fără diacritice, și se mai schimbă.
+     */
+    public static function poateReemiteAwb(string $awb, string $trackingStatus): bool
+    {
+        if (trim($awb) === '') {
+            return true;
+        }
+        $status = mb_strtolower(trim($trackingStatus));
+        if ($status === '') {
+            return true;
+        }
+        return str_contains($status, 'generat') || str_contains($status, 'indisponibil');
+    }
+
     public static function trackingUrl(string $awb): string
     {
         $encodedAwb = urlencode($awb);

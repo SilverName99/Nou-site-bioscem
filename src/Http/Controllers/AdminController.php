@@ -6759,7 +6759,11 @@ final class AdminController
         }
     }
 
-    private function createFanAwbInternal(PDO $db, int $orderId): array
+    private function createFanAwbInternal(
+        PDO $db,
+        int $orderId,
+        bool $trimiteEmailTracking = true,
+    ): array
     {
         if ($orderId <= 0) {
             return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
@@ -6843,7 +6847,10 @@ final class AdminController
             if ($previousStatus !== 'completed') {
                 $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, 'completed');
             }
-            EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+            // Emailul cu tracking pleacă doar dacă a rămas bifat la confirmare.
+            if ($trimiteEmailTracking) {
+                EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+            }
 
             if ($awbInlocuit !== '' && $awbInlocuit !== $awb) {
                 // FAN nu află din reemitere că vechiul AWB nu mai e bun: coletul
@@ -6873,7 +6880,12 @@ final class AdminController
      * @param array<int, array{gestiuneId?: string, gestiuneName?: string, produse?: array<int, array{sku?: string, denumire?: string, cantitate?: string}>}> $colete
      * @return array{ok: bool, message: string}
      */
-    private function createFanAwbMulti(PDO $db, int $orderId, array $colete): array
+    private function createFanAwbMulti(
+        PDO $db,
+        int $orderId,
+        array $colete,
+        bool $trimiteEmailTracking = true,
+    ): array
     {
         if ($orderId <= 0 || $colete === []) {
             return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
@@ -6986,7 +6998,10 @@ final class AdminController
         if ($previousStatus !== 'completed') {
             $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, 'completed');
         }
-        EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+        // Emailul cu tracking pleacă doar dacă a rămas bifat la confirmare.
+        if ($trimiteEmailTracking) {
+            EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+        }
 
         $listaAwb = implode(', ', array_column($generated, 'awb'));
         if ($errors !== []) {
@@ -7539,8 +7554,34 @@ final class AdminController
             return;
         }
         $this->ensureOptionalSchema($db);
+
+        // Un buton dezactivat în pagină nu oprește o cerere trimisă direct, iar
+        // aici se emit AWB-uri reale, cu costuri la curier.
+        $stareAwb = $db->prepare(
+            'SELECT fan_awb, fan_tracking_status FROM orders WHERE id = :id LIMIT 1'
+        );
+        $stareAwb->execute(['id' => $id]);
+        $randAwb = $stareAwb->fetch() ?: [];
+        if (!FanCourierGateway::poateReemiteAwb(
+            (string) ($randAwb['fan_awb'] ?? ''),
+            (string) ($randAwb['fan_tracking_status'] ?? '')
+        )) {
+            Flash::set(
+                'error',
+                'Coletul e deja la curier (' . trim((string) ($randAwb['fan_tracking_status'] ?? '')) . ') — '
+                . 'nu se mai poate emite alt AWB pentru comanda asta.'
+            );
+            header('Location: ' . $backUrl);
+            return;
+        }
+
+        // Emailul cu tracking pleacă din start; se poate scoate din fereastra
+        // de confirmare, când coletul pleacă mai târziu sau clientul e deja
+        // anunțat pe altă cale.
+        $trimiteEmail = (string) ($_POST['trimite_email_tracking'] ?? '1') !== '0';
+
         try {
-            $result = $this->createFanAwbInternal($db, $id);
+            $result = $this->createFanAwbInternal($db, $id, $trimiteEmail);
             Flash::set(($result['ok'] ?? false) ? 'success' : 'error', (string) ($result['message'] ?? 'Nu am putut genera AWB.'));
         } catch (Throwable $exception) {
             Flash::set('error', 'Nu am putut genera AWB-ul FAN: ' . $exception->getMessage());
