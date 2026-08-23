@@ -23,6 +23,9 @@ use RuntimeException;
 
 final class AdminController
 {
+    /** Metodele de plată acceptate la corectarea unei comenzi din administrare. */
+    private const METODE_PLATA = ['cod', 'euplatesc', 'stripe', 'card', 'bank_transfer'];
+
     private const CART_FORM_TOKEN = '{{cart_form}}';
     private const SHOP_CATALOG_TOKEN = '{{shop_catalog}}';
     private const BLOG_POSTS_TOKEN = '{{blog_posts}}';
@@ -4870,6 +4873,46 @@ final class AdminController
         View::render('admin/orders-trash', ['title' => 'Coș comenzi', 'orders' => $orders], 'admin/layout');
     }
 
+    /**
+     * Scoate codul fiscal dintr-un text scris de client.
+     *
+     * În câmpul de CUI ajunge des și denumirea firmei („BIOSCEM SRL RO12345678").
+     * Dacă apare un cod precedat de „RO", el câștigă — e forma completă. Altfel
+     * luăm cel mai lung grup de cifre, ca „MERIDIAN 2000 SRL 45678901" să dea
+     * 45678901, nu 2000. Fără nicio cifră, lăsăm textul cum e: nu inventăm un
+     * cod, iar operatorul vede ce a scris clientul.
+     */
+    private static function curataCui(string $brut): string
+    {
+        $text = trim($brut);
+        if ($text === '') {
+            return '';
+        }
+        $majuscule = mb_strtoupper($text, 'UTF-8');
+        if (preg_match_all('/\bRO[\s.\-]?(\d{2,10})\b/u', $majuscule, $m) && $m[1] !== []) {
+            return 'RO' . end($m[1]);
+        }
+        if (preg_match_all('/\d{2,10}/u', $majuscule, $m) && $m[0] !== []) {
+            $cel = '';
+            foreach ($m[0] as $grup) {
+                if (strlen($grup) >= strlen($cel)) {
+                    $cel = $grup;
+                }
+            }
+            return $cel;
+        }
+        return mb_substr(preg_replace('/\s+/u', ' ', $majuscule) ?? '', 0, 20, 'UTF-8');
+    }
+
+    /** Valoarea curentă a unei coloane de pe comandă, pentru verificări. */
+    private function orderColumn(PDO $db, int $orderId, string $column): ?string
+    {
+        $stmt = $db->prepare('SELECT ' . $column . ' FROM orders WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $orderId]);
+        $val = $stmt->fetchColumn();
+        return $val === false ? null : (string) $val;
+    }
+
     public function updateOrderAddress(array $params): void
     {
         if (!$this->guard()) {
@@ -4892,6 +4935,11 @@ final class AdminController
             'billing_first_name', 'billing_last_name', 'billing_email', 'billing_phone',
             'billing_address_line1', 'billing_address_line2',
             'billing_city', 'billing_county', 'billing_postcode',
+            // Datele de firmă: clienții le greșesc des la checkout (scriu
+            // denumirea în câmpul de CUI), iar comanda nu mai intra în ERP.
+            'billing_is_company', 'billing_company_name',
+            'billing_company_tax_id', 'billing_company_registration_no',
+            'payment_method',
         ];
         header('Content-Type: application/json');
         $sets = [];
@@ -4911,8 +4959,36 @@ final class AdminController
                     echo json_encode(['ok' => false, 'error' => 'Numele, emailul și telefonul nu pot fi goale.']);
                     return;
                 }
+                if ($col === 'billing_is_company') {
+                    $val = ($val === '1' || $val === 'on' || $val === 'true') ? '1' : '0';
+                }
+                if ($col === 'payment_method' && !in_array($val, self::METODE_PLATA, true)) {
+                    echo json_encode(['ok' => false, 'error' => 'Metodă de plată necunoscută.']);
+                    return;
+                }
+                // CUI-ul se curăță aici, nu doar în ERP: dacă în câmp a ajuns și
+                // denumirea firmei, păstrăm codul și lăsăm denumirea acolo unde
+                // îi e locul.
+                if ($col === 'billing_company_tax_id' && $val !== '') {
+                    $val = self::curataCui($val);
+                }
                 $sets[] = $col . ' = :' . $col;
                 $binds[$col] = $val;
+            }
+        }
+
+        // Dacă rămâne firmă, datele minime trebuie să existe — altfel factura
+        // din ERP iese pe persoană fizică fără să bage nimeni de seamă.
+        if (isset($_POST['billing_is_company']) && ($binds['billing_is_company'] ?? '0') === '1') {
+            $denumire = isset($binds['billing_company_name'])
+                ? $binds['billing_company_name']
+                : trim((string) ($this->orderColumn($db, $orderId, 'billing_company_name') ?? ''));
+            $cui = isset($binds['billing_company_tax_id'])
+                ? $binds['billing_company_tax_id']
+                : trim((string) ($this->orderColumn($db, $orderId, 'billing_company_tax_id') ?? ''));
+            if ($denumire === '' || $cui === '') {
+                echo json_encode(['ok' => false, 'error' => 'La comandă pe firmă, denumirea și CUI-ul sunt obligatorii.']);
+                return;
             }
         }
         if ($sets === []) {
@@ -4938,7 +5014,10 @@ final class AdminController
         $stmt = $db->prepare(
             'SELECT billing_first_name, billing_last_name, billing_email, billing_phone,
                     billing_address_line1, billing_address_line2,
-                    billing_city, billing_county, billing_postcode
+                    billing_city, billing_county, billing_postcode,
+                    billing_is_company, billing_company_name,
+                    billing_company_tax_id, billing_company_registration_no,
+                    payment_method
              FROM orders WHERE id = :id LIMIT 1'
         );
         $stmt->execute(['id' => $orderId]);

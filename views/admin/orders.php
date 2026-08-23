@@ -980,8 +980,8 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 <div class="order-modal-grid">
                     <div><small>Client</small><p id="order-client-name-${order.id}">${esc(order.display_name || ((order.billing_first_name||'') + ' ' + (order.billing_last_name||'')).trim())}</p></div>
                     <div><small>Email</small><p id="order-client-email-${order.id}">${esc(order.billing_email)}</p></div>
-                    <div><small>Telefon</small><p id="order-client-phone-${order.id}">${esc(order.billing_phone)}</p></div>
-                    <div><small>Plată</small><p>${esc(order.payment_method)}</p></div>
+                    <div><small>Telefon</small><p id="order-client-phone-${order.id}">${esc(order.billing_phone)} <button type="button" onclick="toggleAddressEdit(${order.id})" style="font-size:11px;padding:1px 6px;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;cursor:pointer;color:#374151;">✎</button></p></div>
+                    <div><small>Plată</small><p id="order-payment-method-${order.id}">${esc(order.payment_method)} <button type="button" onclick="toggleAddressEdit(${order.id})" style="font-size:11px;padding:1px 6px;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;cursor:pointer;color:#374151;">✎</button></p></div>
                     ${paymentStatusHtml}
                     <div><small>AWB FAN</small><p>${esc(order.fan_awb || '-')}</p></div>
                     <div><small>Cupon folosit</small><p>${couponCode !== '' ? esc(couponCode) : '— (fără cupon)'}</p></div>
@@ -1007,7 +1007,7 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 <p>
                   <small>Adresă</small>
                   <span id="order-address-display-${order.id}">${addressParts.length ? addressParts.map(esc).join(', ') : '-'}</span>
-                  <button type="button" onclick="toggleAddressEdit(${order.id})" style="margin-left:8px;font-size:11px;padding:2px 7px;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;cursor:pointer;color:#374151;">✎ Editează</button>
+                  <button type="button" onclick="toggleAddressEdit(${order.id})" style="margin-left:8px;font-size:11px;padding:2px 7px;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;cursor:pointer;color:#374151;">✎ Editează datele clientului</button>
                 </p>
                 <div id="order-address-form-${order.id}" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;">
                   <div style="display:grid;gap:8px;">
@@ -1025,6 +1025,26 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                       <label style="font-size:12px;color:#374151;">Oraș<br><input name="billing_city" value="${esc(order.billing_city||'')}" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
                       <label style="font-size:12px;color:#374151;">Cod poștal<br><input name="billing_postcode" value="${esc(order.billing_postcode||'')}" pattern="[0-9]{6}" maxlength="6" inputmode="numeric" required title="Exact 6 cifre" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
                       <label style="font-size:12px;color:#374151;">Județ<br><input name="billing_county" value="${esc(order.billing_county||'')}" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                    </div>
+                    <label style="font-size:12px;color:#374151;">Plată<br>
+                      <select name="payment_method" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}">
+                        ${['cod','euplatesc','stripe','card','bank_transfer'].map((m) => `<option value="${m}"${String(order.payment_method||'') === m ? ' selected' : ''}>${m === 'cod' ? 'Ramburs (cod)' : m}</option>`).join('')}
+                      </select>
+                      <span style="display:block;margin-top:3px;font-size:11px;color:#6b7280;">Schimbă doar metoda trecută pe comandă; nu marchează comanda ca plătită.</span>
+                    </label>
+                    <div style="border-top:1px solid #e5e7eb;padding-top:8px;">
+                      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;">
+                        <input type="checkbox" name="billing_is_company" id="order-is-company-${order.id}" ${isCompany ? 'checked' : ''} onchange="document.getElementById('order-company-fields-${order.id}').style.display = this.checked ? 'grid' : 'none';">
+                        Comandă pe firmă (persoană juridică)
+                      </label>
+                      <div id="order-company-fields-${order.id}" style="display:${isCompany ? 'grid' : 'none'};gap:8px;margin-top:8px;">
+                        <label style="font-size:12px;color:#374151;">Denumire firmă<br><input name="billing_company_name" value="${esc(order.billing_company_name||'')}" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                          <label style="font-size:12px;color:#374151;">CUI / Cod fiscal<br><input name="billing_company_tax_id" value="${esc(order.billing_company_tax_id||'')}" placeholder="RO12345678" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                          <label style="font-size:12px;color:#374151;">Reg. Comerțului (J)<br><input name="billing_company_registration_no" value="${esc(order.billing_company_registration_no||'')}" placeholder="J40/1234/2020" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                        </div>
+                        <span style="font-size:11px;color:#6b7280;">Dacă în CUI a ajuns și denumirea firmei, la salvare se păstrează doar codul. Denumirea se scrie în câmpul de deasupra.</span>
+                      </div>
                     </div>
                     <div style="display:flex;gap:8px;">
                       <button type="button" onclick="saveOrderAddress(${order.id})" style="padding:5px 14px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Salvează</button>
@@ -1302,9 +1322,15 @@ function toggleAddressEdit(orderId) {
 function saveOrderAddress(orderId) {
     const form = document.getElementById('order-address-form-' + orderId);
     if (!form) return;
-    const inputs = form.querySelectorAll('input[name]');
     const body = new URLSearchParams();
-    inputs.forEach(inp => body.append(inp.name, inp.value));
+    // Bifa de firmă trimite 1/0, nu textul „on"; selectul de plată intră și el.
+    form.querySelectorAll('input[name], select[name]').forEach((inp) => {
+        if (inp.type === 'checkbox') {
+            body.append(inp.name, inp.checked ? '1' : '0');
+        } else {
+            body.append(inp.name, inp.value);
+        }
+    });
     fetch('/admin/orders/' + orderId + '/address', {method:'POST', body})
         .then(r => r.json())
         .then(data => {
@@ -1322,6 +1348,8 @@ function saveOrderAddress(orderId) {
             if (emailEl) emailEl.textContent = a.billing_email || '';
             const phoneEl = document.getElementById('order-client-phone-' + orderId);
             if (phoneEl) phoneEl.textContent = a.billing_phone || '';
+            const payEl = document.getElementById('order-payment-method-' + orderId);
+            if (payEl) payEl.textContent = a.payment_method || '';
             // Actualizează și comanda memorată în buton, ca la redeschidere să apară corect.
             document.querySelectorAll('.view-order-btn').forEach((b) => {
                 try {
