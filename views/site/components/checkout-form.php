@@ -46,6 +46,9 @@ if (!in_array($paymentMethod, $paymentMethods, true)) {
 $fanboxDisponibil = (bool) ($fanboxDisponibil ?? false);
 $fanboxAles = (int) ($fanboxAles ?? 0);
 $fanboxPret = $fanboxPret ?? null;
+// Pragul de transport gratuit se aplică și la FANbox. Când coșul l-a
+// atins, eticheta trebuie să spună „gratuit", nu tariful fix.
+$fanboxGratuit = (bool) ($fanboxGratuit ?? false);
 $antiBot = is_array($antiBot ?? null) ? $antiBot : [];
 $antiBotToken = trim((string) ($antiBot['token'] ?? ''));
 $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
@@ -255,7 +258,7 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         <div class="bv-checkout-v3__field bv-checkout-v3__field--full bv-checkout-v3__fanbox" data-fanbox-block>
                             <label class="bv-checkout-v3__checkbox">
                                 <input type="checkbox" name="livrare_fanbox" value="1" data-fanbox-toggle <?= !empty($fanboxAles) ? 'checked' : '' ?>>
-                                <span>Livrare la FANbox<?php if (($fanboxPret ?? null) !== null): ?> — <?= number_format((float) $fanboxPret, 2) ?> lei<?php endif; ?></span>
+                                <span data-fanbox-eticheta data-fanbox-pret="<?= $fanboxPret !== null ? htmlspecialchars(number_format((float) $fanboxPret, 2), ENT_QUOTES) : '' ?>">Livrare la FANbox<?php if (($fanboxPret ?? null) !== null): ?> — <?= $fanboxGratuit ? 'gratuit' : number_format((float) $fanboxPret, 2) . ' lei' ?><?php endif; ?></span>
                             </label>
                             <div class="bv-checkout-v3__fanbox-pick<?= !empty($fanboxAles) ? ' is-visible' : '' ?>" data-fanbox-pick>
                                 <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-fanbox">Alege punctul de ridicare *</label>
@@ -600,6 +603,20 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
 
         // ── FANbox: bifa arată selectorul, iar punctele se încarcă din județ ──
         const fanboxToggle = form.querySelector('[data-fanbox-toggle]');
+        const fanboxEticheta = form.querySelector('[data-fanbox-eticheta]');
+        /**
+         * Rescrie „Livrare la FANbox — X lei" / „— gratuit" după ce serverul
+         * spune dacă transportul se mai încasează. `undefined` (răspuns fără
+         * câmpul ăsta) lasă eticheta neatinsă.
+         */
+        const actualizeazaEtichetaFanbox = (seIncaseazaTransport) => {
+            if (!(fanboxEticheta instanceof HTMLElement)) return;
+            const pret = String(fanboxEticheta.dataset.fanboxPret || '').trim();
+            if (pret === '' || typeof seIncaseazaTransport !== 'boolean') return;
+            fanboxEticheta.textContent = seIncaseazaTransport
+                ? 'Livrare la FANbox — ' + pret + ' lei'
+                : 'Livrare la FANbox — gratuit';
+        };
         const fanboxPick = form.querySelector('[data-fanbox-pick]');
         const fanboxSelect = form.querySelector('[data-fanbox-select]');
         const fanboxNote = form.querySelector('[data-fanbox-note]');
@@ -910,6 +927,9 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     ? Number(payload.total)
                     : Math.max(0, initialBaseTotal + shippingAmount);
                 updateShippingUi(shippingAmount, totalAmount);
+                // Pragul depinde de județ și de coș, deci eticheta de la FANbox
+                // se rescrie la fiecare cotare, nu doar la încărcarea paginii.
+                actualizeazaEtichetaFanbox(payload.requires_shipping_charge);
             } catch {
                 setShippingError('Nu am putut calcula transportul FAN momentan. Reîncearcă.');
                 clearShippingUi();

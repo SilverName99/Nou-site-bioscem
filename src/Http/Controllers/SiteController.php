@@ -4371,6 +4371,22 @@ HTML;
         return \App\Support\ShippingPricing::pretDeBaza($settings, true);
     }
 
+    /**
+     * Coșul a trecut deja de pragul de transport gratuit?
+     *
+     * Pragul se aplică la fel și la livrarea în FANbox — calculul o face
+     * dintotdeauna —, dar eticheta opțiunii arăta tariful fix indiferent de
+     * coș, iar clienții citeau de acolo că pragul nu se aplică la FANbox.
+     */
+    private function fanboxGratuit(array $summary): bool
+    {
+        $settings = $this->cachedSettings($this->db());
+        if (!\App\Support\ShippingPricing::esteActiv($settings)) {
+            return false;
+        }
+        return !$this->requiresFanLiveShippingCharge($settings, $summary);
+    }
+
     private function renderCheckoutSection(array $summary, array $values, array $fanCounties, bool $isLoggedIn = false): string
     {
         return $this->renderPhpView('site/components/checkout-form', [
@@ -4385,6 +4401,7 @@ HTML;
             'fanboxDisponibil' => $this->fanboxDisponibil(),
             'fanboxAles' => \App\Support\CheckoutCalculator::fanboxAles(),
             'fanboxPret' => $this->fanboxPret(),
+            'fanboxGratuit' => $this->fanboxGratuit($summary),
             'previewMode' => false,
             'checkoutInstanceId' => 'checkout-live',
         ]);
