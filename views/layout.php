@@ -322,12 +322,6 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     <?php endif; ?>
     <style>
         .bv-header-search-shell{
-            /* Panoul de căutare trebuie să treacă peste orice bandă de anunț
-               pusă din admin: alea sunt conținut, cu straturile lor, iar
-               sugestiile ajungeau tăiate pe la mijloc. Scara: căutare 9990 <
-               meniu mobil 9995 < bara de cookies 99998 < popup 99999. */
-            position:relative;
-            z-index:9990;
             width:100%;
             max-height:0;
             overflow:hidden;
@@ -717,11 +711,11 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
             }
             .bv-mobile-menu-token__overlay{
                 position:fixed;inset:0;background:rgba(15,23,42,.45);opacity:0;pointer-events:none;
-                transition:opacity .24s ease;z-index:9995;
+                transition:opacity .24s ease;z-index:1398;
             }
             .bv-mobile-menu-token__drawer{
                 position:fixed;left:0;top:0;bottom:0;width:min(86vw,360px);background:#fff;
-                transform:translateX(-104%);transition:transform .28s ease;z-index:9996;
+                transform:translateX(-104%);transition:transform .28s ease;z-index:1399;
                 box-shadow:16px 0 30px rgba(2,6,23,.15);display:grid;grid-template-rows:auto minmax(0,1fr) auto;
                 max-width:100vw;
             }
