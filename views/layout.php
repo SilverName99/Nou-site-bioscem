@@ -17,6 +17,8 @@ $designMenuCss = (string) ($designSettings['design_menu_css'] ?? '');
 $designMenuJs = (string) ($designSettings['design_menu_js'] ?? '');
 // Fără consimțământ, niciun script de analiză/marketing nu ajunge în pagină.
 $acceptaUrmarire = \App\Support\CookieConsent::permiteUrmarire();
+$chatActiv = \App\Support\ChatLive::activ($designSettings);
+$chatUrcaCosul = \App\Support\ChatLive::suprapunePestecos($designSettings);
 $clarityEnabled = $acceptaUrmarire && (string) ($designSettings['microsoft_clarity_enabled'] ?? '0') === '1';
 $clarityProjectId = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) ($designSettings['microsoft_clarity_project_id'] ?? ''))) ?? '';
 $googleSiteVerification = preg_replace('/[^A-Za-z0-9_\-]/', '', trim((string) ($designSettings['google_site_verification'] ?? ''))) ?? '';
@@ -1087,6 +1089,69 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     <?php endif; ?>
     <?php if ($designJs !== ''): ?>
         <script><?= $designJs ?></script>
+    <?php endif; ?>
+    <?php if ($chatUrcaCosul): ?>
+        <style>
+            /* Bulina de chat stă în același colț cu coșul plutitor. Ridicăm
+               coșul deasupra ei — widgetul e al lor, coșul e al nostru.
+               Variantele de sus ale coșului nu se ating de ea. */
+            .floating-cart:not(.floating-cart--top-left):not(.floating-cart--top-right) {
+                bottom: 92px;
+            }
+            @media (max-width: 640px) {
+                .floating-cart:not(.floating-cart--top-left):not(.floating-cart--top-right) {
+                    bottom: 82px;
+                }
+            }
+        </style>
+    <?php endif; ?>
+    <?php if ($chatActiv): ?>
+        <?php
+        $chatProperty = \App\Support\ChatLive::curataId((string) ($designSettings['tawk_property_id'] ?? ''));
+        $chatWidget = \App\Support\ChatLive::curataId((string) ($designSettings['tawk_widget_id'] ?? 'default')) ?: 'default';
+        $chatPozitie = \App\Support\ChatLive::pozitie($designSettings);
+        $chatOffsetY = \App\Support\ChatLive::offsetY($designSettings);
+        // Clientul logat intră în chat cu numele completat, ca operatorul să
+        // nu mai întrebe cine e. Numele trece prin CustomerDisplay: conturile
+        // făcute doar cu email poartă în bază „Client Nou", iar operatorul are
+        // nevoie de adresă, nu de eticheta aia. Emailul merge semnat, dacă e
+        // configurată cheia — altfel oricine ar putea pretinde orice adresă.
+        $chatNume = '';
+        $chatEmail = '';
+        if (is_array($currentCustomer)) {
+            $chatEmail = trim((string) ($currentCustomer['email'] ?? ''));
+            $chatNume = \App\Support\CustomerDisplay::nume(
+                (string) ($currentCustomer['first_name'] ?? ''),
+                (string) ($currentCustomer['last_name'] ?? ''),
+                $chatEmail,
+            );
+        }
+        $chatHash = \App\Support\ChatLive::semnatura($designSettings, $chatEmail);
+        ?>
+        <script>
+            var Tawk_API = Tawk_API || {}, Tawk_LoadStart = new Date();
+            Tawk_API.customStyle = {
+                visibility: {
+                    desktop: { position: <?= json_encode($chatPozitie) ?>, xOffset: 18, yOffset: <?= $chatOffsetY ?> },
+                    mobile: { position: <?= json_encode($chatPozitie) ?>, xOffset: 12, yOffset: <?= $chatOffsetY ?> }
+                }
+            };
+            <?php if ($chatNume !== '' || $chatEmail !== ''): ?>
+            Tawk_API.visitor = <?= json_encode(array_filter([
+                'name' => $chatNume,
+                'email' => $chatEmail,
+                'hash' => $chatHash,
+            ]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+            <?php endif; ?>
+            (function () {
+                var s1 = document.createElement("script"), s0 = document.getElementsByTagName("script")[0];
+                s1.async = true;
+                s1.src = "https://embed.tawk.to/<?= htmlspecialchars($chatProperty, ENT_QUOTES) ?>/<?= htmlspecialchars($chatWidget, ENT_QUOTES) ?>";
+                s1.charset = "UTF-8";
+                s1.setAttribute("crossorigin", "*");
+                s0.parentNode.insertBefore(s1, s0);
+            })();
+        </script>
     <?php endif; ?>
     <?php if ($clarityEnabled && $clarityProjectId !== ''): ?>
         <script>

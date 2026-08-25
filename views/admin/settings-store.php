@@ -37,7 +37,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 $vatCotaDominanta = rtrim(rtrim(number_format((float) ($vatRand['cota'] ?? 0), 2, '.', ''), '0'), '.');
             }
         }
-        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva', 'popup', 'cookies'];
+        $availableStoreTabs = ['pages', 'sitemap', 'branding', 'seo', 'clarity', 'chat', 'quantity', 'widgets', 'caching', 'maintenance', 'numerotare', 'tva', 'popup', 'cookies'];
         $cookieBannerEnabled = (string) ($settings['cookie_banner_enabled'] ?? '1') === '1';
         $cookieBannerText = (string) ($settings['cookie_banner_text'] ?? '');
         $cookiePolicyUrl = (string) ($settings['cookie_banner_policy_url'] ?? '');
@@ -86,6 +86,7 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <button class="btn btn-secondary <?= $defaultStoreTab === 'branding' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="branding">Favicon</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'seo' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="seo">SEO Google</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'clarity' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="clarity">Microsoft Clarity</button>
+            <button class="btn btn-secondary <?= $defaultStoreTab === 'chat' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="chat">Chat live</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'maintenance' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="maintenance">Mentenanță</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'numerotare' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="numerotare">Numerotare comenzi</button>
             <button class="btn btn-secondary <?= $defaultStoreTab === 'tva' ? 'is-active' : '' ?>" type="button" data-store-settings-tab="tva">TVA</button>
@@ -235,6 +236,111 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
                 </ol>
                 <p style="margin:10px 0 0;color:#64748b;font-size:13px;">
                     După salvare, Clarity începe să colecteze date automat (de obicei apar în câteva minute).
+                </p>
+            </div>
+        </article>
+
+        <article class="panel store-settings-panel" data-store-settings-panel="chat" <?= $defaultStoreTab !== 'chat' ? 'hidden' : '' ?> style="margin:12px 0;">
+            <?php
+            $chatEnabled = (string) ($settings['tawk_enabled'] ?? '0') === '1';
+            $chatProperty = trim((string) ($settings['tawk_property_id'] ?? ''));
+            $chatWidget = trim((string) ($settings['tawk_widget_id'] ?? 'default'));
+            $chatPozitie = \App\Support\ChatLive::pozitie($settings);
+            $chatOffsetY = \App\Support\ChatLive::offsetY($settings);
+            $chatCereConsimtamant = (string) ($settings['tawk_requires_consent'] ?? '1') !== '0';
+            $chatApiKey = trim((string) ($settings['tawk_api_key'] ?? ''));
+            $chatParteCos = (string) ($settings['floating_cart_position'] ?? 'right') === 'left' ? 'bl' : 'br';
+            ?>
+            <h3 style="margin-top:0;">Chat live (tawk.to)</h3>
+            <p style="margin:0 0 10px;color:#64748b;">
+                Bulina de chat din colțul paginii. Contul și conversațiile stau la tawk.to;
+                aici se configurează doar cum apare pe site.
+            </p>
+            <form method="post" action="/admin/settings/store">
+                <input type="hidden" name="action" value="save_chat_settings">
+                <div style="display:grid;gap:10px;max-width:760px;">
+                    <label style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" name="tawk_enabled" value="1" <?= $chatEnabled ? 'checked' : '' ?>>
+                        Activează chatul live pe site
+                    </label>
+                    <div class="field" style="max-width:420px;">
+                        <label for="tawk_property_id">Property ID</label>
+                        <input id="tawk_property_id" type="text" name="tawk_property_id" value="<?= htmlspecialchars($chatProperty, ENT_QUOTES) ?>" placeholder="ex: 66f1a2b3c4d5e6f708091a2b">
+                        <small style="color:#64748b;">Prima parte din linkul de instalare, după <code>embed.tawk.to/</code>.</small>
+                    </div>
+                    <div class="field" style="max-width:420px;">
+                        <label for="tawk_widget_id">Widget ID</label>
+                        <input id="tawk_widget_id" type="text" name="tawk_widget_id" value="<?= htmlspecialchars($chatWidget, ENT_QUOTES) ?>" placeholder="default">
+                        <small style="color:#64748b;">A doua parte din link. De obicei <code>default</code>.</small>
+                    </div>
+                    <div class="field" style="max-width:420px;">
+                        <label for="tawk_position">Poziția bulinei</label>
+                        <select id="tawk_position" name="tawk_position">
+                            <option value="br" <?= $chatPozitie === 'br' ? 'selected' : '' ?>>Jos-dreapta</option>
+                            <option value="bl" <?= $chatPozitie === 'bl' ? 'selected' : '' ?>>Jos-stânga</option>
+                        </select>
+                        <?php if ($chatParteCos === $chatPozitie): ?>
+                            <small style="color:#b45309;">
+                                Coșul plutitor e în același colț. Ori muți unul din ele în partea
+                                cealaltă, ori ridici bulina din câmpul de mai jos.
+                            </small>
+                        <?php else: ?>
+                            <small style="color:#64748b;">Coșul plutitor e în colțul opus, deci nu se suprapun.</small>
+                        <?php endif; ?>
+                    </div>
+                    <div class="field" style="max-width:420px;">
+                        <label for="tawk_offset_y">Ridică bulina cu (px de jos)</label>
+                        <input id="tawk_offset_y" type="number" name="tawk_offset_y" min="0" max="400" step="1" value="<?= (int) $chatOffsetY ?>">
+                        <small style="color:#64748b;">
+                            Distanța de la marginea de jos a ecranului. Implicit <strong>18</strong>.
+                            Crește-o dacă bulina acoperă ceva — de la
+                            <strong><?= (int) \App\Support\ChatLive::PRAG_DEGAJARE_COS ?></strong> în sus
+                            trece deja peste coșul plutitor, iar coșul rămâne pe loc.
+                            <?php if ($chatParteCos === $chatPozitie && $chatOffsetY < \App\Support\ChatLive::PRAG_DEGAJARE_COS): ?>
+                                <br><span style="color:#b45309;">Acum: bulina e sub coș, deci ridicăm coșul deasupra ei.</span>
+                            <?php elseif ($chatParteCos === $chatPozitie): ?>
+                                <br><span style="color:#0f766e;">Acum: bulina e deasupra coșului, care rămâne unde e.</span>
+                            <?php endif; ?>
+                        </small>
+                    </div>
+                    <div class="field" style="max-width:520px;">
+                        <label for="tawk_requires_consent">Când pornește chatul</label>
+                        <select id="tawk_requires_consent" name="tawk_requires_consent">
+                            <option value="1" <?= $chatCereConsimtamant ? 'selected' : '' ?>>Doar după „Accept toate" (recomandat)</option>
+                            <option value="0" <?= !$chatCereConsimtamant ? 'selected' : '' ?>>Întotdeauna (chatul e considerat strict necesar)</option>
+                        </select>
+                        <small style="color:#64748b;">
+                            tawk.to e furnizor din Statele Unite, iar conversațiile pleacă acolo.
+                            Pe varianta recomandată, codul nici nu ajunge în pagină înainte ca
+                            vizitatorul să accepte — la fel ca la Analytics.
+                        </small>
+                    </div>
+                    <div class="field" style="max-width:520px;">
+                        <label for="tawk_api_key">Cheie Secure Mode (opțional)</label>
+                        <input id="tawk_api_key" type="text" name="tawk_api_key" value="<?= htmlspecialchars($chatApiKey, ENT_QUOTES) ?>" placeholder="lasă gol dacă nu folosești">
+                        <small style="color:#64748b;">
+                            Cu ea, emailul clientului logat pleacă semnat spre tawk.to, ca nimeni
+                            să nu poată intra în chat pretinzând adresa altcuiva. Se ia din
+                            tawk.to → Administration → Chat Widget → Secure Mode.
+                        </small>
+                    </div>
+                    <div>
+                        <button class="btn" type="submit">Salvează setările de chat</button>
+                    </div>
+                </div>
+            </form>
+            <div class="panel" style="margin:12px 0 0;background:#f8fafc;border-color:#dbe4ef;">
+                <h4 style="margin:0 0 8px;">Setup rapid (3 pași)</h4>
+                <ol style="margin:0;padding-left:18px;display:grid;gap:6px;color:#334155;">
+                    <li>Intră pe <strong>tawk.to</strong>, creează proprietatea pentru acest site.</li>
+                    <li>La <strong>Administration → Chat Widget</strong> copiază linkul de instalare. Arată așa:
+                        <code>https://embed.tawk.to/<em>PROPERTY_ID</em>/<em>WIDGET_ID</em></code></li>
+                    <li>Pune cele două bucăți în câmpurile de mai sus, bifează activarea și salvează.</li>
+                </ol>
+                <p style="margin:10px 0 0;color:#64748b;font-size:13px;">
+                    De făcut și în contul tawk.to: programul de lucru cu mesaj de offline, textele
+                    în română, formularul de pre-chat și oprirea înregistrării IP-ului.
+                    Nu uita de politica de confidențialitate: tawk.to trebuie trecut acolo ca împuternicit.
                 </p>
             </div>
         </article>

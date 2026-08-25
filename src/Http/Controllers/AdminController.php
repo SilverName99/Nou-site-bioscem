@@ -8218,6 +8218,39 @@ final class AdminController
             header('Location: /admin/settings/store?tab=maintenance');
             return;
         }
+        if ($action === 'save_chat_settings') {
+            // Identificatorii se curăță prin acelasi filtru folosit la randare:
+            // dacă cineva lipeste tot linkul de instalare, luăm doar ce e
+            // folosibil, iar în pagină nu ajunge text neverificat.
+            $chatProperty = \App\Support\ChatLive::curataId((string) ($_POST['tawk_property_id'] ?? ''));
+            $chatWidget = \App\Support\ChatLive::curataId((string) ($_POST['tawk_widget_id'] ?? 'default'));
+            $chatPozitie = in_array((string) ($_POST['tawk_position'] ?? 'br'), \App\Support\ChatLive::POZITII, true)
+                ? (string) ($_POST['tawk_position'] ?? 'br')
+                : 'br';
+            $chatApiKey = substr(preg_replace('/[^A-Za-z0-9_\-]/', '', trim((string) ($_POST['tawk_api_key'] ?? ''))) ?? '', 0, 128);
+            // Trecem prin acelasi limitator ca la randare, ca valoarea salvată
+            // să fie exact cea folosită — fără surprize între ce vezi și ce iese.
+            $chatOffsetY = \App\Support\ChatLive::offsetY(['tawk_offset_y' => $_POST['tawk_offset_y'] ?? \App\Support\ChatLive::OFFSET_IMPLICIT]);
+            $chatPornit = isset($_POST['tawk_enabled']) && $chatProperty !== '';
+            Settings::save($db, [
+                'tawk_enabled' => $chatPornit ? '1' : '0',
+                'tawk_property_id' => $chatProperty,
+                'tawk_widget_id' => $chatWidget !== '' ? $chatWidget : 'default',
+                'tawk_position' => $chatPozitie,
+                'tawk_offset_y' => (string) $chatOffsetY,
+                'tawk_requires_consent' => (string) ($_POST['tawk_requires_consent'] ?? '1') === '0' ? '0' : '1',
+                'tawk_api_key' => $chatApiKey,
+            ]);
+            // Paginile salvate în cache încă poartă varianta veche a chatului.
+            ResponseCache::purgePageCache();
+            if (isset($_POST['tawk_enabled']) && $chatProperty === '') {
+                Flash::set('error', 'Chatul nu a fost activat: completează întâi Property ID-ul din tawk.to.');
+            } else {
+                Flash::set('success', 'Setările de chat live au fost salvate.');
+            }
+            header('Location: /admin/settings/store?tab=chat');
+            return;
+        }
         if ($action === 'save_clarity_settings') {
             $clarityProjectId = preg_replace('/[^a-zA-Z0-9]/', '', trim((string) ($_POST['microsoft_clarity_project_id'] ?? ''))) ?? '';
             if (strlen($clarityProjectId) > 64) {
