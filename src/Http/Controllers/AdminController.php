@@ -7507,8 +7507,122 @@ final class AdminController
         return match ($eveniment) {
             'comanda_aprobata' => $this->applyErpApproval($db, $orderId, $order, $event),
             'comanda_anulata' => $this->applyErpCancellation($db, $orderId, $order),
+            'comanda_modificata' => $this->applyErpOrderChange($db, $orderId, $event),
             default => ['ok' => false, 'message' => 'Eveniment necunoscut: ' . $eveniment],
         };
+    }
+
+    /**
+     * Comanda a fost corectată în ERP: rescriem liniile pe site, ca magazinul
+     * să nu arate altceva decât se livrează.
+     *
+     * Liniile vin întregi, nu ca diferență: ștergem ce nu mai e, actualizăm ce
+     * a rămas, adăugăm ce e nou. Potrivirea se face pe SKU — id-ul de produs
+     * din ERP nu înseamnă nimic aici, iar denumirea se poate schimba.
+     *
+     * Prețurile vin în două variante, cu și fără TVA. Le folosim pe cele cu
+     * TVA: aici prețul afișat clientului e cel plătit, nu baza de impozitare.
+     */
+    private function applyErpOrderChange(PDO $db, int $orderId, array $event): array
+    {
+        $linii = is_array($event['linii'] ?? null) ? array_values($event['linii']) : [];
+        if ($linii === []) {
+            return ['ok' => false, 'message' => 'Evenimentul nu conține linii.'];
+        }
+
+        // SKU → id de produs, ca liniile să rămână legate de fișele de pe site.
+        $skuuri = array_values(array_filter(array_map(
+            static fn ($l): string => is_array($l) ? trim((string) ($l['sku'] ?? '')) : '',
+            $linii
+        ), static fn (string $v): bool => $v !== ''));
+        $produsePeSku = [];
+        if ($skuuri !== []) {
+            $semne = implode(',', array_fill(0, count($skuuri), '?'));
+            $stmt = $db->prepare("SELECT id, sku FROM products WHERE sku IN ({$semne})");
+            $stmt->execute($skuuri);
+            foreach ($stmt->fetchAll() ?: [] as $rand) {
+                $produsePeSku[trim((string) $rand['sku'])] = (int) $rand['id'];
+            }
+        }
+
+        $existente = [];
+        $stmt = $db->prepare(
+            'SELECT oi.id, oi.product_id, p.sku
+             FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id
+             WHERE oi.order_id = :id ORDER BY oi.id ASC'
+        );
+        $stmt->execute(['id' => $orderId]);
+        foreach ($stmt->fetchAll() ?: [] as $rand) {
+            $sku = trim((string) ($rand['sku'] ?? ''));
+            if ($sku !== '' && !isset($existente[$sku])) {
+                $existente[$sku] = (int) $rand['id'];
+            }
+        }
+
+        $db->beginTransaction();
+        try {
+            $pastrate = [];
+            $update = $db->prepare(
+                'UPDATE order_items
+                 SET product_name = :nume, quantity = :cant, unit_price = :pret, line_total = :total
+                 WHERE id = :id'
+            );
+            $insert = $db->prepare(
+                'INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total)
+                 VALUES (:order_id, :product_id, :nume, :cant, :pret, :total)'
+            );
+
+            foreach ($linii as $linie) {
+                if (!is_array($linie)) {
+                    continue;
+                }
+                $sku = trim((string) ($linie['sku'] ?? ''));
+                $nume = trim((string) ($linie['denumire'] ?? '')) ?: 'Produs';
+                // Cantitățile de pe site sunt întregi; ERP-ul le ține cu zecimale.
+                $cant = max(1, (int) round((float) ($linie['cantitate'] ?? 1)));
+                $pret = round((float) ($linie['pretUnitarCuTva'] ?? 0), 2);
+                $totalLinie = round((float) ($linie['valoareCuTva'] ?? $pret * $cant), 2);
+
+                if ($sku !== '' && isset($existente[$sku])) {
+                    $update->execute([
+                        'nume' => $nume, 'cant' => $cant, 'pret' => $pret,
+                        'total' => $totalLinie, 'id' => $existente[$sku],
+                    ]);
+                    $pastrate[] = $existente[$sku];
+                    continue;
+                }
+                $insert->execute([
+                    'order_id' => $orderId,
+                    'product_id' => $produsePeSku[$sku] ?? null,
+                    'nume' => $nume, 'cant' => $cant, 'pret' => $pret, 'total' => $totalLinie,
+                ]);
+                $pastrate[] = (int) $db->lastInsertId();
+            }
+
+            // Ce n-a fost nici actualizat, nici adăugat, a fost scos din comandă.
+            if ($pastrate !== []) {
+                $semne = implode(',', array_fill(0, count($pastrate), '?'));
+                $sterge = $db->prepare(
+                    "DELETE FROM order_items WHERE order_id = ? AND id NOT IN ({$semne})"
+                );
+                $sterge->execute(array_merge([$orderId], $pastrate));
+            }
+
+            $transport = round((float) ($event['transport'] ?? 0), 2);
+            $total = round((float) ($event['total'] ?? 0), 2);
+            $db->prepare('UPDATE orders SET total = :total, shipping_cost = :transport WHERE id = :id')
+                ->execute(['total' => $total, 'transport' => $transport, 'id' => $orderId]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            $db->rollBack();
+            return ['ok' => false, 'message' => 'Actualizarea liniilor a eșuat: ' . $e->getMessage()];
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Comanda a fost actualizată din ERP (' . count($linii) . ' linii).',
+        ];
     }
 
     /**
