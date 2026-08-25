@@ -14477,6 +14477,7 @@ HTML;
             // ieșea tăcut ca livrare la adresa de acasă a clientului.
             'SELECT id, order_number, status, payment_method, payment_status, paid_amount, total,
                     billing_first_name, billing_last_name, billing_phone, billing_email,
+                    billing_is_company, billing_company_name,
                     billing_address_line1, billing_city, billing_county, billing_postcode,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                     shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
@@ -14591,6 +14592,16 @@ HTML;
             $recipientStreet = trim((string) ($order['billing_address_line1'] ?? ''));
             $recipientZip = trim((string) ($order['billing_postcode'] ?? ''));
         }
+        // Comandă pe firmă: destinatarul e firma, nu persoana de contact.
+        // Contează la ramburs — banii se încasează pe numele de pe AWB, iar
+        // chitanța trebuie să poarte firma, altfel plata apare ca făcută de o
+        // persoană fizică. Persoana rămâne la confirmarea de primire.
+        $esteFirma = (int) ($order['billing_is_company'] ?? 0) === 1;
+        $denumireFirma = trim((string) ($order['billing_company_name'] ?? ''));
+        if ($esteFirma && $denumireFirma !== '') {
+            $recipientName = $denumireFirma;
+        }
+
         // Livrare la FANbox: destinatarul rămâne clientul (nume, telefon — el
         // ridică coletul), dar adresa devine a lockerului ales. Opțiunea „V"
         // spune curierului că destinația e un punct FANbox.
