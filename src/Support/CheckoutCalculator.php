@@ -373,6 +373,10 @@ final class CheckoutCalculator
             "ALTER TABLE orders ADD COLUMN fan_locker_city VARCHAR(190) DEFAULT NULL AFTER fan_locker_address",
             "ALTER TABLE orders ADD COLUMN fan_locker_county VARCHAR(190) DEFAULT NULL AFTER fan_locker_city",
             "ALTER TABLE orders ADD COLUMN fan_locker_postcode VARCHAR(20) DEFAULT NULL AFTER fan_locker_county",
+            // Transportul corectat de mână de un operator (site sau ERP):
+            // recalcularea nu are voie să-l mai atingă, nici măcar pragul de
+            // gratuitate — comenzile cu reduceri negociate plătesc transportul.
+            "ALTER TABLE orders ADD COLUMN shipping_manual TINYINT(1) NOT NULL DEFAULT 0 AFTER shipping_cost",
         ];
         foreach ($cols as $sql) {
             try {
@@ -1124,8 +1128,21 @@ final class CheckoutCalculator
      * Dacă subtotalul (minus reduceri) atinge pragul de transport gratuit → 0.
      * Altfel păstrează transportul curent dacă e > 0, ori estimează din setări.
      */
-    public static function adminRecalcShipping(array $settings, string $county, float $subtotal, float $discount, float $currentShipping): float
-    {
+    public static function adminRecalcShipping(
+        array $settings,
+        string $county,
+        float $subtotal,
+        float $discount,
+        float $currentShipping,
+        bool $shippingManual = false
+    ): float {
+        // Transportul pus de mână e o decizie, nu o valoare de recalculat:
+        // pragul de gratuitate îl ștergea la fiecare „Recalculează și salvează",
+        // deși operatorul tocmai îl scrisese (comandă peste prag, dar cu
+        // reducere negociată la produse — clientul plătește transportul).
+        if ($shippingManual) {
+            return round(max(0.0, $currentShipping), 2);
+        }
         $isBucharest = strtolower(trim($county)) === 'bucuresti';
         $includeCoupons = ((string) ($settings['shipping_include_coupons'] ?? '1')) === '1';
         $threshold = $isBucharest

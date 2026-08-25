@@ -5531,7 +5531,8 @@ final class AdminController
             (string) ($order['billing_county'] ?? ''),
             $subtotal,
             $discountRef,
-            (float) ($order['shipping_cost'] ?? 0)
+            (float) ($order['shipping_cost'] ?? 0),
+            (int) ($order['shipping_manual'] ?? 0) === 1
         );
         $total = round(max(0.0, $subtotal - min($discountRef, $subtotal) + $shipping), 2);
 
@@ -5629,7 +5630,10 @@ final class AdminController
         $totalVechi = round((float) ($order['total'] ?? 0), 2);
 
         try {
-            $db->prepare('UPDATE orders SET shipping_cost = :ship, total = :total WHERE id = :id')
+            \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
+            // Odată corectat de mână, transportul nu mai e recalculat automat —
+            // nici de pragul de gratuitate, nici de modificarea produselor.
+            $db->prepare('UPDATE orders SET shipping_cost = :ship, total = :total, shipping_manual = 1 WHERE id = :id')
                ->execute(['ship' => $transport, 'total' => $total, 'id' => $orderId]);
         } catch (Throwable) {
             return ['ok' => false, 'error' => 'Nu am putut salva transportul.'];
@@ -5740,7 +5744,7 @@ final class AdminController
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
         \App\Support\ErpSync::ensureSchema($db);
-        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, manual_discount, manual_discount_percent, shipping_cost, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, manual_discount, manual_discount_percent, shipping_cost, shipping_manual, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $os->execute(['id' => $orderId]);
         $order = $os->fetch();
         if (!is_array($order)) {
@@ -7619,8 +7623,16 @@ final class AdminController
 
             $transport = round((float) ($event['transport'] ?? 0), 2);
             $total = round((float) ($event['total'] ?? 0), 2);
-            $db->prepare('UPDATE orders SET total = :total, shipping_cost = :transport WHERE id = :id')
-                ->execute(['total' => $total, 'transport' => $transport, 'id' => $orderId]);
+            // Transportul schimbat din ERP e tot mâna unui operator: dacă
+            // diferă de cel de pe site, rămâne bătut în cuie la recalculări.
+            $transportVechi = round((float) ($db->query('SELECT shipping_cost FROM orders WHERE id = ' . (int) $orderId)->fetchColumn() ?: 0), 2);
+            if (abs($transport - $transportVechi) > 0.004) {
+                $db->prepare('UPDATE orders SET total = :total, shipping_cost = :transport, shipping_manual = 1 WHERE id = :id')
+                    ->execute(['total' => $total, 'transport' => $transport, 'id' => $orderId]);
+            } else {
+                $db->prepare('UPDATE orders SET total = :total, shipping_cost = :transport WHERE id = :id')
+                    ->execute(['total' => $total, 'transport' => $transport, 'id' => $orderId]);
+            }
 
             $db->commit();
         } catch (Throwable $e) {
