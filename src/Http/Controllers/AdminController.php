@@ -4577,7 +4577,7 @@ final class AdminController
             'euplatesc' => 'Card',
             'stripe' => 'Card',
             'card' => 'Card',
-            'bank_transfer' => 'Card',
+            'bank_transfer' => 'OP',
         ];
 
         if ($db instanceof PDO) {
@@ -6395,9 +6395,11 @@ final class AdminController
             $params['status'] = $filters['status'];
         }
         if ($filters['payment_method'] === 'card') {
-            $where[] = "payment_method IN ('euplatesc', 'stripe', 'card', 'bank_transfer')";
+            $where[] = "payment_method IN ('euplatesc', 'stripe', 'card')";
         } elseif ($filters['payment_method'] === 'cod') {
             $where[] = "payment_method = 'cod'";
+        } elseif ($filters['payment_method'] === 'bank_transfer') {
+            $where[] = "payment_method = 'bank_transfer'";
         }
         if ($filters['payment_status'] !== '') {
             $where[] = 'payment_status = :payment_status';
@@ -6615,10 +6617,10 @@ final class AdminController
 
         $paymentMethod = trim((string) ($input['payment_method'] ?? ''));
         $paymentMethod = strtolower($paymentMethod);
-        if (in_array($paymentMethod, ['euplatesc', 'stripe', 'bank_transfer'], true)) {
+        if (in_array($paymentMethod, ['euplatesc', 'stripe'], true)) {
             $paymentMethod = 'card';
         }
-        if ($paymentMethod !== '' && !in_array($paymentMethod, ['card', 'cod'], true)) {
+        if ($paymentMethod !== '' && !in_array($paymentMethod, ['card', 'cod', 'bank_transfer'], true)) {
             $paymentMethod = '';
         }
         $paymentStatus = trim((string) ($input['payment_status'] ?? ''));
@@ -9520,6 +9522,8 @@ final class AdminController
             'stripe_secret_key' => trim((string) ($_POST['stripe_secret_key'] ?? '')),
             'stripe_webhook_secret' => trim((string) ($_POST['stripe_webhook_secret'] ?? '')),
             'stripe_currency' => strtolower(trim((string) ($_POST['stripe_currency'] ?? 'ron'))),
+            'bank_transfer_enabled' => isset($_POST['bank_transfer_enabled']) ? '1' : '0',
+            'bank_transfer_instructiuni' => trim((string) ($_POST['bank_transfer_instructiuni'] ?? '')),
         ]);
 
         $avertisment = '';
@@ -9674,6 +9678,69 @@ final class AdminController
             'ok' => $rezultat['ok'],
         ]);
 
+        header('Location: /admin/orders');
+    }
+
+    /**
+     * Confirmarea plății unei comenzi cu OP: banii s-au văzut în extras, deci
+     * comanda devine plătită, intră în lucru și pleacă spre ERP — exact ce face
+     * confirmarea automată a procesatorului la plățile cu cardul.
+     */
+    public function orderMarkPaid(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $orderId = (int) ($params['id'] ?? 0);
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            Flash::set('error', 'Comandă invalidă.');
+            header('Location: /admin/orders');
+            return;
+        }
+
+        $stmt = $db->prepare(
+            'SELECT id, payment_method, payment_status, total FROM orders
+             WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            Flash::set('error', 'Comanda nu a fost găsită.');
+            header('Location: /admin/orders');
+            return;
+        }
+        if (strtolower((string) ($order['payment_method'] ?? '')) !== 'bank_transfer') {
+            Flash::set('error', 'Confirmarea manuală e doar pentru comenzile plătite prin OP — cardul se confirmă singur, rambursul se încasează la livrare.');
+            header('Location: /admin/orders');
+            return;
+        }
+        if (strtolower((string) ($order['payment_status'] ?? '')) === 'paid') {
+            Flash::set('success', 'Comanda era deja marcată plătită.');
+            header('Location: /admin/orders');
+            return;
+        }
+
+        \App\Support\ErpSync::ensureSchema($db);
+        $db->prepare(
+            "UPDATE orders
+             SET payment_status = 'paid',
+                 paid_at = COALESCE(paid_at, NOW()),
+                 paid_amount = COALESCE(paid_amount, total),
+                 status = CASE WHEN status IN ('pending_payment', 'failed') THEN 'pending' ELSE status END
+             WHERE id = :id"
+        )->execute(['id' => $orderId]);
+
+        $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
+        AdminActivityLog::log($db, 'order_op_platita', [
+            'order_id' => $orderId,
+            'erp_ok' => $rezultat['ok'],
+        ]);
+        Flash::set(
+            $rezultat['ok'] ? 'success' : 'error',
+            'Plata prin OP confirmată. ' . $rezultat['message'],
+        );
         header('Location: /admin/orders');
     }
 

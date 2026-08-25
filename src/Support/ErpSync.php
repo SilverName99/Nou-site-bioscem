@@ -379,7 +379,9 @@ final class ErpSync
             'discountPuncte' => round((float) ($order['loyalty_points_discount'] ?? 0), 2),
             'total' => round((float) ($order['total'] ?? 0), 2),
 
-            'metodaPlata' => $metoda === 'cod' ? 'ramburs' : 'card',
+            'metodaPlata' => $metoda === 'cod'
+                ? 'ramburs'
+                : ($metoda === 'bank_transfer' ? 'op' : 'card'),
             'platit' => strtolower((string) ($order['payment_status'] ?? '')) === 'paid',
             // Cât s-a încasat efectiv. Dacă operatorul a adăugat produse după
             // plată, e mai mic decât totalul, iar diferența rămâne de încasat.
@@ -477,6 +479,11 @@ final class ErpSync
         $platit = strtolower((string) ($order['payment_status'] ?? '')) === 'paid';
         if (in_array($metoda, ['stripe', 'euplatesc'], true) && !$platit) {
             return 'Comanda cu plata prin card se trimite după confirmarea plății.';
+        }
+        // Aceeași regulă la OP: comanda pleacă spre ERP abia când banii sunt
+        // în extras și cineva confirmă plata din admin.
+        if ($metoda === 'bank_transfer' && !$platit) {
+            return 'Comanda cu plata prin OP se trimite după confirmarea plății în admin.';
         }
         return null;
     }

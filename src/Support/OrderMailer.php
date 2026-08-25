@@ -401,6 +401,14 @@ final class OrderMailer
             $bodyHtml = nl2br(htmlspecialchars($bodyHtml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
         }
 
+        // Datele de plată prin OP trebuie să ajungă la client chiar dacă
+        // șablonul de email n-a fost editat să conțină {{payment_instructions}}:
+        // fără ele, emailul e frumos și inutil.
+        $instructiuniPlata = trim((string) ($context['payment_instructions'] ?? ''));
+        if ($instructiuniPlata !== '' && !str_contains($bodyTemplate, '{{payment_instructions}}')) {
+            $bodyHtml .= self::paymentInstructionsHtml($instructiuniPlata);
+        }
+
         $heading = htmlspecialchars((string) ($definition['label'] ?? 'Notificare comanda'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $html = <<<HTML
 <!doctype html>
@@ -963,6 +971,20 @@ HTML;
         return strtr($template, $vars);
     }
 
+    /** Caseta cu datele plății prin OP, gata stilizată pentru email. */
+    private static function paymentInstructionsHtml(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+        return '<div style="margin:18px 0;padding:14px 16px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;">'
+            . '<p style="margin:0 0 8px;font-weight:700;color:#0f172a;">Cum plătiți prin ordin de plată</p>'
+            . '<p style="margin:0;color:#1f2937;white-space:pre-line;">'
+            . htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</p></div>';
+    }
+
     private static function templateVars(array $context): array
     {
         $customerName = trim((string) ($context['customer_name'] ?? ''));
@@ -1101,6 +1123,9 @@ HTML;
             '{{order_summary_rows}}' => $orderItemsHtml,
             '{{order_action_url}}' => $safeOrderActionUrl,
             '{{year}}' => htmlspecialchars($year, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            '{{payment_instructions}}' => self::paymentInstructionsHtml(
+                (string) ($context['payment_instructions'] ?? ''),
+            ),
         ];
     }
 

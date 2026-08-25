@@ -968,7 +968,10 @@ final class SiteController
         }
 
         $orderNumber = $this->generateOrderNumber($db, $settings);
+        // Cardul și OP-ul așteaptă banii înainte de procesare; doar rambursul
+        // intră direct în lucru.
         $status = in_array($billing['payment_method'], self::METODE_CARD, true)
+            || $billing['payment_method'] === 'bank_transfer'
             ? 'pending_payment'
             : 'pending';
         $now = new DateTimeImmutable('now');
@@ -1302,8 +1305,21 @@ final class SiteController
             }
         }
 
+        // Comanda plătită prin OP: clientul are nevoie de datele de plată acum,
+        // pe ecran — emailul poate ajunge în spam, iar banii nu pleacă singuri.
+        $opInstructiuni = '';
+        if ($db instanceof PDO && $orderNumber !== '') {
+            $stmtOp = $db->prepare('SELECT payment_method FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1');
+            $stmtOp->execute(['nr' => $orderNumber]);
+            $metodaOp = strtolower((string) ($stmtOp->fetchColumn() ?: ''));
+            if ($metodaOp === 'bank_transfer') {
+                $opInstructiuni = trim((string) ($this->cachedSettings($db)['bank_transfer_instructiuni'] ?? ''));
+            }
+        }
+
         View::render('site/checkout-success', [
             'title' => 'Comandă plasată',
+            'opInstructiuni' => $opInstructiuni,
             'orderNumber' => $orderNumber,
             'paymentStatus' => $paymentStatus,
             'orderStatus' => $orderStatus,
@@ -4393,6 +4409,7 @@ HTML;
             'summary' => $summary,
             'values' => $values,
             'cardMethods' => $this->metodeCardActive(),
+            'opActiv' => $this->opActiv(),
             'fanCounties' => $fanCounties,
             'localitiesEndpoint' => self::FAN_LOCALITIES_API_ENDPOINT,
             'shippingQuoteEndpoint' => self::CHECKOUT_SHIPPING_QUOTE_API_ENDPOINT,
@@ -5569,6 +5586,16 @@ CSS;
      *
      * @return string[]
      */
+    /** Plata prin ordin de plată (transfer bancar), pornită din Setări plăți. */
+    public function opActiv(?array $settings = null): bool
+    {
+        if ($settings === null) {
+            $db = $this->db();
+            $settings = $db instanceof PDO ? $this->cachedSettings($db) : [];
+        }
+        return (string) ($settings['bank_transfer_enabled'] ?? '0') === '1';
+    }
+
     public function metodeCardActive(?array $settings = null): array
     {
         if ($settings === null) {
@@ -7687,8 +7714,12 @@ CSS;
         ];
 
         // Metodele de card disponibile depind de ce e configurat în admin;
-        // dacă niciuna nu e activă, rămâne rambursul.
+        // dacă niciuna nu e activă, rămâne rambursul. OP-ul intră doar dacă
+        // e pornit din Setări plăți.
         $metodePermise = array_merge($this->metodeCardActive(), ['cod']);
+        if ($this->opActiv()) {
+            $metodePermise[] = 'bank_transfer';
+        }
         if (!in_array($data['payment_method'], $metodePermise, true)) {
             $data['payment_method'] = $metodePermise[0] ?? 'cod';
         }

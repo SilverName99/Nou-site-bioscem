@@ -247,6 +247,7 @@ $router->post('/admin/products/image-upload', [AdminController::class, 'productI
 $router->get('/admin/orders', [AdminController::class, 'orders']);
 $router->get('/admin/orders/export', [AdminController::class, 'ordersExport']);
 $router->post('/admin/orders/{id}/erp-retry', [AdminController::class, 'orderErpRetry']);
+$router->post('/admin/orders/{id}/confirma-plata-op', [AdminController::class, 'orderMarkPaid']);
 $router->get('/admin/orders/trash', [AdminController::class, 'ordersTrash']);
 $router->post('/admin/orders/{id}/status', [AdminController::class, 'updateOrderStatus']);
 $router->post('/admin/orders/{id}/delete', [AdminController::class, 'deleteOrder']);

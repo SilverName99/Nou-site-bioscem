@@ -135,6 +135,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                     <option value="">Toate</option>
                     <option value="card" <?= $paymentFilter === 'card' ? 'selected' : '' ?>>Card</option>
                     <option value="cod" <?= $paymentFilter === 'cod' ? 'selected' : '' ?>>Ramburs</option>
+                    <option value="bank_transfer" <?= $paymentFilter === 'bank_transfer' ? 'selected' : '' ?>>OP (transfer)</option>
                 </select>
             </div>
             <div class="orders-filter-field">
@@ -454,6 +455,12 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                         <button type="button" class="order-action-btn" disabled
                                                 title="Coletul e deja la curier (<?= htmlspecialchars($trackingStatus, ENT_QUOTES) ?>) — nu se mai poate emite alt AWB. Se poate doar cât timp statusul e „AWB generat" sau indisponibil."
                                                 style="opacity:.4;cursor:not-allowed;">🚚</button>
+                                    <?php endif; ?>
+                                    <?php if ($paymentMethodKey === 'bank_transfer' && $paymentStatusKey !== 'paid' && !$isCancelled): ?>
+                                        <form method="post" action="/admin/orders/<?= $orderId ?>/confirma-plata-op"
+                                              onsubmit="return confirm('Confirmi că banii pentru comanda <?= htmlspecialchars((string) ($order['order_number'] ?? ''), ENT_QUOTES) ?> au intrat în cont?\n\nComanda devine plătită și pleacă în ERP.');">
+                                            <button type="submit" class="order-action-btn" title="Confirmă plata OP — comanda devine plătită și pleacă în ERP">💰</button>
+                                        </form>
                                     <?php endif; ?>
                                     <?php if ($erpEnabled && !in_array($erpStatus, ['sent', 'skipped'], true)): ?>
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">

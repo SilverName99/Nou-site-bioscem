@@ -9,6 +9,7 @@
 $appUrl = rtrim((string) ($appUrl ?? ''), '/');
 $euActiv = (string) ($settings['euplatesc_enabled'] ?? '0') === '1';
 $stripeActiv = (string) ($settings['stripe_enabled'] ?? '0') === '1';
+$opActiv = (string) ($settings['bank_transfer_enabled'] ?? '0') === '1';
 ?>
 
 <section class="panel">
@@ -76,6 +77,32 @@ $stripeActiv = (string) ($settings['stripe_enabled'] ?? '0') === '1';
                 dar comanda rămâne „plată în așteptare", el e primul lucru de verificat.
             </p>
         </article>
+
+        <article class="panel" style="grid-column:1/-1;margin:16px 0 4px;background:#f8fafc;border-color:#cbd5e1;">
+            <h3 style="margin:0;">Ordin de plată (transfer bancar)</h3>
+            <p style="margin:6px 0 0;color:#64748b;">
+                Clientul primește datele de plată pe pagina de confirmare și în emailul de comandă,
+                cu numărul comenzii ca referință. Comanda pleacă în ERP abia după ce confirmi plata
+                din lista de comenzi (butonul „Confirmă plata OP").
+            </p>
+        </article>
+
+        <div class="field" style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" name="bank_transfer_enabled" value="1" <?= $opActiv ? 'checked' : '' ?>>
+                Acceptă plata prin ordin de plată în checkout
+            </label>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+            <label>Instrucțiuni de plată (IBAN, bancă, beneficiar…)</label>
+            <textarea name="bank_transfer_instructiuni" rows="5"
+                placeholder="Beneficiar: BIOSCEM S.R.L.&#10;IBAN: RO...&#10;Banca: ...&#10;Comanda se procesează după încasare."><?= htmlspecialchars((string) ($settings['bank_transfer_instructiuni'] ?? ''), ENT_QUOTES) ?></textarea>
+            <p style="margin:4px 0 0;color:#64748b;font-size:13px;">
+                Textul apare exact așa la client. În șabloanele de email se poate folosi și
+                variabila <code>{{payment_instructions}}</code>; dacă lipsește din șablon,
+                caseta se adaugă singură la finalul emailului de comandă nouă.
+            </p>
+        </div>
 
         <article class="panel" style="grid-column:1/-1;margin:16px 0 4px;background:#f8fafc;border-color:#cbd5e1;">
             <h3 style="margin:0;">Stripe (rezervă)</h3>

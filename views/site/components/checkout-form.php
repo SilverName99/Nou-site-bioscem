@@ -350,6 +350,15 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                                         <span><strong>Ramburs</strong><br><span>Plata la livrare</span></span>
                                     </span>
                                 </label>
+                                <?php if (($opActiv ?? false) === true): ?>
+                                    <label class="bv-checkout-v3__method">
+                                        <input type="radio" name="payment_method" value="bank_transfer" <?= $paymentMethod === 'bank_transfer' ? 'checked' : '' ?>>
+                                        <span class="bv-checkout-v3__method-label">
+                                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 10h16M6 10v6m4-6v6m4-6v6m4-6v6M3 19h18M12 4 3 8.5h18L12 4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                                            <span><strong>Ordin de plată</strong><br><span>Transfer bancar — datele de plată le primiți după comandă</span></span>
+                                        </span>
+                                    </label>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>

@@ -18,5 +18,14 @@
     <?php if (trim((string) ($orderEmail ?? '')) !== ''): ?>
         <p><span style="<?= $labelStyle ?>">Email: </span><strong><?= htmlspecialchars(trim((string) $orderEmail), ENT_QUOTES) ?></strong></p>
     <?php endif; ?>
+    <?php if (trim((string) ($opInstructiuni ?? '')) !== ''): ?>
+        <div style="margin-top:16px;padding:16px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;">
+            <h2 style="margin:0 0 8px;font-size:17px;">Cum plătiți prin ordin de plată</h2>
+            <p style="margin:0 0 10px;">Comanda se procesează după ce plata ajunge în contul nostru.
+                Treceți la detaliile plății numărul comenzii:
+                <strong><?= htmlspecialchars((string) $orderNumber, ENT_QUOTES) ?></strong>.</p>
+            <p style="margin:0;white-space:pre-line;"><?= htmlspecialchars(trim((string) $opInstructiuni), ENT_QUOTES) ?></p>
+        </div>
+    <?php endif; ?>
     <a class="btn" href="/magazin">Continuă cumpărăturile</a>
 </section>

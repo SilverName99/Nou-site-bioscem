@@ -123,7 +123,7 @@ final class EmailAutomation
         // Garantează coloana fan_awb_list (comenzile care pleacă în mai multe colete).
         ErpSync::ensureSchema($db);
         $stmt = $db->prepare(
-            'SELECT id, order_number, status, billing_first_name, billing_last_name, billing_email,
+            'SELECT id, order_number, status, payment_method, billing_first_name, billing_last_name, billing_email,
                     fan_awb, fan_awb_list, fan_tracking_url, created_at, total
              FROM orders
              WHERE id = :id AND deleted_at IS NULL
@@ -229,6 +229,22 @@ final class EmailAutomation
                 ? '/contact'
                 : '/contul-meu?section=orders',
         ];
+
+        // Comanda plătită prin OP: emailul de comandă poartă datele de plată,
+        // cu numărul comenzii ca referință — altfel clientul nu are de unde
+        // ști unde să trimită banii.
+        if (
+            $templateType === 'new_order'
+            && strtolower((string) ($order['payment_method'] ?? '')) === 'bank_transfer'
+        ) {
+            $instructiuni = trim((string) ($settings['bank_transfer_instructiuni'] ?? ''));
+            if ($instructiuni !== '') {
+                $context['payment_instructions'] =
+                    "Plata prin ordin de plată — comanda se procesează după încasare.\n"
+                    . 'Referință plată: ' . (string) ($order['order_number'] ?? '') . "\n"
+                    . $instructiuni;
+            }
+        }
 
         $sentCount = 0;
         $sentSubject = '';
