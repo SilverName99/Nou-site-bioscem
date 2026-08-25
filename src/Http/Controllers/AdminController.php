@@ -4597,12 +4597,18 @@ final class AdminController
                 $q = trim((string) $filters['q']);
                 // Potriviri pe textul întreg: nr. comandă, email, telefon și numele
                 // complet (prenume+nume ȘI nume+prenume, ca să meargă în orice ordine).
+                // Comenzile pe firmă se caută după denumire și după CUI: cine
+                // caută „SC Exemplu SRL" nu are de unde ști ce persoană fizică
+                // a fost trecută la contact.
                 $fullConds = [
                     'order_number LIKE :q',
                     'billing_email LIKE :q',
                     'billing_phone LIKE :q',
                     'CONCAT(COALESCE(billing_first_name, ""), " ", COALESCE(billing_last_name, "")) LIKE :q',
                     'CONCAT(COALESCE(billing_last_name, ""), " ", COALESCE(billing_first_name, "")) LIKE :q',
+                    'billing_company_name LIKE :q',
+                    'billing_company_tax_id LIKE :q',
+                    'billing_company_registration_no LIKE :q',
                 ];
                 if (ctype_digit($q)) {
                     $fullConds[] = 'id = :q_order_id';
@@ -4623,6 +4629,7 @@ final class AdminController
                     $ph = ':qt' . $tokenIndex;
                     $tokenConds[] = '(billing_first_name LIKE ' . $ph
                         . ' OR billing_last_name LIKE ' . $ph
+                        . ' OR billing_company_name LIKE ' . $ph
                         . ' OR billing_email LIKE ' . $ph
                         . ' OR billing_phone LIKE ' . $ph . ')';
                     $params['qt' . $tokenIndex] = '%' . $token . '%';
