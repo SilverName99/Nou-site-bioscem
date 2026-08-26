@@ -4701,6 +4701,7 @@ final class AdminController
                         notes,
                         erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
                         erp_factura_numar, paid_amount,
+                        edit_unlocked_at, edit_unlock_reason, edit_unlocked_by,
                         manual_discount, manual_discount_percent, manual_discount_reason' . $selectPlata . '
                  FROM orders
                  WHERE ' . implode(' AND ', $where) . '
@@ -5473,7 +5474,7 @@ final class AdminController
 
         $stmt = $db->prepare(
             'SELECT id, order_number, status, subtotal, discount_total, loyalty_points_discount,
-                    manual_discount, shipping_cost, billing_county
+                    manual_discount, shipping_cost, shipping_manual, billing_county, edit_unlocked_at
              FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
         );
         $stmt->execute(['id' => $orderId]);
@@ -5482,10 +5483,12 @@ final class AdminController
             echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
             return;
         }
-        if (in_array(strtolower((string) ($order['status'] ?? '')), ['processing', 'completed', 'cancelled', 'refunded'], true)) {
+        if (in_array(strtolower((string) ($order['status'] ?? '')), ['processing', 'completed', 'cancelled', 'refunded'], true)
+            && !self::comandaDeblocata($order)
+        ) {
             echo json_encode([
                 'ok' => false,
-                'error' => 'Comanda e procesată — factura există deja în ERP. Corecția se face prin storno.',
+                'error' => 'Comanda e procesată — factura există deja în ERP. Corecția se face prin storno, sau deblochează comanda pentru corecție.',
             ]);
             return;
         }
@@ -5729,6 +5732,145 @@ final class AdminController
         echo json_encode($rezultat, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
+    /**
+     * E comanda deblocată anume pentru corecție? Deblocarea e un act deliberat,
+     * cu motiv scris, nu o stare în care o comandă alunecă singură.
+     */
+    private static function comandaDeblocata(array $order): bool
+    {
+        $la = trim((string) ($order['edit_unlocked_at'] ?? ''));
+        return $la !== '' && $la !== '0000-00-00 00:00:00';
+    }
+
+    /**
+     * Deschide o comandă deja facturată pentru corecție, pe motiv scris.
+     *
+     * Se întâmplă ca un produs să iasă din stoc după ce s-a emis factura: linia
+     * se scoate din factură în ERP, dar pe site comanda rămânea închisă, cu
+     * produsul care nu s-a livrat și cu un AWB care cerea ramburs suma veche.
+     * N-avea cine să le împace. Deblocarea lasă operatorul să pună comanda la
+     * zi și să reemită AWB-ul, iar motivul rămâne în jurnal.
+     */
+    public function orderUnlockEdit(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $stmt = $db->prepare('SELECT id, order_number, status, edit_unlocked_at FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
+            return;
+        }
+
+        // Anulată sau returnată nu se „corectează": acolo nu mai e nimic de pus
+        // la zi, iar o redeschidere ar readuce în viață o comandă închisă.
+        $status = strtolower(trim((string) ($order['status'] ?? '')));
+        if (!in_array($status, ['processing', 'completed'], true)) {
+            echo json_encode([
+                'ok' => false,
+                'error' => $status === 'cancelled' || $status === 'refunded'
+                    ? 'Comanda e anulată sau returnată — nu se deblochează pentru corecție.'
+                    : 'Comanda nu e blocată: se poate modifica direct.',
+            ]);
+            return;
+        }
+
+        $motiv = trim((string) ($_POST['reason'] ?? ''));
+        if (mb_strlen($motiv) < 5) {
+            echo json_encode(['ok' => false, 'error' => 'Scrie motivul corecției (cel puțin 5 caractere).']);
+            return;
+        }
+        if (mb_strlen($motiv) > 500) {
+            $motiv = mb_substr($motiv, 0, 500);
+        }
+
+        // Cine a deblocat: emailul contului, ca să se vadă pe comandă fără să
+        // fie nevoie de o căutare prin jurnal.
+        $cine = '';
+        $adminId = Auth::id();
+        if ($adminId !== null) {
+            try {
+                $q = $db->prepare('SELECT email FROM admins WHERE id = :id LIMIT 1');
+                $q->execute(['id' => $adminId]);
+                $rand = $q->fetch();
+                $cine = trim((string) (is_array($rand) ? ($rand['email'] ?? '') : ''));
+            } catch (Throwable) {
+                // Fără email rămâne doar ora și motivul — tot util.
+            }
+        }
+        try {
+            $db->prepare(
+                'UPDATE orders SET edit_unlocked_at = NOW(), edit_unlock_reason = :motiv, edit_unlocked_by = :cine WHERE id = :id'
+            )->execute(['motiv' => $motiv, 'cine' => $cine !== '' ? $cine : null, 'id' => $orderId]);
+        } catch (Throwable) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut debloca comanda.']);
+            return;
+        }
+
+        AdminActivityLog::log($db, 'comanda_deblocata_pentru_corectie', [
+            'comanda' => (string) ($order['order_number'] ?? $orderId),
+            'status' => $status,
+            'motiv' => $motiv,
+        ]);
+
+        echo json_encode([
+            'ok' => true,
+            'message' => 'Comandă deblocată. Corectează produsele, apoi emite alt AWB dacă se schimbă rambursul.',
+            'reason' => $motiv,
+            'by' => $cine,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /** Închide la loc o comandă deblocată pentru corecție. */
+    public function orderLockEdit(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $stmt = $db->prepare('SELECT id, order_number FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
+            return;
+        }
+
+        try {
+            $db->prepare(
+                'UPDATE orders SET edit_unlocked_at = NULL, edit_unlock_reason = NULL, edit_unlocked_by = NULL WHERE id = :id'
+            )->execute(['id' => $orderId]);
+        } catch (Throwable) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut bloca comanda la loc.']);
+            return;
+        }
+
+        AdminActivityLog::log($db, 'comanda_reblocata', [
+            'comanda' => (string) ($order['order_number'] ?? $orderId),
+        ]);
+
+        echo json_encode(['ok' => true, 'message' => 'Comandă blocată la loc.'], JSON_UNESCAPED_UNICODE);
+    }
+
     public function orderItemsSave(array $params): void
     {
         if (!$this->guard()) {
@@ -5744,7 +5886,7 @@ final class AdminController
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
         \App\Support\ErpSync::ensureSchema($db);
-        $os = $db->prepare('SELECT id, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, manual_discount, manual_discount_percent, shipping_cost, shipping_manual, billing_county FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $os = $db->prepare('SELECT id, order_number, status, payment_status, paid_amount, total, subtotal, discount_total, loyalty_points_discount, manual_discount, manual_discount_percent, shipping_cost, shipping_manual, billing_county, fan_awb, edit_unlocked_at FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $os->execute(['id' => $orderId]);
         $order = $os->fetch();
         if (!is_array($order)) {
@@ -5752,10 +5894,12 @@ final class AdminController
             return;
         }
         // După aprobare/facturare legătura cu ERP-ul se rupe: comanda nu se mai
-        // modifică nici pe site (ERP-ul ar refuza oricum propagarea).
+        // modifică nici pe site (ERP-ul ar refuza oricum propagarea) — decât
+        // dacă a fost deblocată anume pentru corecție, cu motiv scris.
         $statusComanda = strtolower(trim((string) ($order['status'] ?? '')));
-        if (in_array($statusComanda, ['processing', 'completed', 'cancelled', 'refunded'], true)) {
-            echo json_encode(['ok' => false, 'error' => 'Comanda procesată nu mai poate fi modificată. Factura există deja în ERP.']);
+        $deblocata = self::comandaDeblocata($order);
+        if (in_array($statusComanda, ['processing', 'completed', 'cancelled', 'refunded'], true) && !$deblocata) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda procesată nu mai poate fi modificată. Factura există deja în ERP. Apasă „Deblochează pentru corecție" dacă trebuie corectată.']);
             return;
         }
 
@@ -5829,7 +5973,8 @@ final class AdminController
             (string) ($order['billing_county'] ?? ''),
             $subtotal,
             $discountRef,
-            (float) ($order['shipping_cost'] ?? 0)
+            (float) ($order['shipping_cost'] ?? 0),
+            (int) ($order['shipping_manual'] ?? 0) === 1
         );
         $effDiscount = min($discountRef, $subtotal);
         $total = round(max(0.0, $subtotal - $effDiscount + $shipping), 2);
@@ -5854,13 +5999,41 @@ final class AdminController
 
         // Modificarea se propagă imediat în ERP; dacă ERP-ul nu răspunde acum,
         // comanda rămâne marcată pentru reîncercare și o preia cronul.
+        // Pe o comandă deja facturată ERP-ul refuză propagarea (comanda e
+        // închisă acolo), deci nici n-o mai încercăm — corectura se face pe
+        // factură, separat.
         $erpSync = null;
+        $erpNota = '';
         if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
-            try {
-                $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
-            } catch (Throwable $e) {
-                $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+            if ($deblocata) {
+                $erpNota = 'Comanda e deja facturată în ERP: modificarea NU s-a propagat acolo. Corectează factura separat, în ERP.';
+            } else {
+                try {
+                    $erpSync = \App\Support\ErpSync::push($db, $orderId, true);
+                } catch (Throwable $e) {
+                    $erpSync = ['ok' => false, 'message' => $e->getMessage()];
+                }
             }
+        }
+
+        // Corectura pe o comandă facturată lasă în urmă un AWB cu suma veche.
+        // Rambursul nu se schimbă singur, deci o spunem pe loc, cât operatorul
+        // e încă pe ecran — nu peste o zi, când coletul e la curier.
+        $avertismente = [];
+        $totalVechi = round((float) ($order['total'] ?? 0), 2);
+        $awbEmis = trim((string) ($order['fan_awb'] ?? ''));
+        if ($deblocata && $awbEmis !== '' && abs($total - $totalVechi) > 0.009) {
+            $avertismente[] = 'AWB-ul ' . $awbEmis . ' a fost generat cu totalul vechi ('
+                . number_format($totalVechi, 2) . ' lei). Emite alt AWB de pe comandă (butonul 🚚) ca'
+                . ' rambursul să fie ' . number_format($total, 2) . ' lei — și anulează-l pe cel vechi în SelfAWB.';
+        }
+        if ($deblocata) {
+            AdminActivityLog::log($db, 'comanda_corectata_dupa_facturare', [
+                'comanda' => (string) ($order['order_number'] ?? $orderId),
+                'total_vechi' => number_format($totalVechi, 2, '.', ''),
+                'total_nou' => number_format($total, 2, '.', ''),
+                'awb' => $awbEmis,
+            ]);
         }
 
         // Comandă plătită cu cardul, al cărei total a crescut: diferența rămâne
@@ -5882,6 +6055,8 @@ final class AdminController
             'loyalty_points_discount' => $pointsDiscount,
             'manual_discount' => $manualDiscount,
             'erp_sync' => $erpSync,
+            'erp_note' => $erpNota,
+            'warnings' => $avertismente,
             'rest_de_incasat' => $diferentaDeIncasat,
             'items' => array_map(static fn(array $l): array => [
                 'product_id' => $l['pid'],

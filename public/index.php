@@ -256,6 +256,8 @@ $router->post('/admin/orders/{id}/force-delete', [AdminController::class, 'force
 $router->post('/admin/orders/{id}/address', [AdminController::class, 'updateOrderAddress']);
 $router->post('/admin/orders/{id}/promo', [AdminController::class, 'orderPromoSave']);
 $router->post('/admin/orders/{id}/items', [AdminController::class, 'orderItemsSave']);
+$router->post('/admin/orders/{id}/deblocheaza', [AdminController::class, 'orderUnlockEdit']);
+$router->post('/admin/orders/{id}/blocheaza', [AdminController::class, 'orderLockEdit']);
 $router->post('/admin/orders/{id}/fanbox', [AdminController::class, 'orderFanboxSave']);
 $router->post('/admin/orders/{id}/discount', [AdminController::class, 'orderDiscountSave']);
 $router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);

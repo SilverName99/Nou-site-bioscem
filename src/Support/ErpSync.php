@@ -610,6 +610,13 @@ final class ErpSync
             // totalul comenzii crește ulterior (produse adăugate de operator),
             // ca ERP-ul să nu înregistreze o încasare mai mare decât cea reală.
             'paid_amount' => 'DECIMAL(10,2) DEFAULT NULL',
+            // Deblocarea pentru corecție: după facturare comanda e închisă, dar
+            // se întâmplă să iasă un produs din stoc după emitere. Cine o
+            // redeschide lasă în urmă motivul, ora și numele — corectura pe o
+            // comandă deja facturată trebuie să fie explicabilă peste un an.
+            'edit_unlocked_at' => 'DATETIME DEFAULT NULL',
+            'edit_unlock_reason' => 'VARCHAR(500) DEFAULT NULL',
+            'edit_unlocked_by' => 'VARCHAR(190) DEFAULT NULL',
         ];
 
         foreach ($columns as $name => $definition) {

@@ -937,9 +937,14 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 ? `<p><small>Adresă livrare</small><br>Identică cu adresa de facturare</p>`
                 : `<p><small>Adresă livrare</small><br>${shipName ? esc(shipName) + ' — ' : ''}${shipParts.length ? shipParts.map(esc).join(', ') : '-'}${String(order.shipping_phone || '').trim() ? ' — tel: ' + esc(order.shipping_phone) : ''}</p>`;
 
-            // După aprobare/facturare în ERP, comanda nu se mai modifică (nici produsele).
+            // După aprobare/facturare în ERP, comanda nu se mai modifică (nici
+            // produsele) — decât dacă a fost deblocată anume pentru corecție.
+            const statusComanda = String(order.status || '').toLowerCase();
+            const deblocataPtCorectie = String(order.edit_unlocked_at || '').trim() !== '';
+            // Anulată sau returnată rămâne închisă oricum: acolo nu e nimic de corectat.
+            const sePoateDebloca = ['processing', 'completed'].includes(statusComanda);
             const comandaBlocata = ['processing', 'completed', 'cancelled', 'refunded']
-                .includes(String(order.status || '').toLowerCase());
+                .includes(statusComanda) && !deblocataPtCorectie;
             // Plătită cu cardul, dar totalul a crescut ulterior → diferență de încasat.
             const platitCard = String(order.payment_status || '').toLowerCase() === 'paid';
             const sumaIncasata = order.paid_amount === null || order.paid_amount === undefined || order.paid_amount === ''
@@ -1076,8 +1081,29 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     </div>`
                         : ''}
                     ${comandaBlocata
-                        ? `<p style="margin:8px 0 0;padding:8px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:13px;">🔒 Comanda e procesată — factura există deja în ERP, produsele nu se mai pot modifica.</p>`
-                        : `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                        ? `<div style="margin:8px 0 0;padding:8px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:13px;">
+                        <p style="margin:0;">🔒 Comanda e procesată — factura există deja în ERP, produsele nu se mai pot modifica.</p>
+                        ${sePoateDebloca ? `<button type="button" onclick="ceruDeblocare(${order.id})" style="margin-top:8px;padding:6px 12px;background:#fff;border:1px solid #d97706;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">🔓 Deblochează pentru corecție</button>
+                        <div id="order-unlock-form-${order.id}" style="display:none;margin-top:8px;">
+                            <p style="margin:0 0 6px;font-size:12px;">Scrie de ce se corectează comanda. Motivul rămâne în jurnal.</p>
+                            <input type="text" id="order-unlock-reason-${order.id}" maxlength="500"
+                                   placeholder="ex. produsul X s-a epuizat, scos și de pe factură în ERP"
+                                   style="width:100%;height:32px;border:1px solid #d97706;border-radius:5px;padding:0 8px;font-size:13px;box-sizing:border-box;">
+                            <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap;">
+                                <button type="button" onclick="deblocheazaComanda(${order.id})" style="padding:6px 12px;background:#d97706;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Deblochează</button>
+                                <button type="button" onclick="ceruDeblocare(${order.id})" style="padding:6px 10px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;">Renunț</button>
+                                <span id="order-unlock-status-${order.id}" style="font-size:13px;"></span>
+                            </div>
+                        </div>` : ''}
+                    </div>`
+                        : `${deblocataPtCorectie ? `<div style="margin:8px 0 0;padding:8px 10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;color:#065f46;font-size:13px;">
+                        <p style="margin:0;">🔓 Comandă deblocată pentru corecție${order.edit_unlocked_by ? ' de ' + esc(order.edit_unlocked_by) : ''}${order.edit_unlocked_at ? ' (' + esc(String(order.edit_unlocked_at)) + ')' : ''}.</p>
+                        ${order.edit_unlock_reason ? `<p style="margin:4px 0 0;">Motiv: ${esc(order.edit_unlock_reason)}</p>` : ''}
+                        <p style="margin:4px 0 0;">Modificările NU se propagă în ERP — factura se corectează acolo separat. Dacă se schimbă totalul, emite alt AWB (🚚) și anulează-l pe cel vechi în SelfAWB.</p>
+                        <button type="button" onclick="blocheazaComanda(${order.id})" style="margin-top:8px;padding:6px 12px;background:#fff;border:1px solid #059669;border-radius:5px;cursor:pointer;font-size:13px;color:#065f46;">🔒 Blochează la loc</button>
+                        <span id="order-unlock-status-${order.id}" style="font-size:13px;margin-left:8px;"></span>
+                    </div>` : ''}
+                    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
                         <button type="button" onclick="addOrderItemRow(${order.id})" style="padding:6px 12px;background:#f1f5f9;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px;">+ Adaugă produs</button>
                         <button type="button" onclick="saveOrderItems(${order.id})" style="padding:6px 14px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Recalculează și salvează</button>
                         <span id="order-items-status-${order.id}" style="font-size:13px;"></span>
@@ -1455,6 +1481,19 @@ function saveOrderItems(orderId){
                 culoare = '#b45309';
                 mesaj += ' ⚠ ERP: ' + (erp.message || 'nu s-a propagat acum; se reîncearcă automat.');
                 intarziere = 4000;
+            } else if (data.erp_note) {
+                culoare = '#b45309';
+                mesaj += ' ' + data.erp_note;
+                intarziere = 5000;
+            }
+            // Corectura pe o comandă facturată lasă AWB-ul cu rambursul vechi;
+            // avertismentul trebuie citit, nu clipit — de aceea îl arătăm
+            // într-o alertă, nu doar pe rândul de status care dispare la reload.
+            const atentionari = Array.isArray(data.warnings) ? data.warnings : [];
+            if (atentionari.length > 0) {
+                culoare = '#b45309';
+                intarziere = 6000;
+                window.alert('⚠ ' + atentionari.join('\n\n'));
             }
             if (status) { status.style.color = culoare; status.textContent = mesaj + ' Se reîncarcă...'; }
             setTimeout(() => { window.location.reload(); }, intarziere);
@@ -1502,6 +1541,64 @@ function saveOrderDiscount(orderId){
 function clearOrderDiscount(orderId){
   if (!confirm('Anulezi reducerea comercială de pe această comandă?')) return;
   trimiteReducere(orderId, 'suma', '0', '');
+}
+
+/* --- Deblocarea unei comenzi deja facturate, pentru corecție ---
+   Se întâmplă ca un produs să iasă din stoc după emiterea facturii: linia se
+   scoate din factură în ERP, iar comanda de pe site trebuie pusă la zi ca să-i
+   rămână clientului ce a cumpărat cu adevărat și ca AWB-ul reemis să ceară
+   rambursul corect. Motivul e obligatoriu și rămâne în jurnal. */
+function ceruDeblocare(orderId){
+    const form = document.getElementById('order-unlock-form-' + orderId);
+    if (!form) return;
+    const ascuns = form.style.display === 'none';
+    form.style.display = ascuns ? '' : 'none';
+    if (ascuns) {
+        const input = document.getElementById('order-unlock-reason-' + orderId);
+        if (input) input.focus();
+    }
+}
+
+function deblocheazaComanda(orderId){
+    const input = document.getElementById('order-unlock-reason-' + orderId);
+    const status = document.getElementById('order-unlock-status-' + orderId);
+    const motiv = input ? String(input.value || '').trim() : '';
+    if (motiv.length < 5) {
+        if (status) { status.style.color = '#dc2626'; status.textContent = 'Scrie motivul corecției.'; }
+        if (input) input.focus();
+        return;
+    }
+    if (status) { status.style.color = '#6b7280'; status.textContent = 'Se deblochează...'; }
+    const body = new URLSearchParams();
+    body.set('reason', motiv);
+    fetch('/admin/orders/' + orderId + '/deblocheaza', {method:'POST', body})
+        .then((r) => r.json())
+        .then((data) => {
+            if (!data.ok) {
+                if (status) { status.style.color = '#dc2626'; status.textContent = data.error || 'Eroare'; }
+                return;
+            }
+            // Modalul se construiește din datele rândului, deci reîncărcăm
+            // pagina: altfel ar rămâne pe ecran comanda blocată.
+            location.reload();
+        })
+        .catch(() => { if (status) { status.style.color = '#dc2626'; status.textContent = 'Eroare server'; } });
+}
+
+function blocheazaComanda(orderId){
+    if (!confirm('Blochezi comanda la loc? Produsele nu se vor mai putea modifica.')) return;
+    const status = document.getElementById('order-unlock-status-' + orderId);
+    if (status) { status.style.color = '#6b7280'; status.textContent = 'Se blochează...'; }
+    fetch('/admin/orders/' + orderId + '/blocheaza', {method:'POST'})
+        .then((r) => r.json())
+        .then((data) => {
+            if (!data.ok) {
+                if (status) { status.style.color = '#dc2626'; status.textContent = data.error || 'Eroare'; }
+                return;
+            }
+            location.reload();
+        })
+        .catch(() => { if (status) { status.style.color = '#dc2626'; status.textContent = 'Eroare server'; } });
 }
 
 /* --- Link de plată pentru diferența rămasă --- */
