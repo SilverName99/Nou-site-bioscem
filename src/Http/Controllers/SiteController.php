@@ -995,10 +995,10 @@ final class SiteController
                     billing_address_line1, billing_address_line2, billing_city, billing_county, billing_postcode,
                     billing_is_company, billing_company_name, billing_company_tax_id, billing_company_registration_no,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
-                    shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
+                    shipping_address_line1, shipping_address_line2, shipping_city, shipping_county, shipping_postcode,
                     fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
                     fan_locker_county, fan_locker_postcode,
-                    notes, created_at
+                    notes, terms_accepted_at, created_at
                 ) VALUES (
                     :order_number, :user_id, :status, :payment_method, :payment_status, :shipping_method, :shipping_cost,
                     :discount_total, :loyalty_points_used, :loyalty_points_discount, :subtotal, :total, :coupon_code,
@@ -1006,7 +1006,7 @@ final class SiteController
                     :billing_address_line1, :billing_address_line2, :billing_city, :billing_county, :billing_postcode,
                     :billing_is_company, :billing_company_name, :billing_company_tax_id, :billing_company_registration_no,
                     :shipping_same_as_billing, :shipping_first_name, :shipping_last_name, :shipping_phone,
-                    :shipping_address_line1, :shipping_city, :shipping_county, :shipping_postcode,
+                    :shipping_address_line1, :shipping_address_line2, :shipping_city, :shipping_county, :shipping_postcode,
                     :fan_locker_id, :fan_locker_name, :fan_locker_address, :fan_locker_city,
                     :fan_locker_county, :fan_locker_postcode,
                     :notes, :created_at
@@ -1051,10 +1051,12 @@ final class SiteController
                 'shipping_last_name' => trim((string) ($billing['shipping_last_name'] ?? '')) !== '' ? trim((string) ($billing['shipping_last_name'] ?? '')) : null,
                 'shipping_phone' => trim((string) ($billing['shipping_phone'] ?? '')) !== '' ? trim((string) ($billing['shipping_phone'] ?? '')) : null,
                 'shipping_address_line1' => trim((string) ($billing['shipping_address_line1'] ?? '')) !== '' ? trim((string) ($billing['shipping_address_line1'] ?? '')) : null,
+                'shipping_address_line2' => trim((string) ($billing['shipping_address_line2'] ?? '')) !== '' ? trim((string) ($billing['shipping_address_line2'] ?? '')) : null,
                 'shipping_city' => trim((string) ($billing['shipping_city'] ?? '')) !== '' ? trim((string) ($billing['shipping_city'] ?? '')) : null,
                 'shipping_county' => trim((string) ($billing['shipping_county'] ?? '')) !== '' ? trim((string) ($billing['shipping_county'] ?? '')) : null,
                 'shipping_postcode' => trim((string) ($billing['shipping_postcode'] ?? '')) !== '' ? trim((string) ($billing['shipping_postcode'] ?? '')) : null,
                 'notes' => $billing['notes'],
+                'terms_accepted_at' => $billing['terms_accepted_at'] ?? null,
                 'created_at' => $now->format('Y-m-d H:i:s'),
             ]);
 
@@ -7734,6 +7736,7 @@ CSS;
             $data['shipping_last_name'] = $data['billing_last_name'];
             $data['shipping_phone'] = $data['billing_phone'];
             $data['shipping_address_line1'] = $data['billing_address_line1'];
+            $data['shipping_address_line2'] = $data['billing_address_line2'];
             $data['shipping_city'] = $data['billing_city'];
             $data['shipping_county'] = $data['billing_county'];
             $data['shipping_postcode'] = $data['billing_postcode'];
@@ -7748,12 +7751,28 @@ CSS;
             $data['shipping_street'] = $shStreet;
             $data['shipping_street_no'] = $shStreetNo;
             $data['shipping_address_line1'] = trim($shStreet . ' ' . $shStreetNo);
+            $data['shipping_address_line2'] = trim((string) ($_POST['shipping_address_line2'] ?? ''));
             $data['shipping_city'] = trim((string) ($_POST['shipping_city'] ?? ''));
             $data['shipping_county'] = trim((string) ($_POST['shipping_county'] ?? ''));
             $data['shipping_postcode'] = trim((string) ($_POST['shipping_postcode'] ?? ''));
         }
 
+        // Consimțământul se verifică și pe server: bifa din pagină se poate
+        // ocoli, iar dovada că a fost dat trebuie să fie a noastră, nu a
+        // browserului. Momentul se scrie pe comandă.
+        $data['terms_accepted_at'] = ((string) ($_POST['accept_terms'] ?? '')) === '1'
+            ? date('Y-m-d H:i:s')
+            : null;
+
         $_SESSION['checkout_form'] = $data;
+
+        if ($data['terms_accepted_at'] === null) {
+            Flash::set(
+                'error',
+                'Pentru a continua cumpărarea, trebuie să accepți termenii și condițiile și Politica de confidențialitate.',
+            );
+            return null;
+        }
 
         foreach ($required as $field => $message) {
             if ($data[$field] === '') {

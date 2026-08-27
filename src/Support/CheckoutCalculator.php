@@ -361,6 +361,10 @@ final class CheckoutCalculator
             "ALTER TABLE orders ADD COLUMN shipping_last_name VARCHAR(190) DEFAULT NULL AFTER shipping_first_name",
             "ALTER TABLE orders ADD COLUMN shipping_phone VARCHAR(50) DEFAULT NULL AFTER shipping_last_name",
             "ALTER TABLE orders ADD COLUMN shipping_address_line1 VARCHAR(255) DEFAULT NULL AFTER shipping_phone",
+            // Bloc, scară, apartament, etaj — la fel ca `billing_address_line2`,
+            // care exista deja. Fără ea, cine livrează la altă adresă decât cea
+            // de facturare rămânea fără detaliile de bloc pe AWB.
+            "ALTER TABLE orders ADD COLUMN shipping_address_line2 VARCHAR(255) DEFAULT NULL AFTER shipping_address_line1",
             "ALTER TABLE orders ADD COLUMN shipping_city VARCHAR(190) DEFAULT NULL AFTER shipping_address_line1",
             "ALTER TABLE orders ADD COLUMN shipping_county VARCHAR(190) DEFAULT NULL AFTER shipping_city",
             "ALTER TABLE orders ADD COLUMN shipping_postcode VARCHAR(20) DEFAULT NULL AFTER shipping_county",
@@ -377,6 +381,10 @@ final class CheckoutCalculator
             // recalcularea nu are voie să-l mai atingă, nici măcar pragul de
             // gratuitate — comenzile cu reduceri negociate plătesc transportul.
             "ALTER TABLE orders ADD COLUMN shipping_manual TINYINT(1) NOT NULL DEFAULT 0 AFTER shipping_cost",
+            // Momentul în care clientul a bifat termenii și politica de
+            // confidențialitate. Consimțământul se dovedește cu o dată, nu cu
+            // amintirea că era o bifă pe ecran.
+            "ALTER TABLE orders ADD COLUMN terms_accepted_at DATETIME DEFAULT NULL",
         ];
         foreach ($cols as $sql) {
             try {

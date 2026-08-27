@@ -131,6 +131,11 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         .bv-checkout-v3__row strong.bv-checkout-v3__shipping-pending{font-weight:500;color:#6b7f73;font-size:12px;line-height:1.35;text-align:right;}
         .bv-checkout-v3__row--danger strong{color:var(--co-danger);}
         .bv-checkout-v3__row--total{margin-top:2px;padding-top:10px;border-top:1px solid #dfe9e3;font:700 17px/1.3 "DM Sans",Arial,sans-serif;color:#123220;}
+        .bv-checkout-v3__terms{display:flex;gap:9px;align-items:flex-start;margin:0 0 12px;font:500 12.5px/1.45 "DM Sans",Arial,sans-serif;color:var(--co-muted);cursor:pointer;}
+        .bv-checkout-v3__terms input{margin:2px 0 0;width:16px;height:16px;flex:none;accent-color:var(--co-primary);cursor:pointer;}
+        .bv-checkout-v3__terms a{color:var(--co-primary);text-decoration:underline;}
+        .bv-checkout-v3__terms.is-missing{color:var(--co-danger);}
+        .bv-checkout-v3__terms.is-missing input{outline:2px solid var(--co-danger);outline-offset:2px;}
         .bv-checkout-v3__submit{display:inline-flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:999px;padding:13px 18px;background:linear-gradient(180deg,var(--co-primary),var(--co-primary-strong));color:#fff;font:700 14px/1.2 "DM Sans",Arial,sans-serif;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;}
         .bv-checkout-v3__submit:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(26,106,67,.24);filter:saturate(1.03);}
         .bv-checkout-v3__submit:disabled{opacity:.7;cursor:not-allowed;transform:none;box-shadow:none;}
@@ -199,6 +204,12 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         <div class="bv-checkout-v3__field">
                             <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-street-no">Nr. *</label>
                             <input id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-street-no" type="text" name="billing_street_no" value="<?= htmlspecialchars((string) ($values['billing_street_no'] ?? ''), ENT_QUOTES) ?>" required>
+                        </div>
+                        <?php /* Neobligatoriu: cei de la casă îl lasă gol, cei de la bloc
+                                fără el nu-și primesc coletul la ușă. */ ?>
+                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
+                            <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-address2">Bloc, scară, apartament, etaj</label>
+                            <input id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-address2" type="text" name="billing_address_line2" maxlength="255" placeholder="ex. bl. A2, sc. 1, ap. 14, et. 3" value="<?= htmlspecialchars((string) ($values['billing_address_line2'] ?? ''), ENT_QUOTES) ?>">
                         </div>
                         <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
                             <label class="bv-checkout-v3__checkbox">
@@ -302,6 +313,10 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                             <div class="bv-checkout-v3__field">
                                 <label>Nr. *</label>
                                 <input type="text" name="shipping_street_no" value="<?= htmlspecialchars((string) ($values['shipping_street_no'] ?? ''), ENT_QUOTES) ?>" data-shipping-required>
+                            </div>
+                            <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
+                                <label>Bloc, scară, apartament, etaj</label>
+                                <input type="text" name="shipping_address_line2" maxlength="255" placeholder="ex. bl. A2, sc. 1, ap. 14, et. 3" value="<?= htmlspecialchars((string) ($values['shipping_address_line2'] ?? ''), ENT_QUOTES) ?>">
                             </div>
                             <div class="bv-checkout-v3__field">
                                 <label>Județ *</label>
@@ -459,6 +474,24 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     <?php endif; ?>
                     <div class="bv-checkout-v3__row bv-checkout-v3__row--total"><span>Total de plată</span><strong data-checkout-total><?= number_format($total, 2) ?> lei</strong></div>
                 </div>
+                <?php /* Butonul stă în afara formularului, deci și bifa are nevoie
+                        de atributul `form` ca să fie trimisă odată cu el. */ ?>
+                <label class="bv-checkout-v3__terms">
+                    <input
+                        type="checkbox"
+                        name="accept_terms"
+                        value="1"
+                        form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form"
+                        <?= $previewMode ? '' : 'required' ?>
+                        data-checkout-terms
+                    >
+                    <span>
+                        Pentru a continua cumpărarea, trebuie să accepți
+                        <a href="/termeni-si-conditii" target="_blank" rel="noopener">termenii și condițiile</a>
+                        și
+                        <a href="/politica-de-confidentialitate" target="_blank" rel="noopener">Politica de confidențialitate</a>.
+                    </span>
+                </label>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
                     <?= $previewMode ? 'Preview checkout' : (in_array($paymentMethod, ['euplatesc', 'stripe'], true) ? 'Către plată' : 'Plasează comanda') ?>
                 </button>
@@ -559,6 +592,17 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
         });
         const paymentInputs = Array.from(form.querySelectorAll('input[name="payment_method"]'));
         const submitButton = container.querySelector('[data-checkout-submit]');
+        // Bifa de termeni stă lângă buton, în afara formularului: o găsim în
+        // container, nu în form. Validarea nativă oprește oricum trimiterea;
+        // asta doar face vizibil DE CE s-a oprit.
+        const terms = container.querySelector('[data-checkout-terms]');
+        if (terms instanceof HTMLInputElement) {
+            const rand = terms.closest('.bv-checkout-v3__terms');
+            terms.addEventListener('invalid', () => rand && rand.classList.add('is-missing'));
+            terms.addEventListener('change', () => {
+                if (terms.checked && rand) rand.classList.remove('is-missing');
+            });
+        }
         const companyToggle = form.querySelector('[data-billing-is-company]');
         const companyFieldsWrap = form.querySelector('[data-company-fields]');
         const companyRequiredFields = Array.from(form.querySelectorAll('[data-company-required]'));

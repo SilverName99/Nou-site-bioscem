@@ -5734,6 +5734,23 @@ final class AdminController
     }
 
     /**
+     * Strada plus detaliile de bloc, într-un singur rând.
+     *
+     * FAN primește adresa ca un singur câmp „stradă". Fără bucata a doua,
+     * coletul ajunge în fața blocului fără scară, apartament sau etaj, iar
+     * curierul sună clientul ca să afle unde urcă.
+     */
+    private function adresaCuBloc(string $strada, string $bloc): string
+    {
+        $strada = trim($strada);
+        $bloc = trim($bloc);
+        if ($bloc === '') {
+            return $strada;
+        }
+        return $strada === '' ? $bloc : $strada . ', ' . $bloc;
+    }
+
+    /**
      * E comanda deblocată anume pentru corecție? Deblocarea e un act deliberat,
      * cu motiv scris, nu o stare în care o comandă alunecă singură.
      */
@@ -14745,9 +14762,9 @@ HTML;
             'SELECT id, order_number, status, payment_method, payment_status, paid_amount, total,
                     billing_first_name, billing_last_name, billing_phone, billing_email,
                     billing_is_company, billing_company_name,
-                    billing_address_line1, billing_city, billing_county, billing_postcode,
+                    billing_address_line1, billing_address_line2, billing_city, billing_county, billing_postcode,
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
-                    shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
+                    shipping_address_line1, shipping_address_line2, shipping_city, shipping_county, shipping_postcode,
                     fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
                     fan_locker_county, fan_locker_postcode,
                     fan_awb, fan_awb_inlocuite
@@ -14849,14 +14866,17 @@ HTML;
                 : trim((string) ($order['billing_phone'] ?? ''));
             $recipientCounty = trim((string) ($order['shipping_county'] ?? ''));
             $recipientLocality = trim((string) ($order['shipping_city'] ?? ''));
-            $recipientStreet = $shipStreet;
+            $recipientStreet = $this->adresaCuBloc($shipStreet, (string) ($order['shipping_address_line2'] ?? ''));
             $recipientZip = trim((string) ($order['shipping_postcode'] ?? ''));
         } else {
             $recipientName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
             $recipientPhone = trim((string) ($order['billing_phone'] ?? ''));
             $recipientCounty = trim((string) ($order['billing_county'] ?? ''));
             $recipientLocality = trim((string) ($order['billing_city'] ?? ''));
-            $recipientStreet = trim((string) ($order['billing_address_line1'] ?? ''));
+            $recipientStreet = $this->adresaCuBloc(
+                (string) ($order['billing_address_line1'] ?? ''),
+                (string) ($order['billing_address_line2'] ?? ''),
+            );
             $recipientZip = trim((string) ($order['billing_postcode'] ?? ''));
         }
         // Comandă pe firmă: destinatarul e firma, nu persoana de contact.

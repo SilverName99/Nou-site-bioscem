@@ -322,9 +322,20 @@ final class ErpSync
             ? trim((string) $order['billing_first_name'] . ' ' . (string) $order['billing_last_name'])
             : trim((string) ($order['shipping_first_name'] ?? '') . ' ' . (string) ($order['shipping_last_name'] ?? ''));
 
+        // Bloc, scară, apartament, etaj intră în adresă: ERP-ul o folosește și
+        // pe factură, iar fără bucata a doua clientul de la bloc rămâne cu o
+        // adresă la care nu se poate livra.
+        $cuBloc = static function (string $strada, string $bloc): string {
+            $strada = trim($strada);
+            $bloc = trim($bloc);
+            if ($bloc === '') {
+                return $strada;
+            }
+            return $strada === '' ? $bloc : $strada . ', ' . $bloc;
+        };
         $adresa = $sameAsBilling
-            ? trim((string) ($order['billing_address_line1'] ?? '') . ' ' . (string) ($order['billing_address_line2'] ?? ''))
-            : trim((string) ($order['shipping_address_line1'] ?? ''));
+            ? $cuBloc((string) ($order['billing_address_line1'] ?? ''), (string) ($order['billing_address_line2'] ?? ''))
+            : $cuBloc((string) ($order['shipping_address_line1'] ?? ''), (string) ($order['shipping_address_line2'] ?? ''));
 
         $esteFirma = ((int) ($order['billing_is_company'] ?? 0)) === 1;
         $metoda = strtolower((string) ($order['payment_method'] ?? 'cod'));
@@ -353,9 +364,9 @@ final class ErpSync
 
             // Adresa fiscală a clientului (sediul social), separată de cea de
             // livrare. Pe factură trebuie asta, nu locul unde ajunge coletul.
-            'facturareAdresa' => trim(
-                (string) ($order['billing_address_line1'] ?? '')
-                . ' ' . (string) ($order['billing_address_line2'] ?? '')
+            'facturareAdresa' => $cuBloc(
+                (string) ($order['billing_address_line1'] ?? ''),
+                (string) ($order['billing_address_line2'] ?? ''),
             ),
             'facturareOras' => (string) ($order['billing_city'] ?? ''),
             'facturareJudet' => (string) ($order['billing_county'] ?? ''),
