@@ -960,12 +960,24 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 if (unitPrice <= 0.0 && qty > 0) {
                     unitPrice = lineTotal / qty;
                 }
+                // Prețul de pe linie e cel redus; eticheta spune de ce, ca să nu
+                // pară că s-a schimbat singur.
+                const reducereErp = Number(it.erp_discount_percent || 0);
+                const pretInainte = Number(it.erp_price_before || 0);
+                const eticheta = reducereErp > 0
+                    ? `<div style="font-size:11px;color:#b45309;margin-top:2px;">
+                        🏷️ Discount ${reducereErp.toFixed(2).replace(/\.?0+$/, '')}% setat din ERP${pretInainte > 0 ? ` — era ${orderMoney(pretInainte)}` : ''}
+                       </div>`
+                    : '';
                 if (comandaBlocata) {
                     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
-                        <span style="flex:1;">${esc(it.product_name || '')}</span>
+                        <span style="flex:1;">${esc(it.product_name || '')}${eticheta}</span>
                         <span style="width:60px;text-align:center;">${qty}</span>
                         <span style="min-width:92px;text-align:right;font-weight:600;">${orderMoney(unitPrice * qty)}</span>
                     </div>`;
+                }
+                if (eticheta !== '') {
+                    return orderItemRowHtml(Number(it.product_id || 0), it.product_name || '', qty, unitPrice) + eticheta;
                 }
                 return orderItemRowHtml(Number(it.product_id || 0), it.product_name || '', qty, unitPrice);
             }).join('');

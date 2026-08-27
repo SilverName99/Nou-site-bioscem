@@ -4731,6 +4731,7 @@ final class AdminController
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
                 $itemsStmt = $db->prepare(
                     "SELECT oi.order_id, oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.line_total,
+                            oi.erp_discount_percent, oi.erp_price_before,
                             COALESCE(p.vat_percent, 19.00) AS vat_percent,
                             COALESCE(p.vat_included, 1) AS vat_included
                      FROM order_items oi
@@ -7752,12 +7753,14 @@ final class AdminController
             $pastrate = [];
             $update = $db->prepare(
                 'UPDATE order_items
-                 SET product_name = :nume, quantity = :cant, unit_price = :pret, line_total = :total
+                 SET product_name = :nume, quantity = :cant, unit_price = :pret, line_total = :total,
+                     erp_discount_percent = :reducere, erp_price_before = :pret_initial
                  WHERE id = :id'
             );
             $insert = $db->prepare(
-                'INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total)
-                 VALUES (:order_id, :product_id, :nume, :cant, :pret, :total)'
+                'INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total,
+                                          erp_discount_percent, erp_price_before)
+                 VALUES (:order_id, :product_id, :nume, :cant, :pret, :total, :reducere, :pret_initial)'
             );
 
             foreach ($linii as $linie) {
@@ -7768,13 +7771,22 @@ final class AdminController
                 $nume = trim((string) ($linie['denumire'] ?? '')) ?: 'Produs';
                 // Cantitățile de pe site sunt întregi; ERP-ul le ține cu zecimale.
                 $cant = max(1, (int) round((float) ($linie['cantitate'] ?? 1)));
+                // Prețurile din eveniment sunt cele EFECTIV facturate: dacă
+                // ERP-ul a pus o reducere, ea e deja scăzută. De aceea AWB-ul
+                // emis de aici cere rambursul corect fără alt calcul.
                 $pret = round((float) ($linie['pretUnitarCuTva'] ?? 0), 2);
                 $totalLinie = round((float) ($linie['valoareCuTva'] ?? $pret * $cant), 2);
+                $reducere = round((float) ($linie['reducere'] ?? 0), 2);
+                $pretInitial = $linie['pretUnitarCuTvaInitial'] ?? null;
+                $marcaj = $reducere > 0.004
+                    ? ['reducere' => $reducere, 'pret_initial' => $pretInitial !== null ? round((float) $pretInitial, 2) : null]
+                    : ['reducere' => null, 'pret_initial' => null];
 
                 if ($sku !== '' && isset($existente[$sku])) {
                     $update->execute([
                         'nume' => $nume, 'cant' => $cant, 'pret' => $pret,
                         'total' => $totalLinie, 'id' => $existente[$sku],
+                        'reducere' => $marcaj['reducere'], 'pret_initial' => $marcaj['pret_initial'],
                     ]);
                     $pastrate[] = $existente[$sku];
                     continue;
@@ -7783,6 +7795,7 @@ final class AdminController
                     'order_id' => $orderId,
                     'product_id' => $produsePeSku[$sku] ?? null,
                     'nume' => $nume, 'cant' => $cant, 'pret' => $pret, 'total' => $totalLinie,
+                    'reducere' => $marcaj['reducere'], 'pret_initial' => $marcaj['pret_initial'],
                 ]);
                 $pastrate[] = (int) $db->lastInsertId();
             }

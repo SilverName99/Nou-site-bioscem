@@ -619,6 +619,20 @@ final class ErpSync
             'edit_unlocked_by' => 'VARCHAR(190) DEFAULT NULL',
         ];
 
+        // Reducerea pusă de operator din ERP pe o linie. Prețul din
+        // `order_items` e deja cel redus — coloana asta există doar ca să se
+        // vadă în admin de ce s-a schimbat, și prețul dinainte.
+        foreach ([
+            'erp_discount_percent' => 'DECIMAL(5,2) DEFAULT NULL',
+            'erp_price_before' => 'DECIMAL(10,2) DEFAULT NULL',
+        ] as $nume => $definitie) {
+            try {
+                $db->exec('ALTER TABLE order_items ADD COLUMN ' . $nume . ' ' . $definitie);
+            } catch (Throwable) {
+                // Coloana există deja.
+            }
+        }
+
         foreach ($columns as $name => $definition) {
             try {
                 $db->exec('ALTER TABLE orders ADD COLUMN ' . $name . ' ' . $definition);
