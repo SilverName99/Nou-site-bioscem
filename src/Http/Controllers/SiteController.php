@@ -1009,7 +1009,7 @@ final class SiteController
                     :shipping_address_line1, :shipping_address_line2, :shipping_city, :shipping_county, :shipping_postcode,
                     :fan_locker_id, :fan_locker_name, :fan_locker_address, :fan_locker_city,
                     :fan_locker_county, :fan_locker_postcode,
-                    :notes, :created_at
+                    :notes, :terms_accepted_at, :created_at
                 )'
             );
 
