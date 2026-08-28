@@ -231,6 +231,69 @@
         mobileMedia.addListener(applyPanelWidth);
     }
 
+    // Bulina de chat stă în același colț și plutește peste sertarul deschis.
+    // Widgetul e al lor și vine cu un z-index pe care nu-l putem depăși
+    // cinstit din CSS, așa că îl ascundem prin API-ul lor cât ține sertarul
+    // și îl punem la loc la închidere. Ascundem doar dacă noi l-am ascuns,
+    // ca să nu reapară un widget pe care l-a stins altcineva.
+    let chatAscunsDeSertar = false;
+    let chatIncercari = 0;
+    let chatTimer = null;
+
+    const opresteAsteptareaChatului = () => {
+        if (chatTimer) {
+            clearTimeout(chatTimer);
+            chatTimer = null;
+        }
+        chatIncercari = 0;
+    };
+
+    const potrivesteChatul = (open) => {
+        const api = window.Tawk_API;
+        const gata = api
+            && typeof api.hideWidget === "function"
+            && typeof api.showWidget === "function";
+
+        if (!open) {
+            opresteAsteptareaChatului();
+            if (gata && chatAscunsDeSertar) {
+                try {
+                    api.showWidget();
+                } catch (e) {
+                    /* widgetul a dispărut între timp; nu e nimic de reparat */
+                }
+            }
+            chatAscunsDeSertar = false;
+            return;
+        }
+
+        if (gata) {
+            opresteAsteptareaChatului();
+            try {
+                api.hideWidget();
+                chatAscunsDeSertar = true;
+            } catch (e) {
+                /* încă nu s-a încărcat complet; îl lăsăm așa cum e */
+            }
+            return;
+        }
+
+        // Widgetul lor se încarcă asincron. Dacă sertarul s-a deschis înaintea
+        // lui, mai încercăm câteva secunde, apoi renunțăm — mai bine o bulină
+        // peste sertar decât un cronometru care se învârte în gol.
+        if (chatIncercari >= 20) {
+            opresteAsteptareaChatului();
+            return;
+        }
+        chatIncercari += 1;
+        chatTimer = setTimeout(() => {
+            chatTimer = null;
+            if (state.open) {
+                potrivesteChatul(true);
+            }
+        }, 250);
+    };
+
     const setOpen = (open) => {
         if (state.open === open) {
             return;
@@ -239,6 +302,7 @@
         panel.setAttribute("aria-hidden", open ? "false" : "true");
         panel.classList.toggle("is-open", open);
         overlay.hidden = !open;
+        potrivesteChatul(open);
     };
 
     let loaderStylesInjected = false;

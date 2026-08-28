@@ -487,9 +487,9 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     >
                     <span>
                         Pentru a continua cumpărarea, trebuie să accepți
-                        <a href="/termeni-si-conditii" target="_blank" rel="noopener">termenii și condițiile</a>
+                        <a href="/termeni-conditii" target="_blank" rel="noopener">termenii și condițiile</a>
                         și
-                        <a href="/politica-de-confidentialitate" target="_blank" rel="noopener">Politica de confidențialitate</a>.
+                        <a href="/prelucrarea-datelor-personale" target="_blank" rel="noopener">Politica de confidențialitate</a>.
                     </span>
                 </label>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
