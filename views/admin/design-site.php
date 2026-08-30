@@ -68,12 +68,12 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
 
             <div class="menu-builder-wrap" id="menu-builder-wrap">
                 <div class="menu-builder-left">
-                    <h4 style="margin:0 0 8px;">Pagini existente</h4>
-                    <p style="margin:0 0 10px;color:#64748b;font-size:.9rem;">Adaugă pagini în meniu și setează ierarhia principal / subpagină.</p>
+                    <h4 style="margin:0 0 4px;">Pagini existente</h4>
+                    <p class="mb2-hint">Click pe o pagină ca s-o adaugi la sfârșitul meniului. O muți și o retragi în submeniu pe urmă, din butoanele de pe rând.</p>
                     <div class="field menu-pages-search">
-                        <input type="text" id="menu-page-search" placeholder="Caută pagină după titlu sau URL">
+                        <input type="text" id="menu-page-search" placeholder="Caută pagină după titlu sau URL" autocomplete="off">
                     </div>
-                    <div class="menu-pages-pool">
+                    <div class="menu-pages-pool" id="menu-pages-pool">
                         <?php foreach ($availableMenuPages as $page): ?>
                             <?php
                                 $pageTitle = trim((string) ($page['title'] ?? 'Pagină'));
@@ -86,26 +86,30 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
                                 data-menu-add="1"
                                 data-menu-label="<?= htmlspecialchars($pageTitle, ENT_QUOTES) ?>"
                                 data-menu-url="<?= htmlspecialchars($pageUrl, ENT_QUOTES) ?>"
+                                data-menu-search="<?= htmlspecialchars(mb_strtolower($pageTitle . ' ' . $pageUrl . ' ' . $source), ENT_QUOTES) ?>"
                             >
                                 <span><?= htmlspecialchars($pageTitle, ENT_QUOTES) ?></span>
                                 <small><?= htmlspecialchars($pageUrl, ENT_QUOTES) ?><?= $source !== '' ? ' · ' . htmlspecialchars($source, ENT_QUOTES) : '' ?></small>
                             </button>
                         <?php endforeach; ?>
                     </div>
+                    <p class="menu-empty" id="menu-pages-empty" hidden>Nicio pagină nu se potrivește.</p>
                     <button type="button" class="btn btn-secondary" id="menu-add-custom">+ Link personalizat</button>
                 </div>
 
                 <div class="menu-builder-right">
                     <div class="menu-structure-head">
-                        <h4 style="margin:0;">Structură meniu</h4>
+                        <div>
+                            <h4 style="margin:0;">Structură meniu</h4>
+                            <p class="mb2-count" id="menu-count"></p>
+                        </div>
                         <div class="menu-structure-tools">
-                            <button type="button" class="btn btn-secondary" id="menu-normalize">Normalizează</button>
                             <button type="button" class="btn btn-secondary" id="menu-clear">Golește</button>
                         </div>
                     </div>
                     <div class="menu-items-list" id="menu-items-list"></div>
                     <div class="menu-live-preview">
-                        <h5>Preview meniu</h5>
+                        <h5>Preview meniu <span>— treci cu mouse-ul peste o categorie cu submeniu</span></h5>
                         <div id="menu-live-preview"></div>
                     </div>
                 </div>
@@ -329,8 +333,9 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
     const menuAddButtons = document.querySelectorAll('[data-menu-add="1"]');
     const menuAddCustom = document.getElementById('menu-add-custom');
     const menuPageSearch = document.getElementById('menu-page-search');
-    const menuNormalizeBtn = document.getElementById('menu-normalize');
     const menuClearBtn = document.getElementById('menu-clear');
+    const menuPagesEmpty = document.getElementById('menu-pages-empty');
+    const menuCount = document.getElementById('menu-count');
     const menuLivePreview = document.getElementById('menu-live-preview');
     const copyMenuEmbed = document.getElementById('copy-menu-embed');
     const menuEmbedInput = document.getElementById('menu-embed-token');
@@ -339,7 +344,7 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
     const designCodeSearchBtn = document.getElementById('design-code-search-btn');
     const designCodeBeautifyBtn = document.getElementById('design-code-beautify-btn');
     const designCodeFullscreenBtn = document.getElementById('design-code-fullscreen-btn');
-    let menuItems = <?= json_encode($menuItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    const savedMenuItems = <?= json_encode($menuItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     const getActiveCodeType = () => document.querySelector('.code-type-tab.active')?.dataset.codeType || 'html';
     const getActiveEditor = () => editors[getActiveCodeType()] || null;
     const beautifyContent = (editor) => {
@@ -393,127 +398,150 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
 
-    const normalizeMenuItems = (items) => {
-        if (!Array.isArray(items)) return [];
-        const safe = items
-            .map((item) => ({
-                label: String(item?.label ?? '').trim(),
-                url: String(item?.url ?? '').trim(),
-                level: Math.max(0, Math.min(1, Number(item?.level ?? 0) || 0)),
-            }))
-            .filter((item) => item.label !== '' && item.url !== '');
-        return safe.map((item, index) => {
-            if (item.level === 1) {
-                const prev = safe[index - 1];
-                if (!prev || prev.level !== 0) {
-                    return { ...item, level: 0 };
-                }
-            }
-            return item;
-        });
-    };
-
-    const menuItemsToHtml = (items) => {
-        const safe = normalizeMenuItems(items);
-        if (!safe.length) return '';
-
-        let html = '<ul class="menu-root">';
-        let subOpen = false;
-        safe.forEach((item, idx) => {
-            const nextLevel = idx < safe.length - 1 ? safe[idx + 1].level : 0;
-            const label = esc(item.label);
-            const url = esc(item.url);
-
-            if (item.level === 0) {
-                if (subOpen) {
-                    html += '</ul></li>';
-                    subOpen = false;
-                }
-                html += `<li><a href="${url}">${label}</a>`;
-                if (nextLevel === 1) {
-                    html += '<ul class="submenu">';
-                    subOpen = true;
-                } else {
-                    html += '</li>';
-                }
+    /* Meniul se editeaza ca arbore, dar se salveaza in acelasi format plat
+       {label, url, level} pe care il asteapta PHP-ul. Diferenta se vede la
+       mutare: un parinte isi ia subpaginile cu el, nu le lasa in urma. */
+    let menuTree = (() => {
+        const tree = [];
+        (Array.isArray(savedMenuItems) ? savedMenuItems : []).forEach((raw) => {
+            const label = String(raw?.label ?? '');
+            const url = String(raw?.url ?? '');
+            const level = Number(raw?.level ?? 0) === 1 ? 1 : 0;
+            if (level === 1 && tree.length > 0) {
+                tree[tree.length - 1].children.push({ label, url });
                 return;
             }
-            if (!subOpen) return;
-            html += `<li><a href="${url}">${label}</a></li>`;
-            if (nextLevel === 0) {
-                html += '</ul></li>';
-                subOpen = false;
-            }
+            tree.push({ label, url, children: [] });
         });
-        if (subOpen) html += '</ul></li>';
-        html += '</ul>';
-        return html;
+        return tree;
+    })();
+
+    const isFilled = (node) => String(node?.label ?? '').trim() !== '' && String(node?.url ?? '').trim() !== '';
+
+    /* Randurile incomplete raman pe ecran cat le scrii, dar nu ajung in meniu.
+       Daca parintele e incomplet, subpaginile lui urca la nivelul principal,
+       ca sa nu dispara fara sa se inteleaga de ce. */
+    const effectiveTree = () => {
+        const out = [];
+        menuTree.forEach((node) => {
+            const kids = node.children
+                .filter(isFilled)
+                .map((child) => ({ label: child.label.trim(), url: child.url.trim() }));
+            if (isFilled(node)) {
+                out.push({ label: node.label.trim(), url: node.url.trim(), children: kids });
+                return;
+            }
+            kids.forEach((child) => out.push({ ...child, children: [] }));
+        });
+        return out;
+    };
+
+    const flatFromTree = () => {
+        const out = [];
+        effectiveTree().forEach((node) => {
+            out.push({ label: node.label, url: node.url, level: 0 });
+            node.children.forEach((child) => out.push({ label: child.label, url: child.url, level: 1 }));
+        });
+        return out;
+    };
+
+    const menuTreeToHtml = () => {
+        const roots = effectiveTree();
+        if (!roots.length) return '';
+        const link = (node) => `<a href="${esc(node.url)}">${esc(node.label)}</a>`;
+        return '<ul class="menu-root">' + roots.map((node) => {
+            let html = `<li>${link(node)}`;
+            if (node.children.length) {
+                html += '<ul class="submenu">'
+                    + node.children.map((child) => `<li>${link(child)}</li>`).join('')
+                    + '</ul>';
+            }
+            return html + '</li>';
+        }).join('') + '</ul>';
     };
 
     const syncMenuBuilder = () => {
         if (!menuEnabled || !menuItemsInput || !htmlInput) return;
-        const safe = normalizeMenuItems(menuItems);
-        menuItems = safe;
-        menuItemsInput.value = JSON.stringify(safe);
-        const html = menuItemsToHtml(safe);
+        menuItemsInput.value = JSON.stringify(flatFromTree());
+        const html = menuTreeToHtml();
         htmlInput.value = html;
         editors.html?.setValue?.(html);
     };
 
     const renderMenuLivePreview = () => {
         if (!menuLivePreview) return;
-        const safe = normalizeMenuItems(menuItems);
-        if (!safe.length) {
-            menuLivePreview.innerHTML = '<p class="menu-empty">Preview indisponibil: adaugă cel puțin un item.</p>';
-            return;
-        }
-        menuLivePreview.innerHTML = `<nav class="menu-live-preview-nav">${menuItemsToHtml(safe)}</nav>`;
+        const html = menuTreeToHtml();
+        menuLivePreview.innerHTML = html === ''
+            ? '<p class="menu-empty">Adaugă cel puțin o pagină ca să vezi meniul.</p>'
+            : `<nav class="menu-live-preview-nav">${html}</nav>`;
+    };
+
+    const updateMenuCount = () => {
+        if (!menuCount) return;
+        const flat = flatFromTree();
+        const principale = flat.filter((item) => item.level === 0).length;
+        const sub = flat.length - principale;
+        menuCount.textContent = `${principale} ${principale === 1 ? 'element principal' : 'elemente principale'}`
+            + ` · ${sub} ${sub === 1 ? 'subpagină' : 'subpagini'}`;
+    };
+
+    const nodeAtPath = (path) => {
+        const parts = String(path).split('.');
+        const parent = menuTree[Number(parts[0])];
+        if (!parent) return null;
+        return parts.length === 1 ? parent : (parent.children[Number(parts[1])] || null);
+    };
+
+    const menuToolBtn = (action, path, glyph, title, disabled) =>
+        `<button type="button" class="mb2-btn" data-action="${action}" data-path="${path}"`
+        + ` title="${esc(title)}" aria-label="${esc(title)}"${disabled ? ' disabled' : ''}>${glyph}</button>`;
+
+    const menuRowHtml = (node, path, kind, first, last) => {
+        const tools = kind === 'parent'
+            ? menuToolBtn('indent', path, '→', 'Fă-o subpagină a elementului de deasupra', first)
+                + menuToolBtn('up', path, '↑', 'Mută mai sus', first)
+                + menuToolBtn('down', path, '↓', 'Mută mai jos', last)
+                + menuToolBtn('add-child', path, '+', 'Adaugă o subpagină aici', false)
+                + menuToolBtn('remove', path, '🗑', 'Șterge', false)
+            : menuToolBtn('outdent', path, '←', 'Scoate din submeniu', false)
+                + menuToolBtn('up', path, '↑', 'Mută mai sus', first)
+                + menuToolBtn('down', path, '↓', 'Mută mai jos', last)
+                + menuToolBtn('remove', path, '🗑', 'Șterge', false);
+
+        return `
+            <div class="mb2-row mb2-row--${kind}${isFilled(node) ? '' : ' is-incomplete'}" data-path="${path}" data-kind="${kind}">
+                <button type="button" class="mb2-grip" draggable="true" data-grip="${path}" title="Trage ca să muți" aria-label="Trage ca să muți">⠿</button>
+                <div class="mb2-fields">
+                    <input class="mb2-input" data-field="label" data-path="${path}" value="${esc(node.label)}" placeholder="Titlu în meniu">
+                    <input class="mb2-input mb2-input--url" data-field="url" data-path="${path}" value="${esc(node.url)}" placeholder="/pagina">
+                </div>
+                <div class="mb2-tools">${tools}</div>
+            </div>`;
     };
 
     const renderMenuBuilder = () => {
         if (!menuEnabled || !menuItemsList) return;
-        const safe = normalizeMenuItems(menuItems);
-        menuItems = safe;
-        const filterTerm = (menuPageSearch?.value || '').trim().toLowerCase();
-        const entries = safe
-            .map((item, index) => ({ item, index }))
-            .filter(({ item }) => {
-                if (filterTerm === '') return true;
-                return item.label.toLowerCase().includes(filterTerm) || item.url.toLowerCase().includes(filterTerm);
-            });
 
-        if (!safe.length) {
-            menuItemsList.innerHTML = '<p class="menu-empty">Nu există elemente în meniu. Adaugă pagini din stânga.</p>';
-            syncMenuBuilder();
-            renderMenuLivePreview();
-            return;
-        }
-        if (entries.length === 0) {
-            menuItemsList.innerHTML = '<p class="menu-empty">Nu există rezultate pentru filtrul curent.</p>';
-            syncMenuBuilder();
-            renderMenuLivePreview();
-            return;
+        if (!menuTree.length) {
+            menuItemsList.innerHTML = '<p class="menu-empty">Meniul e gol. Adaugă pagini din stânga.</p>';
+        } else {
+            menuItemsList.innerHTML = menuTree.map((node, i) => {
+                const children = node.children
+                    .map((child, j) => menuRowHtml(child, `${i}.${j}`, 'child', j === 0, j === node.children.length - 1))
+                    .join('');
+                const nume = node.label.trim() || 'fără titlu';
+                return `
+                    <div class="mb2-node" data-index="${i}">
+                        ${menuRowHtml(node, String(i), 'parent', i === 0, i === menuTree.length - 1)}
+                        <div class="mb2-children">
+                            ${children}
+                            <div class="mb2-dropzone" data-dropzone="${i}">Trage aici ca să pui în submeniul „${esc(nume)}"</div>
+                        </div>
+                    </div>`;
+            }).join('');
         }
 
-        menuItemsList.innerHTML = entries.map(({ item, index }) => `
-            <div class="menu-item-row ${item.level === 1 ? 'is-sub' : ''}" data-index="${index}">
-                <div class="menu-item-main">
-                    <input class="menu-item-input" data-field="label" data-index="${index}" value="${esc(item.label)}" placeholder="Titlu meniu">
-                    <input class="menu-item-input" data-field="url" data-index="${index}" value="${esc(item.url)}" placeholder="/pagina">
-                    <select class="menu-item-level" data-field="level" data-index="${index}">
-                        <option value="0" ${item.level === 0 ? 'selected' : ''}>Pagină principală</option>
-                        <option value="1" ${item.level === 1 ? 'selected' : ''}>Subpagină</option>
-                    </select>
-                </div>
-                <div class="menu-item-actions">
-                    <button type="button" class="icon-btn menu-drag-handle" draggable="true" data-drag-index="${index}" title="Trage pentru mutare">⠿</button>
-                    <button type="button" class="icon-btn" data-action="up" data-index="${index}" title="Mută sus">↑</button>
-                    <button type="button" class="icon-btn" data-action="down" data-index="${index}" title="Mută jos">↓</button>
-                    <button type="button" class="icon-btn" data-action="remove" data-index="${index}" title="Elimină">🗑</button>
-                </div>
-            </div>
-        `).join('');
-
+        updateMenuCount();
         syncMenuBuilder();
         renderMenuLivePreview();
     };
@@ -689,185 +717,273 @@ ${footerHtml}
     });
 
     if (menuEnabled) {
-        const dragState = {
-            fromIndex: -1,
-            toIndex: -1,
-            position: 'after',
-            level: 0,
-        };
+        const drag = { path: '', target: null };
+
         const clearDropDecor = () => {
-            menuItemsList?.querySelectorAll('.menu-item-row').forEach((row) => {
-                row.classList.remove('drop-before', 'drop-after', 'drop-indent', 'is-dragging');
+            menuItemsList?.querySelectorAll('.drop-before, .drop-after, .is-over').forEach((el) => {
+                el.classList.remove('drop-before', 'drop-after', 'is-over');
             });
+        };
+
+        const endDrag = () => {
+            drag.path = '';
+            drag.target = null;
+            clearDropDecor();
             menuItemsList?.classList.remove('is-dragging');
+            menuItemsList?.querySelectorAll('.mb2-row.is-dragging').forEach((row) => {
+                row.classList.remove('is-dragging');
+            });
         };
-        const desiredLevelFromPointer = (clientX) => {
-            if (!menuItemsList) return 0;
-            const left = menuItemsList.getBoundingClientRect().left;
-            return (clientX - left) > 90 ? 1 : 0;
+
+        // Dupa o mutare randurile se redeseneaza, deci butonul pe care ai apasat
+        // dispare. Il cautam la pozitia noua ca sa poti apasa de mai multe ori.
+        // Daca acolo e dezactivat (ai ajuns primul din lista), trecem pe vecinul
+        // lui, ca sa nu ramai fara focus in mijlocul unei mutari.
+        const focusTool = (action, path) => {
+            const row = menuItemsList?.querySelector(`.mb2-row[data-path="${path}"]`);
+            if (!row) return;
+            const tinta = row.querySelector(`[data-action="${action}"]:not(:disabled)`)
+                || row.querySelector('[data-action="up"]:not(:disabled)')
+                || row.querySelector('[data-action="down"]:not(:disabled)')
+                || row.querySelector('.mb2-grip');
+            tinta?.focus();
         };
-        const applyDragMove = () => {
-            const fromIndex = dragState.fromIndex;
-            if (fromIndex < 0 || fromIndex >= menuItems.length) {
-                return;
-            }
-            const source = { ...menuItems[fromIndex] };
-            const next = menuItems.filter((_, idx) => idx !== fromIndex);
-            let insertIndex = dragState.toIndex;
-            if (insertIndex < 0) {
-                insertIndex = next.length;
-            } else if (dragState.position === 'after') {
-                insertIndex += 1;
-            }
-            if (fromIndex < insertIndex) {
-                insertIndex -= 1;
-            }
-            insertIndex = Math.max(0, Math.min(next.length, insertIndex));
-            source.level = dragState.level;
-            next.splice(insertIndex, 0, source);
-            menuItems = normalizeMenuItems(next);
+
+        const moveWithin = (list, from, to) => {
+            if (to < 0 || to >= list.length) return from;
+            const [item] = list.splice(from, 1);
+            list.splice(to, 0, item);
+            return to;
+        };
+
+        const addPage = (label, url) => {
+            menuTree.push({ label, url, children: [] });
             renderMenuBuilder();
-            renderPreview();
+            const index = menuTree.length - 1;
+            menuItemsList?.querySelector(`.mb2-row[data-path="${index}"]`)?.scrollIntoView({ block: 'nearest' });
+            return index;
         };
 
         menuAddButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 const label = String(button.dataset.menuLabel || '').trim();
                 const url = String(button.dataset.menuUrl || '').trim();
-                if (!label || !url) return;
-                menuItems.push({ label, url, level: 0 });
-                renderMenuBuilder();
+                if (label === '' || url === '') return;
+                addPage(label, url);
             });
         });
 
         menuAddCustom?.addEventListener('click', () => {
-            menuItems.push({ label: 'Pagină nouă', url: '/pagina-noua', level: 0 });
+            const index = addPage('', '');
+            menuItemsList?.querySelector(`[data-field="label"][data-path="${index}"]`)?.focus();
+        });
+
+        menuClearBtn?.addEventListener('click', () => {
+            if (!window.confirm('Golești toată structura meniului?')) return;
+            menuTree = [];
             renderMenuBuilder();
         });
 
-        menuNormalizeBtn?.addEventListener('click', () => {
-            menuItems = normalizeMenuItems(menuItems);
-            renderMenuBuilder();
-        });
-        menuClearBtn?.addEventListener('click', () => {
-            if (!window.confirm('Golești toată structura meniului?')) return;
-            menuItems = [];
-            renderMenuBuilder();
-        });
+        // Cauta in lista de pagini din stanga, nu in structura din dreapta.
         menuPageSearch?.addEventListener('input', () => {
-            renderMenuBuilder();
+            const term = (menuPageSearch.value || '').trim().toLowerCase();
+            let vizibile = 0;
+            menuAddButtons.forEach((button) => {
+                const hay = String(button.dataset.menuSearch || '').toLowerCase();
+                const arata = term === '' || hay.includes(term);
+                button.hidden = !arata;
+                if (arata) vizibile += 1;
+            });
+            if (menuPagesEmpty) {
+                menuPagesEmpty.hidden = vizibile > 0;
+            }
         });
 
         menuItemsList?.addEventListener('click', (event) => {
             const button = event.target.closest('[data-action]');
-            if (!button) return;
-            const action = String(button.dataset.action || '');
-            const index = Number(button.dataset.index || -1);
-            if (!Number.isInteger(index) || index < 0 || index >= menuItems.length) return;
+            if (!button || button.disabled) return;
 
-            if (action === 'remove') {
-                menuItems.splice(index, 1);
-            } else if (action === 'up' && index > 0) {
-                const tmp = menuItems[index - 1];
-                menuItems[index - 1] = menuItems[index];
-                menuItems[index] = tmp;
-            } else if (action === 'down' && index < menuItems.length - 1) {
-                const tmp = menuItems[index + 1];
-                menuItems[index + 1] = menuItems[index];
-                menuItems[index] = tmp;
+            const action = String(button.dataset.action || '');
+            const parts = String(button.dataset.path || '').split('.').map(Number);
+            const parent = menuTree[parts[0]];
+            if (!parent) return;
+            const isChild = parts.length > 1;
+
+            let focusPath = String(button.dataset.path || '');
+            let focusAction = action;
+
+            if (action === 'up' || action === 'down') {
+                const delta = action === 'up' ? -1 : 1;
+                if (isChild) {
+                    focusPath = `${parts[0]}.${moveWithin(parent.children, parts[1], parts[1] + delta)}`;
+                } else {
+                    focusPath = String(moveWithin(menuTree, parts[0], parts[0] + delta));
+                }
+            } else if (action === 'indent' && !isChild && parts[0] > 0) {
+                // Nu exista nivelul trei: subpaginile celui retras il urmeaza
+                // ca frati, sub acelasi parinte nou.
+                const target = menuTree[parts[0] - 1];
+                const moved = menuTree.splice(parts[0], 1)[0];
+                const at = target.children.length;
+                target.children.push({ label: moved.label, url: moved.url });
+                moved.children.forEach((child) => target.children.push(child));
+                focusPath = `${parts[0] - 1}.${at}`;
+                focusAction = 'outdent';
+            } else if (action === 'outdent' && isChild) {
+                const moved = parent.children.splice(parts[1], 1)[0];
+                menuTree.splice(parts[0] + 1, 0, { label: moved.label, url: moved.url, children: [] });
+                focusPath = String(parts[0] + 1);
+                focusAction = 'indent';
+            } else if (action === 'add-child' && !isChild) {
+                parent.children.push({ label: '', url: '' });
+                renderMenuBuilder();
+                menuItemsList.querySelector(`[data-field="label"][data-path="${parts[0]}.${parent.children.length - 1}"]`)?.focus();
+                return;
+            } else if (action === 'remove') {
+                if (isChild) {
+                    parent.children.splice(parts[1], 1);
+                } else {
+                    const cate = parent.children.length;
+                    if (cate > 0 && !window.confirm(`Ștergi „${parent.label.trim() || 'fără titlu'}" împreună cu cele ${cate} subpagini?`)) {
+                        return;
+                    }
+                    menuTree.splice(parts[0], 1);
+                }
+                renderMenuBuilder();
+                return;
+            } else {
+                return;
             }
 
             renderMenuBuilder();
+            focusTool(focusAction, focusPath);
         });
 
         menuItemsList?.addEventListener('input', (event) => {
             const input = event.target.closest('[data-field]');
             if (!input) return;
-            const index = Number(input.dataset.index || -1);
-            const field = String(input.dataset.field || '');
-            if (!Number.isInteger(index) || index < 0 || index >= menuItems.length) return;
-            if (!['label', 'url', 'level'].includes(field)) return;
+            const node = nodeAtPath(input.dataset.path);
+            if (!node) return;
 
-            if (field === 'level') {
-                menuItems[index].level = Math.max(0, Math.min(1, Number(input.value) || 0));
-            } else {
-                menuItems[index][field] = input.value;
+            node[input.dataset.field === 'url' ? 'url' : 'label'] = input.value;
+
+            // Randul si eticheta zonei de drop se actualizeaza pe loc, ca sa nu
+            // redesenam lista si sa pierzi cursorul din camp.
+            input.closest('.mb2-row')?.classList.toggle('is-incomplete', !isFilled(node));
+            if (input.dataset.field === 'label' && !String(input.dataset.path).includes('.')) {
+                const zone = menuItemsList.querySelector(`[data-dropzone="${input.dataset.path}"]`);
+                if (zone) {
+                    zone.textContent = `Trage aici ca să pui în submeniul „${node.label.trim() || 'fără titlu'}"`;
+                }
             }
 
+            updateMenuCount();
             syncMenuBuilder();
             renderMenuLivePreview();
         });
 
         menuItemsList?.addEventListener('dragstart', (event) => {
-            const handle = event.target.closest('.menu-drag-handle');
-            if (!handle) {
+            const grip = event.target.closest('[data-grip]');
+            if (!grip) {
                 event.preventDefault();
                 return;
             }
-            const fromIndex = Number(handle.dataset.dragIndex || -1);
-            if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= menuItems.length) {
-                event.preventDefault();
-                return;
-            }
-
-            dragState.fromIndex = fromIndex;
-            dragState.toIndex = fromIndex;
-            dragState.position = 'after';
-            dragState.level = menuItems[fromIndex]?.level === 1 ? 1 : 0;
-
+            drag.path = String(grip.dataset.grip || '');
+            drag.target = null;
             event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', String(fromIndex));
+            event.dataTransfer.setData('text/plain', drag.path);
             menuItemsList.classList.add('is-dragging');
-            const row = menuItemsList.querySelector(`.menu-item-row[data-index="${fromIndex}"]`);
-            row?.classList.add('is-dragging');
+            menuItemsList.querySelector(`.mb2-row[data-path="${drag.path}"]`)?.classList.add('is-dragging');
         });
 
         menuItemsList?.addEventListener('dragover', (event) => {
-            if (dragState.fromIndex < 0) return;
+            if (drag.path === '') return;
             event.preventDefault();
-
             clearDropDecor();
-            menuItemsList.classList.add('is-dragging');
-            const row = event.target.closest('.menu-item-row');
-            if (!row) {
-                dragState.toIndex = menuItems.length - 1;
-                dragState.position = 'after';
-                dragState.level = desiredLevelFromPointer(event.clientX);
+
+            const zone = event.target.closest('[data-dropzone]');
+            if (zone) {
+                const parentIndex = Number(zone.dataset.dropzone);
+                drag.target = {
+                    kind: 'sub',
+                    parentIndex,
+                    index: menuTree[parentIndex]?.children.length ?? 0,
+                    position: 'before',
+                };
+                zone.classList.add('is-over');
                 return;
             }
 
-            const toIndex = Number(row.dataset.index || -1);
-            if (!Number.isInteger(toIndex) || toIndex < 0) return;
-            const rect = row.getBoundingClientRect();
-            const position = event.clientY < (rect.top + rect.height / 2) ? 'before' : 'after';
-            const level = desiredLevelFromPointer(event.clientX);
-
-            dragState.toIndex = toIndex;
-            dragState.position = position;
-            dragState.level = level;
-
-            row.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
-            if (level === 1) {
-                row.classList.add('drop-indent');
+            const row = event.target.closest('.mb2-row');
+            if (!row) {
+                drag.target = menuTree.length
+                    ? { kind: 'root', parentIndex: -1, index: menuTree.length - 1, position: 'after' }
+                    : null;
+                return;
             }
-            const sourceRow = menuItemsList.querySelector(`.menu-item-row[data-index="${dragState.fromIndex}"]`);
-            sourceRow?.classList.add('is-dragging');
+
+            const parts = String(row.dataset.path).split('.').map(Number);
+            const rect = row.getBoundingClientRect();
+            const position = event.clientY < rect.top + (rect.height / 2) ? 'before' : 'after';
+            drag.target = parts.length === 1
+                ? { kind: 'root', parentIndex: -1, index: parts[0], position }
+                : { kind: 'sub', parentIndex: parts[0], index: parts[1], position };
+            row.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
         });
 
         menuItemsList?.addEventListener('drop', (event) => {
-            if (dragState.fromIndex < 0) return;
+            if (drag.path === '' || !drag.target) {
+                endDrag();
+                return;
+            }
             event.preventDefault();
-            applyDragMove();
-            dragState.fromIndex = -1;
-            dragState.toIndex = -1;
-            clearDropDecor();
+
+            const from = drag.path.split('.').map(Number);
+            const target = drag.target;
+            const sourceParent = from.length === 2 ? menuTree[from[0]] : null;
+            const sourceNode = from.length === 1 ? menuTree[from[0]] : sourceParent?.children[from[1]];
+            if (!sourceNode) {
+                endDrag();
+                return;
+            }
+
+            // Tinem referintele, nu indicii: dupa scoaterea nodului indicii se muta.
+            const targetParent = target.kind === 'sub' ? menuTree[target.parentIndex] : null;
+            const targetNode = target.kind === 'root'
+                ? menuTree[target.index]
+                : (targetParent ? targetParent.children[target.index] : null);
+
+            if (sourceNode === targetNode || (target.kind === 'sub' && sourceNode === targetParent)) {
+                endDrag();
+                return;
+            }
+
+            if (from.length === 1) {
+                menuTree.splice(from[0], 1);
+            } else {
+                sourceParent.children.splice(from[1], 1);
+            }
+
+            const copie = (node) => ({ label: node.label, url: node.url });
+            const kids = (from.length === 1 ? sourceNode.children : []).map(copie);
+
+            if (target.kind === 'sub' && targetParent) {
+                let at = targetNode ? targetParent.children.indexOf(targetNode) : targetParent.children.length;
+                if (at < 0) at = targetParent.children.length;
+                if (target.position === 'after') at += 1;
+                targetParent.children.splice(at, 0, copie(sourceNode), ...kids);
+            } else {
+                let at = targetNode ? menuTree.indexOf(targetNode) : menuTree.length;
+                if (at < 0) at = menuTree.length;
+                if (target.position === 'after') at += 1;
+                menuTree.splice(at, 0, { ...copie(sourceNode), children: kids });
+            }
+
+            endDrag();
+            renderMenuBuilder();
         });
 
-        menuItemsList?.addEventListener('dragend', () => {
-            dragState.fromIndex = -1;
-            dragState.toIndex = -1;
-            clearDropDecor();
-        });
+        menuItemsList?.addEventListener('dragend', endDrag);
 
         renderMenuBuilder();
     } else {
