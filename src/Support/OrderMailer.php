@@ -1452,16 +1452,20 @@ HTML;
             $amountLabel = $hasAmount ? self::formatLeiAmount($amount) : '—';
             $safeAmountLabel = htmlspecialchars($amountLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-            $cards .= '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;">'
-                . '<div style="display:flex;align-items:center;gap:12px;">'
-                . '<div style="width:54px;height:54px;border-radius:14px;background:#e7efe8;color:#2f8d5b;font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center;">📦</div>'
-                . '<div>'
-                . '<p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">' . $safeName . '</p>'
+            // Tabel, nu flexbox: Gmail aruncă `justify-content` şi `gap`, iar
+            // denumirea ajungea lipită de preţ.
+            $cards .= '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+                . ' style="border-collapse:collapse;width:100%;background:#f4f7f4;border-radius:12px;margin:0 0 10px;">'
+                . '<tr>'
+                . '<td width="54" style="padding:14px 0 14px 16px;vertical-align:top;font-size:28px;line-height:1;color:#2f8d5b;">📦</td>'
+                . '<td style="padding:14px 12px;vertical-align:top;text-align:left;">'
+                . '<p style="margin:0;color:#0f2532;font-size:18px;line-height:1.3;font-weight:700;">' . $safeName . '</p>'
                 . $qtyLabel
-                . '</div>'
-                . '</div>'
-                . '<div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">' . $safeAmountLabel . '</div>'
-                . '</div>';
+                . '</td>'
+                . '<td style="padding:14px 16px 14px 0;vertical-align:top;text-align:right;white-space:nowrap;'
+                . 'color:#0f2532;font-size:16px;line-height:1.3;font-weight:700;">' . $safeAmountLabel . '</td>'
+                . '</tr>'
+                . '</table>';
 
             if ($hasAmount) {
                 $total += $amount;

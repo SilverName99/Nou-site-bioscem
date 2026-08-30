@@ -546,6 +546,52 @@ final class EmailAutomation
             . ' style="border-collapse:collapse;width:100%;margin:6px 0 0;">' . $randuri . '</table>';
     }
 
+    /**
+     * Comanda de probă pentru emailurile de test din administrare.
+     *
+     * Trece prin aceiaşi randori ca o comandă adevărată, ca emailul de test să
+     * arate exact ca cel primit de client. Înainte, ecranul de test avea propria
+     * copie a aşezării, scrisă de mână, şi rămânea în urmă la fiecare schimbare.
+     */
+    public static function exempluComanda(): array
+    {
+        $items = [
+            [
+                'product_name' => 'Ulei Esențial de Lavandă',
+                'quantity' => 2,
+                'unit_price' => 89.00,
+                'line_total' => 178.00,
+                'vat_percent' => 21.0,
+                'vat_included' => 1,
+            ],
+            [
+                'product_name' => 'Cremă Hidratantă cu Aloe',
+                'quantity' => 1,
+                'unit_price' => 125.00,
+                'line_total' => 125.00,
+                'vat_percent' => 21.0,
+                'vat_included' => 1,
+            ],
+        ];
+        $order = [
+            'subtotal' => 303.00,
+            'shipping_cost' => 19.00,
+            'discount_total' => 0.0,
+            'loyalty_points_discount' => 0.0,
+            'total' => 322.00,
+        ];
+
+        return [
+            'order_summary' => self::orderItemsSummaryText($items),
+            'order_items_html' => self::orderItemsSummaryRowsHtml($items),
+            'order_totals_html' => self::orderTotalsRowsHtml($order, $items),
+            'order_total' => self::formatLei((float) $order['total']),
+            'cart_summary' => self::orderItemsSummaryText($items),
+            'cart_items_html' => self::orderItemsSummaryRowsHtml($items),
+            'cart_total' => self::formatLei((float) $order['subtotal']),
+        ];
+    }
+
     /** Cota comună a liniilor, sau null dacă se amestecă ori nu e inclusă în preţ. */
     private static function cotaTvaUnica(array $items): ?float
     {

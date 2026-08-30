@@ -11043,18 +11043,18 @@ final class AdminController
                     'awb' => $awb,
                     'courier_name' => 'FAN Courier',
                     'tracking_url' => FanCourierGateway::trackingUrl($awb),
-                    'cart_summary' => 'Produs demo x1 - 99.00 RON',
-                    'cart_items_html' => '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;"><div style="display:flex;align-items:center;gap:12px;"><div style="width:54px;height:54px;border-radius:14px;background:#e7efe8;color:#2f8d5b;font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center;">📦</div><div><p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">Ulei Esențial de Lavandă</p><p style="margin:4px 0 0;color:#5f7680;font-size:14px;line-height:1.35;">Cantitate: 1</p></div></div><div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">89,00 lei</div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;"><div style="display:flex;align-items:center;gap:12px;"><div style="width:54px;height:54px;border-radius:14px;background:#e7efe8;color:#2f8d5b;font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center;">📦</div><div><p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">Cremă Hidratantă cu Aloe</p><p style="margin:4px 0 0;color:#5f7680;font-size:14px;line-height:1.35;">Cantitate: 1</p></div></div><div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">125,00 lei</div></div>',
-                    'cart_total' => '214,00 lei',
+                    // Exemplul trece prin randorii adevăraţi, ca emailul de test să
+                    // arate exact ca cel primit de client.
+                    ...EmailAutomation::exempluComanda(),
+                    // Fără ele, testul şablonului de OP ar arăta un chenar gol
+                    // exact acolo unde clientul aşteaptă IBAN-ul.
+                    'payment_details' => trim((string) ($testSettings['bank_transfer_instructiuni'] ?? '')),
                     'cart_action_url' => $testOrderActionUrl,
                     'order_status' => 'În procesare',
                     'estimated_delivery' => '8-9 Aprilie 2026',
                     'customer_email' => $to,
                     'store_name' => (string) ($testSettings['order_email_from_name'] ?? 'Bioscem'),
                     'order_date' => '6 Aprilie 2026',
-                    'order_total' => '303,00 lei',
-                    'order_summary' => "Ulei Esențial de Lavandă x2 - 89,00 lei\nCremă Hidratantă cu Aloe x1 - 125,00 lei",
-                    'order_items_html' => '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;"><div><p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">Ulei Esențial de Lavandă</p><p style="margin:4px 0 0;color:#5f7680;font-size:14px;line-height:1.35;">Cantitate: 2</p></div><div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">89,00 lei</div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;"><div><p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">Cremă Hidratantă cu Aloe</p><p style="margin:4px 0 0;color:#5f7680;font-size:14px;line-height:1.35;">Cantitate: 1</p></div><div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">125,00 lei</div></div>',
                     'order_action_url' => $testOrderActionUrl,
                     'year' => date('Y'),
                 ], $testSettings, $db, [
