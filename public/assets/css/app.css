@@ -2815,10 +2815,15 @@ body > main.container {
     color: #94a3b8;
     cursor: grab;
     font-size: 1rem;
+    /* Mutarea merge pe evenimente de pointer, deci browserul nu trebuie sa
+       trateze el gestul ca derulare sau ca selectie de text. */
+    touch-action: none;
+    user-select: none;
 }
 
-.mb2-grip:active {
+.menu-items-list.is-dragging {
     cursor: grabbing;
+    user-select: none;
 }
 
 /* Subpaginile stau retrase, cu o linie care le leaga de parinte.

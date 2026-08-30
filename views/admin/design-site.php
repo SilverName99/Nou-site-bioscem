@@ -510,7 +510,7 @@ $mobileMenuEmbedToken = '{{mobile_menu}}';
 
         return `
             <div class="mb2-row mb2-row--${kind}${isFilled(node) ? '' : ' is-incomplete'}" data-path="${path}" data-kind="${kind}">
-                <button type="button" class="mb2-grip" draggable="true" data-grip="${path}" title="Trage ca să muți" aria-label="Trage ca să muți">⠿</button>
+                <button type="button" class="mb2-grip" data-grip="${path}" title="Trage ca să muți" aria-label="Trage ca să muți">⠿</button>
                 <div class="mb2-fields">
                     <input class="mb2-input" data-field="label" data-path="${path}" value="${esc(node.label)}" placeholder="Titlu în meniu">
                     <input class="mb2-input mb2-input--url" data-field="url" data-path="${path}" value="${esc(node.url)}" placeholder="/pagina">
@@ -717,7 +717,7 @@ ${footerHtml}
     });
 
     if (menuEnabled) {
-        const drag = { path: '', target: null };
+        const drag = { path: '', target: null, pornit: false, pointerId: null, x0: 0, y0: 0 };
 
         const clearDropDecor = () => {
             menuItemsList?.querySelectorAll('.drop-before, .drop-after, .is-over').forEach((el) => {
@@ -728,6 +728,8 @@ ${footerHtml}
         const endDrag = () => {
             drag.path = '';
             drag.target = null;
+            drag.pornit = false;
+            drag.pointerId = null;
             clearDropDecor();
             menuItemsList?.classList.remove('is-dragging');
             menuItemsList?.querySelectorAll('.mb2-row.is-dragging').forEach((row) => {
@@ -882,70 +884,56 @@ ${footerHtml}
             renderMenuLivePreview();
         });
 
-        menuItemsList?.addEventListener('dragstart', (event) => {
-            const grip = event.target.closest('[data-grip]');
-            if (!grip) {
-                event.preventDefault();
-                return;
-            }
-            drag.path = String(grip.dataset.grip || '');
-            drag.target = null;
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', drag.path);
-            menuItemsList.classList.add('is-dragging');
-            menuItemsList.querySelector(`.mb2-row[data-path="${drag.path}"]`)?.classList.add('is-dragging');
-        });
+        /* Mutarea merge pe evenimente de pointer, nu pe drag & drop din HTML5.
+           Motivul: in Chrome, `draggable` pe un <button> nu porneste o mutare —
+           butonul isi trateaza singur apasarea. In plus, asa merge si la deget
+           pe tableta, iar noi controlam exact ce se intampla. */
 
-        menuItemsList?.addEventListener('dragover', (event) => {
-            if (drag.path === '') return;
-            event.preventDefault();
-            clearDropDecor();
+        const tintaDinPunct = (x, y) => {
+            const el = document.elementFromPoint(x, y);
+            if (!el || !menuItemsList.contains(el)) return null;
 
-            const zone = event.target.closest('[data-dropzone]');
+            const zone = el.closest('[data-dropzone]');
             if (zone) {
                 const parentIndex = Number(zone.dataset.dropzone);
-                drag.target = {
+                zone.classList.add('is-over');
+                return {
                     kind: 'sub',
                     parentIndex,
                     index: menuTree[parentIndex]?.children.length ?? 0,
                     position: 'before',
                 };
-                zone.classList.add('is-over');
-                return;
             }
 
-            const row = event.target.closest('.mb2-row');
-            if (!row) {
-                drag.target = menuTree.length
-                    ? { kind: 'root', parentIndex: -1, index: menuTree.length - 1, position: 'after' }
-                    : null;
-                return;
-            }
+            const row = el.closest('.mb2-row');
+            if (!row) return null;
 
             const parts = String(row.dataset.path).split('.').map(Number);
             const rect = row.getBoundingClientRect();
-            const position = event.clientY < rect.top + (rect.height / 2) ? 'before' : 'after';
-            drag.target = parts.length === 1
+            const position = y < rect.top + (rect.height / 2) ? 'before' : 'after';
+            row.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
+            return parts.length === 1
                 ? { kind: 'root', parentIndex: -1, index: parts[0], position }
                 : { kind: 'sub', parentIndex: parts[0], index: parts[1], position };
-            row.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
-        });
+        };
 
-        menuItemsList?.addEventListener('drop', (event) => {
-            if (drag.path === '' || !drag.target) {
-                endDrag();
-                return;
+        // Cu 15 categorii lista trece de ecran, deci trebuie sa se deruleze
+        // singura cand ajungi cu randul in mana la marginea ferestrei.
+        const deruleazaLaMargine = (clientY) => {
+            const margine = 70;
+            if (clientY < margine) {
+                window.scrollBy(0, -14);
+            } else if (clientY > window.innerHeight - margine) {
+                window.scrollBy(0, 14);
             }
-            event.preventDefault();
+        };
 
+        const aplicaMutarea = () => {
             const from = drag.path.split('.').map(Number);
             const target = drag.target;
             const sourceParent = from.length === 2 ? menuTree[from[0]] : null;
             const sourceNode = from.length === 1 ? menuTree[from[0]] : sourceParent?.children[from[1]];
-            if (!sourceNode) {
-                endDrag();
-                return;
-            }
+            if (!sourceNode) return false;
 
             // Tinem referintele, nu indicii: dupa scoaterea nodului indicii se muta.
             const targetParent = target.kind === 'sub' ? menuTree[target.parentIndex] : null;
@@ -953,10 +941,8 @@ ${footerHtml}
                 ? menuTree[target.index]
                 : (targetParent ? targetParent.children[target.index] : null);
 
-            if (sourceNode === targetNode || (target.kind === 'sub' && sourceNode === targetParent)) {
-                endDrag();
-                return;
-            }
+            if (sourceNode === targetNode) return false;
+            if (target.kind === 'sub' && sourceNode === targetParent) return false;
 
             if (from.length === 1) {
                 menuTree.splice(from[0], 1);
@@ -971,6 +957,7 @@ ${footerHtml}
                 let at = targetNode ? targetParent.children.indexOf(targetNode) : targetParent.children.length;
                 if (at < 0) at = targetParent.children.length;
                 if (target.position === 'after') at += 1;
+                // Nu exista nivelul trei: subpaginile celui mutat il urmeaza ca frati.
                 targetParent.children.splice(at, 0, copie(sourceNode), ...kids);
             } else {
                 let at = targetNode ? menuTree.indexOf(targetNode) : menuTree.length;
@@ -979,11 +966,53 @@ ${footerHtml}
                 menuTree.splice(at, 0, { ...copie(sourceNode), children: kids });
             }
 
-            endDrag();
-            renderMenuBuilder();
+            return true;
+        };
+
+        menuItemsList?.addEventListener('pointerdown', (event) => {
+            const grip = event.target.closest('.mb2-grip');
+            if (!grip || event.button !== 0) return;
+            event.preventDefault();
+            drag.path = String(grip.dataset.grip || '');
+            drag.target = null;
+            drag.pornit = false;
+            drag.pointerId = event.pointerId;
+            drag.x0 = event.clientX;
+            drag.y0 = event.clientY;
+            try { grip.setPointerCapture(event.pointerId); } catch { /* fara captura merge si asa */ }
         });
 
-        menuItemsList?.addEventListener('dragend', endDrag);
+        menuItemsList?.addEventListener('pointermove', (event) => {
+            if (drag.path === '' || event.pointerId !== drag.pointerId) return;
+
+            if (!drag.pornit) {
+                // Cativa pixeli toleranta, ca un click scapat pe maner sa nu
+                // porneasca o mutare.
+                if (Math.abs(event.clientX - drag.x0) + Math.abs(event.clientY - drag.y0) < 5) return;
+                drag.pornit = true;
+                menuItemsList.classList.add('is-dragging');
+                menuItemsList.querySelector(`.mb2-row[data-path="${drag.path}"]`)?.classList.add('is-dragging');
+            }
+
+            event.preventDefault();
+            clearDropDecor();
+            drag.target = tintaDinPunct(event.clientX, event.clientY);
+            deruleazaLaMargine(event.clientY);
+        });
+
+        const incheieMutarea = (event) => {
+            if (drag.path === '' || (drag.pointerId !== null && event.pointerId !== drag.pointerId)) return;
+            const mutat = drag.pornit && drag.target ? aplicaMutarea() : false;
+            endDrag();
+            if (mutat) renderMenuBuilder();
+        };
+
+        menuItemsList?.addEventListener('pointerup', incheieMutarea);
+        menuItemsList?.addEventListener('pointercancel', () => endDrag());
+
+        // Fara asta, browserul porneste propria mutare de text sau de imagine
+        // peste a noastra.
+        menuItemsList?.addEventListener('dragstart', (event) => event.preventDefault());
 
         renderMenuBuilder();
     } else {

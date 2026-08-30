@@ -15311,11 +15311,14 @@ HTML;
             if ($level > 1) {
                 $level = 1;
             }
-            if ($level === 1) {
-                $prev = $normalized[count($normalized) - 1] ?? null;
-                if (!is_array($prev) || (int) ($prev['level'] ?? 0) !== 0) {
-                    $level = 0;
-                }
+            // O subpagina are nevoie doar de un parinte deasupra ei, nu ca
+            // randul imediat anterior sa fie unul principal. Conditia veche
+            // lasa fiecare categorie cu o singura subpagina: a doua era urcata
+            // la nivelul principal, a treia devenea subpagina ei, si asa mai
+            // departe. Primul rand din lista ramane oricum principal, deci
+            // orice rand de dupa are un parinte.
+            if ($level === 1 && $normalized === []) {
+                $level = 0;
             }
             $normalized[] = [
                 'label' => $label,
