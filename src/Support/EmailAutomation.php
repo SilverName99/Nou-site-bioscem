@@ -145,6 +145,17 @@ final class EmailAutomation
             return;
         }
 
+        // La o comandă cu ordin de plată, confirmarea obişnuită e înlocuită de
+        // şablonul cu datele bancare — nu se trimit amândouă. Dacă şablonul de
+        // OP e oprit, rămâne confirmarea obişnuită, ca înainte.
+        if (
+            $templateType === 'new_order'
+            && strtolower((string) ($order['payment_method'] ?? '')) === 'bank_transfer'
+            && OrderMailer::isTemplateActive('new_order_op', $settings)
+        ) {
+            $templateType = 'new_order_op';
+        }
+
         if (!OrderMailer::isTemplateActive($templateType, $settings)) {
             return;
         }
@@ -230,20 +241,25 @@ final class EmailAutomation
                 : '/contul-meu?section=orders',
         ];
 
-        // Comanda plătită prin OP: emailul de comandă poartă datele de plată,
-        // cu numărul comenzii ca referință — altfel clientul nu are de unde
-        // ști unde să trimită banii.
-        if (
+        // Datele bancare stau într-un singur loc — Setări plăți — de unde le ia
+        // și pagina de checkout.
+        $instructiuni = trim((string) ($settings['bank_transfer_instructiuni'] ?? ''));
+
+        if ($templateType === 'new_order_op') {
+            // Șablonul de OP își pune singur titlul, suma și referința, deci
+            // primește datele curate.
+            $context['payment_details'] = $instructiuni;
+        } elseif (
             $templateType === 'new_order'
             && strtolower((string) ($order['payment_method'] ?? '')) === 'bank_transfer'
+            && $instructiuni !== ''
         ) {
-            $instructiuni = trim((string) ($settings['bank_transfer_instructiuni'] ?? ''));
-            if ($instructiuni !== '') {
-                $context['payment_instructions'] =
-                    "Plata prin ordin de plată — comanda se procesează după încasare.\n"
-                    . 'Referință plată: ' . (string) ($order['order_number'] ?? '') . "\n"
-                    . $instructiuni;
-            }
+            // Cazul în care șablonul de OP e oprit: confirmarea obișnuită duce
+            // mai departe datele de plată, ca până acum.
+            $context['payment_instructions'] =
+                "Plata prin ordin de plată — comanda se procesează după încasare.\n"
+                . 'Referință plată: ' . (string) ($order['order_number'] ?? '') . "\n"
+                . $instructiuni;
         }
 
         $sentCount = 0;

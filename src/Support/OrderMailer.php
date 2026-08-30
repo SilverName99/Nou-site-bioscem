@@ -63,6 +63,17 @@ final class OrderMailer
                 'default_subject' => 'Comandă nouă {{order_number}}',
                 'default_body' => $newOrderDefaultBody,
             ],
+            'new_order_op' => [
+                'label' => 'Comandă nouă — plată prin OP',
+                'subject_key' => 'email_template_new_order_op_subject',
+                'body_key' => 'email_template_new_order_op_body',
+                'active_key' => 'email_template_new_order_op_active',
+                'recipient_mode_key' => 'email_template_new_order_op_recipient_mode',
+                'admin_recipients_key' => 'email_template_new_order_op_admin_recipients',
+                'default_recipient_mode' => 'client',
+                'default_subject' => 'Date de plată pentru comanda {{order_number}}',
+                'default_body' => self::newOrderOpAdvancedDefaultBody(),
+            ],
             'processing' => [
                 'label' => 'Comandă în procesare',
                 'subject_key' => 'email_template_processing_subject',
@@ -407,6 +418,17 @@ final class OrderMailer
         $instructiuniPlata = trim((string) ($context['payment_instructions'] ?? ''));
         if ($instructiuniPlata !== '' && !str_contains($bodyTemplate, '{{payment_instructions}}')) {
             $bodyHtml .= self::paymentInstructionsHtml($instructiuniPlata);
+        }
+
+        // Şi la fel pentru şablonul de OP: dacă cineva a şters din el
+        // {{payment_details}}, emailul ar cere o plată fără să spună unde.
+        $datelePlatii = trim((string) ($context['payment_details'] ?? ''));
+        if (
+            $datelePlatii !== ''
+            && !str_contains($bodyTemplate, '{{payment_details}}')
+            && !str_contains($bodyTemplate, '{{payment_instructions}}')
+        ) {
+            $bodyHtml .= self::paymentInstructionsHtml($datelePlatii);
         }
 
         $heading = htmlspecialchars((string) ($definition['label'] ?? 'Notificare comanda'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -1126,6 +1148,13 @@ HTML;
             '{{payment_instructions}}' => self::paymentInstructionsHtml(
                 (string) ($context['payment_instructions'] ?? ''),
             ),
+            // Aceleaşi date, dar goale-goluţe: şablonul de OP îşi aşază singur
+            // chenarul şi titlul, ca să nu iasă două titluri unul sub altul.
+            '{{payment_details}}' => nl2br(htmlspecialchars(
+                trim((string) ($context['payment_details'] ?? '')),
+                ENT_QUOTES | ENT_SUBSTITUTE,
+                'UTF-8',
+            )),
         ];
     }
 
@@ -1538,6 +1567,56 @@ HTML;
     <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#0f172a;font-size:36px;line-height:1.1;font-weight:700;text-align:right;">{{order_total}}</td>
   </tr>
 </table>
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0 16px;">
+<p style="margin:0 0 6px;text-align:center;color:#5b6f69;font-size:14px;line-height:1.5;">© {{year}} {{store_name}}. Toate drepturile rezervate.</p>
+<p style="margin:0;text-align:center;color:#7b8b86;font-size:14px;line-height:1.5;">Acest email a fost trimis la {{customer_email}}</p>
+HTML;
+    }
+
+    /**
+     * Comanda plătită prin ordin de plată. Datele băncii nu stau aici, ci în
+     * Setări plăți, de unde le ia şi pagina de checkout — un singur loc pentru
+     * IBAN, ca să nu ajungă vreodată două valori diferite pe site şi pe email.
+     */
+    private static function newOrderOpAdvancedDefaultBody(): string
+    {
+        return <<<'HTML'
+<div style="text-align:center;padding-top:8px;">
+  <div style="margin:0 auto 12px;color:#2f8d5b;font-size:56px;line-height:1;font-weight:700;">🏦</div>
+  <h2 style="margin:0;font-family:'Playfair Display',Georgia,serif;font-size:42px;line-height:1.05;color:#0f172a;font-weight:700;">{{store_name}}</h2>
+</div>
+
+<p style="margin:28px 0 10px;font-size:34px;line-height:1.1;color:#0f172a;font-weight:700;">Bună ziua,</p>
+<p style="margin:0 0 20px;color:#4f6b66;font-size:16px;line-height:1.55;">Vă mulțumim pentru comanda <strong>#{{order_number}}</strong>.</p>
+<p style="margin:0 0 14px;color:#4f6b66;font-size:16px;line-height:1.55;">Pentru plata prin Ordin de Plată (OP), vă rugăm să utilizați următoarele date:</p>
+
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;background:#f4f7f4;border-radius:14px;padding:18px;margin:0 0 22px;">
+  <tr>
+    <td style="padding:0 0 10px;color:#0f172a;font-size:15px;font-weight:700;letter-spacing:.06em;">DATE DE PLATĂ</td>
+  </tr>
+  <tr>
+    <!-- Fără white-space:pre-line: {{payment_details}} vine deja cu <br>,
+         iar cele două împreună ar rupe fiecare rând de două ori. -->
+    <td style="padding:0 0 10px;color:#1f2937;font-size:16px;line-height:1.6;">{{payment_details}}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 0 0;border-top:1px solid #dbe6e5;color:#0f172a;font-size:20px;line-height:1.4;font-weight:700;">Sumă: {{order_total}}</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 0 0;color:#1f2937;font-size:16px;line-height:1.5;">Detalii plată: Comanda #{{order_number}}</td>
+  </tr>
+</table>
+
+<p style="margin:0 0 18px;color:#4f6b66;font-size:16px;line-height:1.55;">După efectuarea plății, vă rugăm să ne trimiteți dovada plății <strong>prin răspuns la acest email</strong>.</p>
+
+<p style="margin:0 0 8px;color:#0f172a;font-size:28px;line-height:1.1;font-weight:700;">Rezumat comandă</p>
+<div style="margin:0 0 18px;">
+  {{order_items_html}}
+</div>
+
+<p style="margin:0 0 4px;color:#4f6b66;font-size:16px;line-height:1.55;">Vă mulțumim și vă dorim VITALITATE ȘI PROTECȚIE!</p>
+<p style="margin:0 0 18px;color:#4f6b66;font-size:16px;line-height:1.55;">Echipa {{store_name}}</p>
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0 16px;">
 <p style="margin:0 0 6px;text-align:center;color:#5b6f69;font-size:14px;line-height:1.5;">© {{year}} {{store_name}}. Toate drepturile rezervate.</p>

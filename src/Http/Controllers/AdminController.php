@@ -17870,6 +17870,8 @@ HTML;
             if (!is_array($decodedBlocks) || $decodedBlocks === []) {
                 if ((string) $type === 'new_order') {
                     $decodedBlocks = $this->newOrderEcommerceDefaultBlocks();
+                } elseif ((string) $type === 'new_order_op') {
+                    $decodedBlocks = $this->newOrderOpEcommerceDefaultBlocks();
                 } elseif ((string) $type === 'processing') {
                     $decodedBlocks = $this->processingEcommerceDefaultBlocks();
                 } elseif ((string) $type === 'shipped') {
@@ -18386,6 +18388,87 @@ HTML;
                 'align' => 'right',
                 'background' => '#ffffff',
                 'text_color' => '#0f2532',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'divider',
+                'line_color' => '#eceff1',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'text',
+                'content' => "© {{year}} {{store_name}}. Toate drepturile rezervate.\nAcest email a fost trimis la {{customer_email}}",
+                'align' => 'center',
+                'background' => '#ffffff',
+                'text_color' => '#5f7680',
+                'block_background' => '#ffffff',
+            ],
+        ];
+    }
+
+    /**
+     * Blocurile cu care se deschide editorul vizual pentru emailul de OP.
+     * Fără ele, editorul ar porni de la textul curăţat de HTML şi prima salvare
+     * ar turti aşezarea şablonului.
+     */
+    private function newOrderOpEcommerceDefaultBlocks(): array
+    {
+        return [
+            [
+                'type' => 'header',
+                'content' => '🏦',
+                'align' => 'center',
+                'background' => '#ffffff',
+                'text_color' => '#2f8d5b',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'header',
+                'content' => '{{store_name}}',
+                'align' => 'center',
+                'background' => '#ffffff',
+                'text_color' => '#0f2532',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'text',
+                'content' => "Bună ziua,\n\nVă mulțumim pentru comanda #{{order_number}}.\n\n"
+                    . 'Pentru plata prin Ordin de Plată (OP), vă rugăm să utilizați următoarele date:',
+                'align' => 'left',
+                'background' => '#ffffff',
+                'text_color' => '#44606b',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'text',
+                'content' => "DATE DE PLATĂ\n{{payment_details}}\n\nSumă: {{order_total}}\nDetalii plată: Comanda #{{order_number}}",
+                'align' => 'left',
+                'background' => '#f4f7f4',
+                'text_color' => '#16323f',
+                'block_background' => '#f4f7f4',
+            ],
+            [
+                'type' => 'text',
+                'content' => 'După efectuarea plății, vă rugăm să ne trimiteți dovada plății prin răspuns la acest email.',
+                'align' => 'left',
+                'background' => '#ffffff',
+                'text_color' => '#44606b',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'text',
+                'content' => "Rezumat comandă:\n{{order_summary}}",
+                'align' => 'left',
+                'background' => '#ffffff',
+                'text_color' => '#0f2532',
+                'block_background' => '#ffffff',
+            ],
+            [
+                'type' => 'text',
+                'content' => "Vă mulțumim și vă dorim VITALITATE ȘI PROTECȚIE!\nEchipa {{store_name}}",
+                'align' => 'left',
+                'background' => '#ffffff',
+                'text_color' => '#44606b',
                 'block_background' => '#ffffff',
             ],
             [

@@ -251,6 +251,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
     $ecommerceOrder = [
         'account_created' => 'Bun venit (cont nou)',
         'new_order' => 'Comandă nouă',
+        'new_order_op' => 'Comandă nouă — plată prin OP',
         'processing' => 'Comandă în procesare',
         'shipped' => 'Comandă expediată',
         'delivered' => 'Comandă livrată/finalizată',
@@ -278,6 +279,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
         ['code' => '{{store_name}}', 'description' => 'Numele magazinului (din setări email)'],
         ['code' => '{{customer_email}}', 'description' => 'Email-ul clientului'],
         ['code' => '{{year}}', 'description' => 'Anul curent'],
+        ['code' => '{{payment_details}}', 'description' => 'Datele bancare din Setări plăți (doar la „Comandă nouă — plată prin OP")'],
     ];
     $orderedEcommerceRows = [];
     foreach ($ecommerceOrder as $etype => $label) {
