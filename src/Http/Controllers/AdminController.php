@@ -18457,7 +18457,7 @@ HTML;
             ],
             [
                 'type' => 'text',
-                'content' => "Rezumat comandă:\n{{order_summary}}",
+                'content' => "Rezumat comandă:\n{{order_items_html}}\n{{order_totals_html}}",
                 'align' => 'left',
                 'background' => '#ffffff',
                 'text_color' => '#0f2532',

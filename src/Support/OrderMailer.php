@@ -1143,6 +1143,7 @@ HTML;
             '{{order_summary}}' => $safeOrderSummary,
             '{{order_items_html}}' => $orderItemsHtml,
             '{{order_summary_rows}}' => $orderItemsHtml,
+            '{{order_totals_html}}' => (string) ($context['order_totals_html'] ?? ''),
             '{{order_action_url}}' => $safeOrderActionUrl,
             '{{year}}' => htmlspecialchars($year, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
             '{{payment_instructions}}' => self::paymentInstructionsHtml(
@@ -1611,8 +1612,11 @@ HTML;
 <p style="margin:0 0 18px;color:#4f6b66;font-size:16px;line-height:1.55;">După efectuarea plății, vă rugăm să ne trimiteți dovada plății <strong>prin răspuns la acest email</strong>.</p>
 
 <p style="margin:0 0 8px;color:#0f172a;font-size:28px;line-height:1.1;font-weight:700;">Rezumat comandă</p>
-<div style="margin:0 0 18px;">
+<div style="margin:0 0 6px;">
   {{order_items_html}}
+</div>
+<div style="margin:0 0 18px;">
+  {{order_totals_html}}
 </div>
 
 <p style="margin:0 0 4px;color:#4f6b66;font-size:16px;line-height:1.55;">Vă mulțumim și vă dorim VITALITATE ȘI PROTECȚIE!</p>

@@ -124,7 +124,8 @@ final class EmailAutomation
         ErpSync::ensureSchema($db);
         $stmt = $db->prepare(
             'SELECT id, order_number, status, payment_method, billing_first_name, billing_last_name, billing_email,
-                    fan_awb, fan_awb_list, fan_tracking_url, created_at, total
+                    fan_awb, fan_awb_list, fan_tracking_url, created_at, total,
+                    subtotal, shipping_cost, discount_total, loyalty_points_discount
              FROM orders
              WHERE id = :id AND deleted_at IS NULL
              LIMIT 1'
@@ -235,6 +236,7 @@ final class EmailAutomation
             'order_summary' => $orderSummaryText,
             'order_items_html' => $orderSummaryRows,
             'order_summary_rows' => $orderSummaryRows,
+            'order_totals_html' => self::orderTotalsRowsHtml($order, $orderItems),
             // Clientul primește linkuri publice; nimeni nu e trimis în /admin.
             'order_action_url' => $templateType === 'cancelled'
                 ? '/contact'
@@ -405,11 +407,15 @@ final class EmailAutomation
             return [];
         }
 
+        // Cota de TVA stă pe produs, nu pe linia de comandă; o aducem ca să
+        // putem arăta în email cât TVA e inclus în total.
         $stmt = $db->prepare(
-            'SELECT product_name, quantity, line_total
-             FROM order_items
-             WHERE order_id = :order_id
-             ORDER BY id ASC'
+            'SELECT oi.product_name, oi.quantity, oi.unit_price, oi.line_total,
+                    p.vat_percent, p.vat_included
+             FROM order_items oi
+             LEFT JOIN products p ON p.id = oi.product_id
+             WHERE oi.order_id = :order_id
+             ORDER BY oi.id ASC'
         );
         $stmt->execute(['order_id' => $orderId]);
         $rows = $stmt->fetchAll();
@@ -443,6 +449,9 @@ final class EmailAutomation
             return '<p style="margin:0;color:#64748b;font-size:14px;line-height:1.5;">Nu există produse în această comandă.</p>';
         }
 
+        // Aşezarea pe tabel, nu pe flexbox: Gmail păstrează `display:flex` dar
+        // aruncă `justify-content` şi `gap`, iar denumirea ajungea lipită de
+        // preţ. Tabelele sunt singurul lucru care se aşază la fel peste tot.
         $rows = '';
         foreach ($items as $item) {
             $name = trim((string) ($item['product_name'] ?? 'Produs'));
@@ -451,17 +460,114 @@ final class EmailAutomation
             }
             $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $qty = max(1, (int) ($item['quantity'] ?? 1));
+            $unitPrice = (float) ($item['unit_price'] ?? 0);
             $lineTotal = htmlspecialchars(self::formatLei((float) ($item['line_total'] ?? 0)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $rows .= '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f4f7f4;border-radius:12px;padding:14px 16px;margin:0 0 10px;">'
-                . '<div>'
-                . '<p style="margin:0;color:#0f2532;font-size:22px;line-height:1.25;font-weight:700;">' . $safeName . '</p>'
-                . '<p style="margin:4px 0 0;color:#5f7680;font-size:14px;line-height:1.35;">Cantitate: ' . $qty . '</p>'
-                . '</div>'
-                . '<div style="color:#0f2532;font-size:18px;line-height:1.2;font-weight:700;white-space:nowrap;">' . $lineTotal . '</div>'
-                . '</div>';
+
+            $subtitlu = $unitPrice > 0
+                ? $qty . ' × ' . htmlspecialchars(self::formatLei($unitPrice), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : 'Cantitate: ' . $qty;
+
+            $rows .= '<tr>'
+                . '<td style="padding:12px 0;border-bottom:1px solid #e5e7eb;color:#0f2532;'
+                . 'font-size:16px;line-height:1.4;text-align:left;vertical-align:top;">'
+                . '<span style="font-weight:700;">' . $safeName . '</span><br>'
+                . '<span style="color:#5f7680;font-size:13px;">' . $subtitlu . '</span>'
+                . '</td>'
+                . '<td style="padding:12px 0 12px 14px;border-bottom:1px solid #e5e7eb;color:#0f2532;'
+                . 'font-size:16px;font-weight:700;text-align:right;vertical-align:top;white-space:nowrap;">'
+                . $lineTotal
+                . '</td>'
+                . '</tr>';
         }
 
-        return $rows;
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+            . ' style="border-collapse:collapse;width:100%;">' . $rows . '</table>';
+    }
+
+    /**
+     * Totalurile comenzii: produse, transport, reduceri, TVA inclus.
+     *
+     * TVA-ul îl arătăm doar când toate liniile au aceeaşi cotă şi preţurile o
+     * includ — atunci cifra e exactă. Dacă în comandă se amestecă cote diferite,
+     * scriem doar că preţurile includ TVA: mai bine fără cifră decât cu una
+     * greşită într-un email care ajunge la client.
+     */
+    private static function orderTotalsRowsHtml(array $order, array $items): string
+    {
+        $total = (float) ($order['total'] ?? 0);
+        if ($total <= 0 && $items === []) {
+            return '';
+        }
+
+        $subtotal = (float) ($order['subtotal'] ?? 0);
+        if ($subtotal <= 0) {
+            $subtotal = array_sum(array_map(static fn ($i) => (float) ($i['line_total'] ?? 0), $items));
+        }
+        $transport = (float) ($order['shipping_cost'] ?? 0);
+        $reducere = (float) ($order['discount_total'] ?? 0);
+        $puncte = (float) ($order['loyalty_points_discount'] ?? 0);
+
+        $rand = static function (string $eticheta, string $valoare, bool $tare = false, bool $liniePeste = false): string {
+            $bord = $liniePeste ? 'border-top:1px solid #e5e7eb;' : '';
+            $marime = $tare ? '19px' : '15px';
+            $greutate = $tare ? '700' : '400';
+            return '<tr>'
+                . '<td style="padding:9px 0;' . $bord . 'color:#5f7680;font-size:' . $marime
+                . ';line-height:1.4;text-align:left;">' . htmlspecialchars($eticheta, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</td>'
+                . '<td style="padding:9px 0 9px 14px;' . $bord . 'color:#0f2532;font-size:' . $marime
+                . ';font-weight:' . $greutate . ';line-height:1.4;text-align:right;white-space:nowrap;">'
+                . htmlspecialchars($valoare, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</td>'
+                . '</tr>';
+        };
+
+        $randuri = $rand('Produse', self::formatLei($subtotal));
+        if ($reducere > 0) {
+            $randuri .= $rand('Reducere', '−' . self::formatLei($reducere));
+        }
+        if ($puncte > 0) {
+            $randuri .= $rand('Puncte de fidelitate', '−' . self::formatLei($puncte));
+        }
+        $randuri .= $rand('Transport', $transport > 0 ? self::formatLei($transport) : 'Gratuit');
+        $randuri .= $rand('Total', self::formatLei($total), true, true);
+
+        $cota = self::cotaTvaUnica($items);
+        if ($cota !== null && $cota > 0) {
+            $tva = $total - ($total / (1 + ($cota / 100)));
+            $randuri .= $rand(
+                'din care TVA (' . rtrim(rtrim(number_format($cota, 2, ',', '.'), '0'), ',') . '%)',
+                self::formatLei(round($tva, 2)),
+            );
+        } elseif ($items !== []) {
+            $randuri .= '<tr><td colspan="2" style="padding:6px 0 0;color:#5f7680;font-size:13px;'
+                . 'line-height:1.4;text-align:right;">Prețurile includ TVA.</td></tr>';
+        }
+
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+            . ' style="border-collapse:collapse;width:100%;margin:6px 0 0;">' . $randuri . '</table>';
+    }
+
+    /** Cota comună a liniilor, sau null dacă se amestecă ori nu e inclusă în preţ. */
+    private static function cotaTvaUnica(array $items): ?float
+    {
+        $cota = null;
+        foreach ($items as $item) {
+            if (((int) ($item['vat_included'] ?? 1)) !== 1) {
+                return null;
+            }
+            $a = round((float) ($item['vat_percent'] ?? 0), 2);
+            if ($a <= 0) {
+                return null;
+            }
+            if ($cota === null) {
+                $cota = $a;
+                continue;
+            }
+            if (abs($cota - $a) > 0.001) {
+                return null;
+            }
+        }
+
+        return $cota;
     }
 
     private static function formatLei(float $amount): string

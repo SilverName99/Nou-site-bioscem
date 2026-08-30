@@ -279,6 +279,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
         ['code' => '{{store_name}}', 'description' => 'Numele magazinului (din setări email)'],
         ['code' => '{{customer_email}}', 'description' => 'Email-ul clientului'],
         ['code' => '{{year}}', 'description' => 'Anul curent'],
+        ['code' => '{{order_totals_html}}', 'description' => 'Totalurile comenzii: produse, reduceri, transport, total și TVA inclus'],
         ['code' => '{{payment_details}}', 'description' => 'Datele bancare din Setări plăți (doar la „Comandă nouă — plată prin OP")'],
     ];
     $orderedEcommerceRows = [];
