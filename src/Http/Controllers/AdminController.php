@@ -46,6 +46,16 @@ final class AdminController
     private const NEWSLETTER_SUBSCRIBERS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
     private const ORDER_ALLOWED_STATUSES = ['pending', 'pending_payment', 'processing', 'completed', 'cancelled', 'refunded', 'failed'];
 
+    /**
+     * Intrare în lista „Status comandă" care NU e un status, ci o încasare:
+     * clientul a plătit printr-un link făcut direct în EuPlătesc, pe lângă
+     * site. Stă în aceeași listă pentru că acolo o caută omul, dar nu ajunge
+     * niciodată în coloana `status` — vezi `updateOrderStatus()`. Dinadins în
+     * afara `ORDER_ALLOWED_STATUSES`, ca nici filtrele, nici acțiunea în masă,
+     * nici exportul să n-o poată trata ca pe o stare.
+     */
+    private const ORDER_ACTION_PLATA_LINK_EXTERN = 'plata_link_extern';
+
     public function dashboard(): void
     {
         // Conturile limitate (ex. administrator de magazin) nu au dashboard:
@@ -4823,6 +4833,9 @@ final class AdminController
             'filters' => $filters,
             'ordersBackUrl' => $ordersBackUrl,
             'allowedOrderStatuses' => self::ORDER_ALLOWED_STATUSES,
+            'orderStatusActions' => [
+                self::ORDER_ACTION_PLATA_LINK_EXTERN => 'Plătit prin link extern de plată',
+            ],
             'ordersSummary' => $ordersSummary,
             'orderStatusLabels' => $orderStatusLabels,
             'orderPaymentStatusLabels' => $orderPaymentStatusLabels,
@@ -7593,21 +7606,37 @@ final class AdminController
 
         $id = (int) ($params['id'] ?? 0);
         $status = trim((string) ($_POST['status'] ?? 'pending'));
-        if (!in_array($status, self::ORDER_ALLOWED_STATUSES, true)) {
-            $status = 'pending';
-        }
         $backParams = array_merge($_GET, $_POST);
         // The "status" field from this form is the target order status, not an orders-list filter.
         unset($backParams['status']);
         $backUrl = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), $backParams);
 
         $db = $this->db();
-        if ($db instanceof PDO) {
-            $result = $this->updateOrderStatusInternal($db, $id, $status);
-            Flash::set(($result['ok'] ?? false) ? 'success' : 'error', (string) ($result['message'] ?? 'Actualizare invalidă.'));
-        } else {
+        if (!$db instanceof PDO) {
             Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: ' . $backUrl);
+            return;
         }
+
+        // „Plătit prin link extern" stă în aceeași listă, dar nu e o stare în
+        // care comanda rămâne — e o încasare. Plata trăiește în `payment_status`
+        // și `paid_amount`, iar tot ce e în aval (trimiterea în ERP, eticheta
+        // de pe listă, suma de încasat la curier) se uită acolo, nu la `status`.
+        // Un status nou ar fi arătat bine pe ecran și n-ar fi însemnat nimic
+        // pentru niciunul dintre ei — plus că ar fi acoperit starea reală a
+        // comenzii, care e tocmai ce vrei să vezi a doua zi.
+        if ($status === self::ORDER_ACTION_PLATA_LINK_EXTERN) {
+            $rezultat = $this->marcheazaComandaPlatita($db, $id, 'link_extern');
+            Flash::set($rezultat['ok'] ? 'success' : 'error', $rezultat['message']);
+            header('Location: ' . $backUrl);
+            return;
+        }
+
+        if (!in_array($status, self::ORDER_ALLOWED_STATUSES, true)) {
+            $status = 'pending';
+        }
+        $result = $this->updateOrderStatusInternal($db, $id, $status);
+        Flash::set(($result['ok'] ?? false) ? 'success' : 'error', (string) ($result['message'] ?? 'Actualizare invalidă.'));
         header('Location: ' . $backUrl);
     }
 
@@ -9917,27 +9946,55 @@ final class AdminController
             return;
         }
 
+        $metoda = strtolower((string) ($this->incarcaComandaPentruPlata($db, $orderId)['payment_method'] ?? ''));
+        if ($metoda !== '' && $metoda !== 'bank_transfer') {
+            Flash::set('error', 'Butonul ăsta e doar pentru comenzile cu OP. Pentru o plată încasată altfel, folosește „Plătit prin link extern de plată" din Acțiuni comandă.');
+            header('Location: /admin/orders');
+            return;
+        }
+
+        $rezultat = $this->marcheazaComandaPlatita($db, $orderId, 'op');
+        Flash::set($rezultat['ok'] ? 'success' : 'error', $rezultat['message']);
+        header('Location: /admin/orders');
+    }
+
+    private function incarcaComandaPentruPlata(PDO $db, int $orderId): ?array
+    {
         $stmt = $db->prepare(
             'SELECT id, payment_method, payment_status, total FROM orders
              WHERE id = :id AND deleted_at IS NULL LIMIT 1'
         );
         $stmt->execute(['id' => $orderId]);
         $order = $stmt->fetch() ?: null;
-        if (!is_array($order)) {
-            Flash::set('error', 'Comanda nu a fost găsită.');
-            header('Location: /admin/orders');
-            return;
-        }
-        if (strtolower((string) ($order['payment_method'] ?? '')) !== 'bank_transfer') {
-            Flash::set('error', 'Confirmarea manuală e doar pentru comenzile plătite prin OP — cardul se confirmă singur, rambursul se încasează la livrare.');
-            header('Location: /admin/orders');
-            return;
+        return is_array($order) ? $order : null;
+    }
+
+    /**
+     * Marchează o comandă drept încasată și o pornește pe drumul normal.
+     *
+     * E acelaşi lucru pe care îl face confirmarea procesatorului la o plată cu
+     * cardul (`SiteController::applyEuPlatescResult`): banii se scriu pe
+     * comandă, comanda se desprinde din „plată în așteptare" și pleacă spre
+     * ERP. Există fiindcă banii pot intra și pe lângă site — prin OP, sau
+     * printr-un link de plată făcut direct în EuPlătesc și trimis clientului
+     * pe privat, când plata de pe site n-a mers.
+     *
+     * `$sursa` spune doar de unde au venit banii; ea nu schimbă ce se scrie pe
+     * comandă, doar ce rămâne în jurnal și ce citește omul pe ecran.
+     */
+    private function marcheazaComandaPlatita(PDO $db, int $orderId, string $sursa): array
+    {
+        $order = $this->incarcaComandaPentruPlata($db, $orderId);
+        if ($order === null) {
+            return ['ok' => false, 'message' => 'Comanda nu a fost găsită.'];
         }
         if (strtolower((string) ($order['payment_status'] ?? '')) === 'paid') {
-            Flash::set('success', 'Comanda era deja marcată plătită.');
-            header('Location: /admin/orders');
-            return;
+            // Nu e o greșeală, doar n-avem ce face a doua oară: banii sunt deja
+            // scriși, iar o a doua trimitere în ERP ar fi degeaba.
+            return ['ok' => true, 'message' => 'Comanda era deja marcată plătită.'];
         }
+
+        $metoda = strtolower((string) ($order['payment_method'] ?? ''));
 
         \App\Support\ErpSync::ensureSchema($db);
         $db->prepare(
@@ -9949,16 +10006,31 @@ final class AdminController
              WHERE id = :id"
         )->execute(['id' => $orderId]);
 
+        // Mailul „comandă nouă" pleacă doar dacă n-a plecat deja. La ramburs și
+        // la OP a plecat din checkout; la card pleacă abia la confirmarea
+        // plății — iar aici suntem tocmai în cazul în care plata de pe site
+        // n-a mers, deci clientul n-a primit niciodată nimic.
+        $trimiteMail = in_array($metoda, ['euplatesc', 'stripe', 'card'], true);
+        if ($trimiteMail) {
+            try {
+                EmailAutomation::sendOrderTemplateById($db, Settings::all($db), $orderId, 'new_order');
+            } catch (\Throwable $e) {
+                // Un mail nereușit nu ține comanda pe loc — banii și ERP-ul contează.
+            }
+        }
+
         $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
-        AdminActivityLog::log($db, 'order_op_platita', [
+        AdminActivityLog::log($db, $sursa === 'op' ? 'order_op_platita' : 'order_platita_link_extern', [
             'order_id' => $orderId,
+            'metoda_initiala' => $metoda,
+            'mail_comanda_noua' => $trimiteMail,
             'erp_ok' => $rezultat['ok'],
         ]);
-        Flash::set(
-            $rezultat['ok'] ? 'success' : 'error',
-            'Plata prin OP confirmată. ' . $rezultat['message'],
-        );
-        header('Location: /admin/orders');
+
+        $prefix = $sursa === 'op'
+            ? 'Plata prin OP confirmată. '
+            : 'Comanda a fost marcată plătită prin link extern. ';
+        return ['ok' => $rezultat['ok'], 'message' => $prefix . $rezultat['message']];
     }
 
     public function googleSettingsForm(): void

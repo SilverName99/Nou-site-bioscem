@@ -7,6 +7,10 @@ $bulkStatusOptions = array_values(array_filter(
     $allowedStatuses,
     static fn ($status): bool => (string) $status !== 'completed'
 ));
+// Intrări din lista „Status comandă" care sunt de fapt acțiuni, nu stări. Nu
+// intră în acțiunea în masă: încasarea se confirmă pe o comandă anume, nu pe
+// o bifă peste douăzeci deodată.
+$statusActions = is_array($orderStatusActions ?? null) ? $orderStatusActions : [];
 $ordersBackUrl = is_string($ordersBackUrl ?? null) ? (string) $ordersBackUrl : '/admin/orders';
 $selectedStatus = (string) ($filters['status'] ?? '');
 $dateFrom = (string) ($filters['from_date'] ?? '');
@@ -556,7 +560,22 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             <?= htmlspecialchars((string) ($statusLabels[(string) $status] ?? (string) $status), ENT_QUOTES) ?>
                         </option>
                     <?php endforeach; ?>
+                    <?php if ($statusActions !== []): ?>
+                        <optgroup label="Încasare">
+                            <?php foreach ($statusActions as $actiune => $eticheta): ?>
+                                <option value="<?= htmlspecialchars((string) $actiune, ENT_QUOTES) ?>">
+                                    <?= htmlspecialchars((string) $eticheta, ENT_QUOTES) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    <?php endif; ?>
                 </select>
+                <?php if ($statusActions !== []): ?>
+                    <p class="muted" style="margin:.4rem 0 0;font-size:.85rem;">
+                        „Plătit prin link extern de plată" nu e o stare: marchează comanda încasată,
+                        o scoate din „plată în așteptare" și o trimite în ERP, ca o plată reușită pe site.
+                    </p>
+                <?php endif; ?>
             </div>
             <div class="order-actions-modal-buttons" style="grid-column:1/-1;">
                 <a class="btn btn-secondary" href="#" id="order-actions-tracking-link" target="_blank" rel="noopener">↗ Deschide tracking FAN</a>
