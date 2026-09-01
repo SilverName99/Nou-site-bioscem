@@ -7918,25 +7918,66 @@ final class AdminController
         $awb = trim((string) ($order['fan_awb'] ?? ''));
         $awbMessage = '';
         if ($awb === '') {
-            // ERP-ul trimite coletele (depozit + produse). Implicit, comanda
-            // pleacă într-un singur AWB chiar dacă marfa vine din două
-            // depozite: coletele se adună înainte de expediere, iar clientul
-            // primește un singur colet și un singur cod de urmărire. Cine are
-            // nevoie de expediere separată per depozit dezactivează setarea.
-            $colete = is_array($event['colete'] ?? null) ? array_values($event['colete']) : [];
-            $unSingurAwb = (string) (Settings::all($db)['fan_awb_single'] ?? '1') === '1';
-            if ($unSingurAwb && count($colete) >= 2) {
-                $this->logComasareColete($db, $orderId, $colete);
-            }
+            // Un singur AWB per comandă, chiar dacă notificarea vine de două ori.
+            //
+            // ERP-ul reia notificarea de aprobare când nu primește răspuns în
+            // 15 secunde, iar generarea AWB-ului la FAN poate dura mai mult.
+            // A doua notificare găsea `fan_awb` încă gol — prima nu apucase
+            // să-l scrie — și mai cerea un AWB: în SelfAWB apăreau două, deși
+            // pe comandă rămânea unul singur. Lacătul de mai jos ține a doua
+            // cerere deoparte cât timp prima lucrează, iar după ea recitim
+            // numărul din baza de date, nu din rândul citit la începutul
+            // cererii.
+            $lacat = 'awb_comanda_' . $orderId;
+            $areLacat = false;
             try {
-                $rezultat = (!$unSingurAwb && count($colete) >= 2)
-                    ? $this->createFanAwbMulti($db, $orderId, $colete)
-                    : $this->createFanAwbInternal($db, $orderId);
-                if (($rezultat['ok'] ?? false) !== true) {
-                    $awbMessage = (string) ($rezultat['message'] ?? '');
+                $stmtLock = $db->prepare('SELECT GET_LOCK(:nume, 0)');
+                $stmtLock->execute(['nume' => $lacat]);
+                $areLacat = ((int) $stmtLock->fetchColumn()) === 1;
+            } catch (Throwable) {
+                // Fără lacăt (bază fără GET_LOCK) mergem mai departe: mai bine
+                // o dublură rară decât o comandă fără AWB.
+                $areLacat = true;
+            }
+
+            if (!$areLacat) {
+                $awbMessage = 'AWB-ul acestei comenzi se generează deja.';
+            } else {
+                try {
+                    $reverificare = $db->prepare('SELECT fan_awb FROM orders WHERE id = :id LIMIT 1');
+                    $reverificare->execute(['id' => $orderId]);
+                    $awbAcum = trim((string) ($reverificare->fetchColumn() ?: ''));
+
+                    if ($awbAcum !== '') {
+                        $awb = $awbAcum;
+                    } else {
+                        // ERP-ul trimite coletele (depozit + produse). Implicit, comanda
+                        // pleacă într-un singur AWB chiar dacă marfa vine din două
+                        // depozite: coletele se adună înainte de expediere, iar clientul
+                        // primește un singur colet și un singur cod de urmărire. Cine are
+                        // nevoie de expediere separată per depozit dezactivează setarea.
+                        $colete = is_array($event['colete'] ?? null) ? array_values($event['colete']) : [];
+                        $unSingurAwb = (string) (Settings::all($db)['fan_awb_single'] ?? '1') === '1';
+                        if ($unSingurAwb && count($colete) >= 2) {
+                            $this->logComasareColete($db, $orderId, $colete);
+                        }
+                        try {
+                            $rezultat = (!$unSingurAwb && count($colete) >= 2)
+                                ? $this->createFanAwbMulti($db, $orderId, $colete)
+                                : $this->createFanAwbInternal($db, $orderId);
+                            if (($rezultat['ok'] ?? false) !== true) {
+                                $awbMessage = (string) ($rezultat['message'] ?? '');
+                            }
+                        } catch (Throwable $exception) {
+                            $awbMessage = $exception->getMessage();
+                        }
+                    }
+                } finally {
+                    try {
+                        $db->prepare('SELECT RELEASE_LOCK(:nume)')->execute(['nume' => $lacat]);
+                    } catch (Throwable) {
+                    }
                 }
-            } catch (Throwable $exception) {
-                $awbMessage = $exception->getMessage();
             }
         }
 
