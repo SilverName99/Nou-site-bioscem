@@ -8002,6 +8002,23 @@ final class AdminController
         if ($awb !== '') {
             $settings = Settings::all($db);
             EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'shipped');
+
+            // Raportăm AWB-ul înapoi în ERP, nu doar în răspunsul acestei
+            // cereri: ERP-ul nu mai stă să aștepte generarea (dura zeci de
+            // secunde la fiecare aprobare), deci s-ar putea să nu mai fie
+            // nimeni care să citească răspunsul.
+            try {
+                $numarSite = trim((string) ($order['order_number'] ?? ''));
+                if ($numarSite !== '') {
+                    \App\Support\ErpClient::fromSettings($settings)?->reportAwb(
+                        $numarSite,
+                        $awb,
+                        trim((string) ($order['fan_tracking_url'] ?? ''))
+                    );
+                }
+            } catch (Throwable) {
+                // ERP-ul poate fi oprit; AWB-ul rămâne oricum pe comandă aici.
+            }
         }
 
         return [
