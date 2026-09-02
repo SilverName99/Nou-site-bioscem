@@ -362,7 +362,7 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                                     <input type="radio" name="payment_method" value="cod" <?= $paymentMethod === 'cod' ? 'checked' : '' ?>>
                                     <span class="bv-checkout-v3__method-label">
                                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7.5h18M3 12h18M3 16.5h18" stroke="currentColor" stroke-width="1.7"/><rect x="2.5" y="5" width="19" height="14" rx="2.3" stroke="currentColor" stroke-width="1.7"/></svg>
-                                        <span><strong>Ramburs</strong><br><span>Plata la livrare</span></span>
+                                        <span><strong>Ramburs</strong><br><span data-ramburs-sub><?= !empty($fanboxAles) ? 'Plata la ridicarea din FANbox' : 'Plata la livrare' ?></span></span>
                                     </span>
                                 </label>
                                 <?php if (($opActiv ?? false) === true): ?>
@@ -805,10 +805,19 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
             });
         }
 
+        // La FANbox coletul nu vine acasă, se ridică — „Plata la livrare" ar
+        // spune altceva decât se întâmplă.
+        const rambursSub = form.querySelector('[data-ramburs-sub]');
+
         const sincronizeazaFanbox = () => {
             const activ = fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked;
             if (fanboxPick instanceof HTMLElement) {
                 fanboxPick.classList.toggle('is-visible', activ);
+            }
+            if (rambursSub instanceof HTMLElement) {
+                rambursSub.textContent = activ
+                    ? 'Plata la ridicarea din FANbox'
+                    : 'Plata la livrare';
             }
             if (fanboxSelect instanceof HTMLSelectElement) {
                 // Punctul e obligatoriu doar când clientul a ales FANbox.
