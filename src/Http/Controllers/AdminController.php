@@ -12067,6 +12067,210 @@ final class AdminController
         header('Location: /admin/emails/test');
     }
 
+    /** Tipurile de email care se pot reconstrui dintr-o comandă. */
+    private const EMAIL_TIPURI_RETRIMITE = [
+        'new_order',
+        'new_order_op',
+        'processing',
+        'shipped',
+        'delivered',
+        'cancelled',
+    ];
+
+    /**
+     * Retrimite emailurile eșuate din istoric.
+     *
+     * Emailurile de comandă pleacă la evenimente — comandă plasată, status
+     * schimbat —, deci un eșec (furnizorul căzut, creditele terminate) le
+     * pierde definitiv: nimic nu le mai încearcă a doua oară. Aici se reiau,
+     * fie unul singur, fie toate cele eșuate.
+     *
+     * Nu se retrimite orice: doar ce se poate reconstrui din comandă. O
+     * resetare de parolă nu — tokenul e de unică folosință și oricum a expirat;
+     * acolo clientul cere din nou linkul.
+     */
+    public function emailsHistoryResend(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $inapoi = '/admin/emails/newsletters?tab=history';
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: ' . $inapoi);
+            return;
+        }
+
+        OrderMailer::ensureEmailSendHistorySchema($db);
+        $settings = Settings::all($db);
+
+        $unId = max(0, (int) ($_POST['history_id'] ?? 0));
+        if ($unId > 0) {
+            $stmt = $db->prepare(
+                'SELECT id, order_id, email_type, recipient
+                 FROM email_send_history
+                 WHERE id = :id
+                 LIMIT 1'
+            );
+            $stmt->execute(['id' => $unId]);
+        } else {
+            // Cele mai noi primele: dacă sunt mii, contează ce s-a pierdut azi.
+            // Plafonul ține pasul cu ce poate duce o cerere web fără să expire.
+            $stmt = $db->prepare(
+                'SELECT id, order_id, email_type, recipient
+                 FROM email_send_history
+                 WHERE status IN ("failed", "error")
+                 ORDER BY id DESC
+                 LIMIT 500'
+            );
+            $stmt->execute();
+        }
+        $randuri = $stmt->fetchAll() ?: [];
+
+        // Fiecare trimitere e o cerere către furnizorul de email, de ordinul
+        // unei secunde. Peste atâtea, cererea web ar expira în mijlocul
+        // trimiterilor; ne oprim înainte și o spunem, ca omul să apese din nou.
+        $maximTrimiteri = 100;
+        $reusite = 0;
+        $esuate = 0;
+        $sarite = 0;
+        $oprit = false;
+        $ultimaEroare = '';
+        // Un email de comandă pleacă o dată către toți destinatarii lui, iar
+        // istoricul are câte un rând pentru fiecare. Fără gruparea asta,
+        // clientul ar primi aceeași notificare de două ori.
+        $facute = [];
+
+        foreach ($randuri as $rand) {
+            if (!is_array($rand)) {
+                continue;
+            }
+            $orderId = (int) ($rand['order_id'] ?? 0);
+            $tip = trim((string) ($rand['email_type'] ?? ''));
+            if ($orderId <= 0 || !in_array($tip, self::EMAIL_TIPURI_RETRIMITE, true)) {
+                $sarite++;
+                continue;
+            }
+            if (!OrderMailer::isTemplateActive($tip, $settings)) {
+                $sarite++;
+                continue;
+            }
+
+            $cheie = $orderId . '|' . $tip;
+            if (isset($facute[$cheie])) {
+                if ($facute[$cheie] === true) {
+                    $this->marcheazaRetrimis($db, $orderId, $tip);
+                }
+                continue;
+            }
+
+            if ($reusite + $esuate >= $maximTrimiteri) {
+                $oprit = true;
+                break;
+            }
+
+            $inainte = $this->stareLogComanda($db, $orderId, $tip);
+            try {
+                EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, $tip);
+            } catch (Throwable $e) {
+                $esuate++;
+                $facute[$cheie] = false;
+                $ultimaEroare = $e->getMessage();
+                continue;
+            }
+            $dupa = $this->stareLogComanda($db, $orderId, $tip);
+
+            // `sendOrderTemplateById` nu aruncă: înghite eroarea și o scrie în
+            // `email_logs`. Starea de acolo e singurul răspuns sincer.
+            if ($dupa['status'] === 'sent' && $dupa['sent_at'] !== $inainte['sent_at']) {
+                $reusite++;
+                $facute[$cheie] = true;
+                $this->marcheazaRetrimis($db, $orderId, $tip);
+                continue;
+            }
+            $esuate++;
+            $facute[$cheie] = false;
+            if ($dupa['error'] !== '') {
+                $ultimaEroare = $dupa['error'];
+            }
+        }
+
+        if ($reusite === 0 && $esuate === 0) {
+            Flash::set(
+                'error',
+                $sarite > 0
+                    ? 'Nimic de retrimis: emailurile eșuate rămase nu se pot reconstrui (resetări de parolă, teste, newslettere).'
+                    : 'Nu am găsit emailuri eșuate de retrimis.',
+            );
+            header('Location: ' . $inapoi);
+            return;
+        }
+
+        $mesaj = $reusite . ' ' . ($reusite === 1 ? 'email retrimis' : 'emailuri retrimise');
+        if ($esuate > 0) {
+            $mesaj .= ', ' . $esuate . ' tot nu au plecat';
+            if ($ultimaEroare !== '') {
+                $mesaj .= ' (' . substr($ultimaEroare, 0, 200) . ')';
+            }
+        }
+        if ($sarite > 0) {
+            $mesaj .= '. ' . $sarite . ' nu se pot reconstrui și au rămas neatinse';
+        }
+        $mesaj .= '.';
+        if ($oprit) {
+            $mesaj .= ' M-am oprit la ' . $maximTrimiteri . ', ca să nu expire pagina — apasă din nou pentru restul.';
+        }
+
+        Flash::set($esuate > 0 && $reusite === 0 ? 'error' : 'success', $mesaj);
+        header('Location: ' . $inapoi);
+    }
+
+    /** Starea ultimei încercări pentru (comandă, tip), din `email_logs`. */
+    private function stareLogComanda(PDO $db, int $orderId, string $tip): array
+    {
+        try {
+            $stmt = $db->prepare(
+                'SELECT status, error_message, sent_at
+                 FROM email_logs
+                 WHERE order_id = :order_id AND email_type = :email_type
+                 LIMIT 1'
+            );
+            $stmt->execute(['order_id' => $orderId, 'email_type' => $tip]);
+            $rand = $stmt->fetch() ?: [];
+        } catch (Throwable) {
+            $rand = [];
+        }
+
+        return [
+            'status' => strtolower(trim((string) ($rand['status'] ?? ''))),
+            'error' => trim((string) ($rand['error_message'] ?? '')),
+            'sent_at' => (string) ($rand['sent_at'] ?? ''),
+        ];
+    }
+
+    /**
+     * Scoate încercările eșuate din listă după ce emailul a plecat.
+     *
+     * Rândul nu se șterge — eșecul chiar s-a întâmplat și se vede în istoric —
+     * dar nu mai e „eșuat", altfel următoarea retrimitere în masă l-ar lua de
+     * la capăt și clientul ar primi același email de câte ori se apasă butonul.
+     */
+    private function marcheazaRetrimis(PDO $db, int $orderId, string $tip): void
+    {
+        try {
+            $stmt = $db->prepare(
+                'UPDATE email_send_history
+                 SET status = "resent"
+                 WHERE order_id = :order_id AND email_type = :email_type
+                   AND status IN ("failed", "error")'
+            );
+            $stmt->execute(['order_id' => $orderId, 'email_type' => $tip]);
+        } catch (Throwable) {
+        }
+    }
+
     public function pages(): void
     {
         if (!$this->guard()) {

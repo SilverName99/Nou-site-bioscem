@@ -1605,7 +1605,13 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         <a class="btn btn-secondary" href="/admin/emails/newsletters?tab=history">Reset</a>
                     </div>
                 </form>
-                <p style="margin:0 0 10px;color:#64748b;">Total email-uri în istoric: <strong><?= (int) $emailSendHistoryTotal ?></strong></p>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+                    <p style="margin:0;color:#64748b;">Total email-uri în istoric: <strong><?= (int) $emailSendHistoryTotal ?></strong></p>
+                    <form method="post" action="/admin/emails/history/resend" style="margin:0;"
+                          onsubmit="return confirm('Se retrimit toate emailurile eșuate care se pot reconstrui din comandă. Continui?');">
+                        <button type="submit" class="btn btn-secondary">Retrimite toate eșuatele</button>
+                    </form>
+                </div>
                 <div class="users-table-wrap">
                     <table class="table users-table">
                         <thead>
@@ -1618,19 +1624,27 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                             <th>Sursă</th>
                             <th>Comandă</th>
                             <th>Eroare</th>
+                            <th></th>
                         </tr>
                         </thead>
                         <tbody>
                         <?php if ($emailSendHistory === []): ?>
-                            <tr><td colspan="8">Nu există încă înregistrări în istoric.</td></tr>
+                            <tr><td colspan="9">Nu există încă înregistrări în istoric.</td></tr>
                         <?php else: ?>
                             <?php foreach ($emailSendHistory as $row): ?>
                                 <?php if (!is_array($row)) continue; ?>
                                 <?php
                                 $statusRaw = strtolower(trim((string) ($row['status'] ?? '')));
-                                $statusOk = in_array($statusRaw, ['sent', 'ok', 'success'], true);
+                                $statusOk = in_array($statusRaw, ['sent', 'ok', 'success', 'resent'], true);
                                 $orderNumber = trim((string) ($row['order_number'] ?? ''));
                                 $orderId = (int) ($row['order_id'] ?? 0);
+                                // Se poate reconstrui din comandă doar ce ține de comandă;
+                                // o resetare de parolă nu, tokenul ei e de unică folosință.
+                                $tipReconstruibil = in_array((string) ($row['email_type'] ?? ''), [
+                                    'new_order', 'new_order_op', 'processing', 'shipped', 'delivered', 'cancelled',
+                                ], true);
+                                $poateRetrimite = $orderId > 0 && $tipReconstruibil
+                                    && in_array($statusRaw, ['failed', 'error'], true);
                                 ?>
                                 <tr>
                                     <td><?= htmlspecialchars((string) ($row['created_at'] ?? ''), ENT_QUOTES) ?></td>
@@ -1639,12 +1653,20 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                                     <td><?= htmlspecialchars((string) ($row['subject'] ?? ''), ENT_QUOTES) ?></td>
                                     <td>
                                         <span class="status-pill <?= $statusOk ? 'ok' : 'off' ?>">
-                                            <?= htmlspecialchars((string) ($row['status'] ?? ''), ENT_QUOTES) ?>
+                                            <?= htmlspecialchars($statusRaw === 'resent' ? 'retrimis' : (string) ($row['status'] ?? ''), ENT_QUOTES) ?>
                                         </span>
                                     </td>
                                     <td><?= htmlspecialchars((string) ($row['source'] ?? ''), ENT_QUOTES) ?></td>
                                     <td><?= htmlspecialchars($orderNumber !== '' ? $orderNumber : ($orderId > 0 ? ('#' . $orderId) : '-'), ENT_QUOTES) ?></td>
                                     <td><?= htmlspecialchars((string) (($row['error_message'] ?? '') !== '' ? $row['error_message'] : '-'), ENT_QUOTES) ?></td>
+                                    <td>
+                                        <?php if ($poateRetrimite): ?>
+                                            <form method="post" action="/admin/emails/history/resend" style="margin:0;">
+                                                <input type="hidden" name="history_id" value="<?= (int) ($row['id'] ?? 0) ?>">
+                                                <button type="submit" class="btn btn-secondary">Retrimite</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
