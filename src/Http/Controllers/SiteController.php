@@ -2249,7 +2249,7 @@ final class SiteController
             ? strtolower(trim((string) ($_POST['email'] ?? '')))
             : 'guest+' . bin2hex(random_bytes(6)) . '@local.invalid';
         $phone = $registrationFields['phone'] ? trim((string) ($_POST['phone'] ?? '')) : '';
-        $birthDateRaw = $registrationFields['birth_date'] ? trim((string) ($_POST['birth_date'] ?? '')) : '';
+        $birthDateRaw = $registrationFields['birth_date'] ? self::dataNasteriiDinPost() : '';
         $genderRaw = $registrationFields['gender'] ? trim((string) ($_POST['gender'] ?? '')) : '';
         $gender = in_array($genderRaw, ['feminin', 'masculin'], true) ? $genderRaw : '';
         $password = $registrationFields['password'] ? (string) ($_POST['password'] ?? '') : bin2hex(random_bytes(16));
@@ -2282,8 +2282,13 @@ final class SiteController
             return;
         }
         if ($registrationFields['birth_date'] && $birthDateRaw !== '') {
-            $validDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $birthDateRaw) === 1;
-            if (!$validDate || strtotime($birthDateRaw) === false) {
+            // `checkdate`, nu `strtotime`: acesta din urmă acceptă 31 februarie
+            // și o mută tăcut pe 3 martie. Cu ziua și luna alese din liste,
+            // combinația imposibilă e la un clic distanță.
+            $parti = [];
+            $validDate = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $birthDateRaw, $parti) === 1
+                && checkdate((int) $parti[2], (int) $parti[3], (int) $parti[1]);
+            if (!$validDate) {
                 Flash::set('error', 'Data nașterii este invalidă.');
                 header('Location: /register');
                 return;
@@ -2395,6 +2400,29 @@ final class SiteController
         header('Location: /login');
     }
 
+    /**
+     * Data nașterii venită din formular, ca „aaaa-ll-zz" sau șir gol.
+     *
+     * Formularele trimit ziua, luna și anul separat — calendarul nativ cerea
+     * prea mult scroll până la un an de naștere. Rămâne acceptat și un câmp
+     * `birth_date` întreg, pentru formularele care încă îl trimit așa.
+     * Verificarea propriu-zisă (data există în calendar) se face la apelant.
+     */
+    private static function dataNasteriiDinPost(): string
+    {
+        $intreg = trim((string) ($_POST['birth_date'] ?? ''));
+        if ($intreg !== '') {
+            return $intreg;
+        }
+        $zi = trim((string) ($_POST['birth_day'] ?? ''));
+        $luna = trim((string) ($_POST['birth_month'] ?? ''));
+        $an = trim((string) ($_POST['birth_year'] ?? ''));
+        if ($zi === '' || $luna === '' || $an === '') {
+            return '';
+        }
+        return sprintf('%04d-%02d-%02d', (int) $an, (int) $luna, (int) $zi);
+    }
+
     public function accountProfileUpdate(): void
     {
         $db = $this->db();
@@ -2410,7 +2438,7 @@ final class SiteController
         $lastName = trim((string) ($_POST['last_name'] ?? ''));
         $email = strtolower(trim((string) ($_POST['email'] ?? '')));
         $phone = trim((string) ($_POST['phone'] ?? ''));
-        $birthDateRaw = trim((string) ($_POST['birth_date'] ?? ''));
+        $birthDateRaw = self::dataNasteriiDinPost();
         $gender = trim((string) ($_POST['gender'] ?? ''));
         $allowedGenders = ['', 'feminin', 'masculin'];
 
@@ -2430,8 +2458,13 @@ final class SiteController
 
         $birthDate = null;
         if ($birthDateRaw !== '') {
-            $validDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $birthDateRaw) === 1;
-            if (!$validDate || strtotime($birthDateRaw) === false) {
+            // `checkdate`, nu `strtotime`: acesta din urmă acceptă 31 februarie
+            // și o mută tăcut pe 3 martie. Cu ziua și luna alese din liste,
+            // combinația imposibilă e la un clic distanță.
+            $parti = [];
+            $validDate = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $birthDateRaw, $parti) === 1
+                && checkdate((int) $parti[2], (int) $parti[3], (int) $parti[1]);
+            if (!$validDate) {
                 Flash::set('error', 'Data nașterii este invalidă.');
                 header('Location: /contul-meu?section=profile');
                 return;

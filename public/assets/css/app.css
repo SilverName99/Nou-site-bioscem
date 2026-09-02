@@ -8043,3 +8043,16 @@ body.floating-cart-open {
     }
 
 }
+
+/* Data nașterii: zi / lună / an, una lângă alta. Anul primește mai mult loc,
+   fiindcă e lista din care se alege cel mai greu. */
+.bv-birthdate {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) 5.5rem;
+    gap: 8px;
+}
+
+.bv-birthdate select {
+    width: 100%;
+    min-width: 0;
+}

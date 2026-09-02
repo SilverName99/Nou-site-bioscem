@@ -321,7 +321,7 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                             </div>
                             <div class="field">
                                 <label>Data nașterii</label>
-                                <input type="date" name="birth_date" value="<?= htmlspecialchars($birthDate, ENT_QUOTES) ?>">
+                                <?php $birthDateValue = $birthDate; include __DIR__ . '/components/birth-date-field.php'; ?>
                             </div>
                             <div class="field">
                                 <label>Gen</label>
@@ -397,7 +397,7 @@ $birthDate = is_array($customer) ? (string) ($customer['birth_date'] ?? '') : ''
                     <?php if (!empty($registrationFields['birth_date'])): ?>
                         <div class="field">
                             <label>Data nașterii</label>
-                            <input type="date" name="birth_date">
+                            <?php $birthDateValue = ''; include __DIR__ . '/components/birth-date-field.php'; ?>
                         </div>
                     <?php endif; ?>
                     <?php if (!empty($registrationFields['gender'])): ?>

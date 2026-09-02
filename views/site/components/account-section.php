@@ -124,7 +124,7 @@ $logoutIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 
                                 </div>
                                 <div>
                                     <small>DATA NAȘTERII</small>
-                                    <input type="date" name="birth_date" value="<?= htmlspecialchars($birthDate, ENT_QUOTES) ?>">
+                                    <?php $birthDateValue = $birthDate; include __DIR__ . '/birth-date-field.php'; ?>
                                 </div>
                                 <div>
                                     <small>GEN</small>
