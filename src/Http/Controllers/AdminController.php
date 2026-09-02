@@ -15307,9 +15307,17 @@ HTML;
             }
         }
 
+        // Valoarea declarată e asigurarea coletului, iar FAN o taxează. Modul
+        // ales în Setări livrare hotărăște: totalul comenzii, zero, sau câmpul
+        // netrimis deloc. Aici se citea totalul de fiecare dată, așa că
+        // setarea nu ajungea niciodată pe AWB-urile emise din admin.
+        $declaredValueMode = trim((string) ($settings['fan_declared_value_mode'] ?? 'order_total'));
         $declaredValue = round((float) ($order['total'] ?? 0), 2);
         if (isset($override['declared_value']) && (float) $override['declared_value'] > 0) {
             $declaredValue = round((float) $override['declared_value'], 2);
+        }
+        if ($declaredValueMode === 'zero') {
+            $declaredValue = 0.0;
         }
         $contentSuffix = trim((string) ($override['content_suffix'] ?? ''));
         $contentLabel = 'Comanda ' . (string) ($order['order_number'] ?? '') . ($contentSuffix !== '' ? ' ' . $contentSuffix : '');
@@ -15331,7 +15339,6 @@ HTML;
                 ],
                 'weight' => $weight,
                 'cod' => $cod > 0 ? round($cod, 2) : 0,
-                'declaredValue' => $declaredValue,
                 'payment' => $shippingPayer,
                 'refund' => null,
                 'returnPayment' => $cod > 0
@@ -15364,6 +15371,12 @@ HTML;
                 ] + ($codLocker !== '' ? ['pickupLocationId' => $codLocker] : []),
             ],
         ];
+        // Pe modul „none" câmpul lipsește cu totul din cerere, nu pleacă zero:
+        // FAN tratează diferit un colet fără valoare declarată de unul declarat
+        // la 0, iar setarea asta există tocmai ca să se poată alege.
+        if ($declaredValueMode !== 'none') {
+            $shipment['info']['declaredValue'] = $declaredValue;
+        }
         if (($dimensions['length'] ?? 0) > 0 && ($dimensions['width'] ?? 0) > 0 && ($dimensions['height'] ?? 0) > 0) {
             $shipment['info']['dimensions'] = [
                 'length' => (float) $dimensions['length'],
