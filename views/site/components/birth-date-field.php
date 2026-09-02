@@ -22,11 +22,12 @@ if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $bdValoare, $bdParti) === 1) {
     $bdLuna = $bdParti[2];
     $bdZi = $bdParti[3];
 }
+// Listă simplă, nu tablou cu cheile „01".."12": PHP transformă cheile „10",
+// „11" și „12" în numere, iar comparația cu luna salvată (șir) cădea tăcut —
+// octombrie, noiembrie și decembrie nu se mai preselectau.
 $bdLuni = [
-    '01' => 'ianuarie', '02' => 'februarie', '03' => 'martie',
-    '04' => 'aprilie', '05' => 'mai', '06' => 'iunie',
-    '07' => 'iulie', '08' => 'august', '09' => 'septembrie',
-    '10' => 'octombrie', '11' => 'noiembrie', '12' => 'decembrie',
+    'ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie',
+    'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie',
 ];
 $bdAnCurent = (int) date('Y');
 ?>
@@ -40,7 +41,8 @@ $bdAnCurent = (int) date('Y');
     </select>
     <select name="birth_month" aria-label="Luna nașterii">
         <option value="">Luna</option>
-        <?php foreach ($bdLuni as $bdCod => $bdNume): ?>
+        <?php foreach ($bdLuni as $bdIndex => $bdNume): ?>
+            <?php $bdCod = str_pad((string) ($bdIndex + 1), 2, '0', STR_PAD_LEFT); ?>
             <option value="<?= $bdCod ?>" <?= $bdLuna === $bdCod ? 'selected' : '' ?>><?= $bdNume ?></option>
         <?php endforeach; ?>
     </select>
