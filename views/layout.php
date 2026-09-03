@@ -746,34 +746,36 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
                 position:relative;
                 padding-right:52px;
             }
-            .bv-mobile-menu-token__nav .menu-root>li.has-submenu>a::before{
-                content:"";
+            /* Săgeata e buton separat, nu un desen peste link: pe titlu se
+               intră în pagină, pe săgeată se deschid subpaginile. */
+            .bv-mobile-menu-token__nav .bv-submenu-toggle{
                 position:absolute;
                 right:8px;
-                top:50%;
-                transform:translateY(-50%);
-                width:24px;
-                height:24px;
+                top:6px;
+                width:34px;
+                height:34px;
+                padding:0;
+                display:flex;
+                align-items:center;
+                justify-content:center;
                 border-radius:8px;
                 border:1px solid #dbe2ea;
                 background:#f8fafc;
                 box-shadow:0 1px 0 rgba(2,6,23,.03);
+                cursor:pointer;
+                -webkit-tap-highlight-color:transparent;
             }
-            .bv-mobile-menu-token__nav .menu-root>li.has-submenu>a::after{
+            .bv-mobile-menu-token__nav .bv-submenu-toggle::after{
                 content:"";
-                position:absolute;
-                right:16px;
-                top:50%;
                 width:7px;
                 height:7px;
                 border-right:2px solid #475569;
                 border-bottom:2px solid #475569;
-                transform:translateY(-65%) rotate(45deg);
+                transform:translateY(-2px) rotate(45deg);
                 transition:transform .18s ease;
-                pointer-events:none;
             }
-            .bv-mobile-menu-token__nav .menu-root>li.has-submenu.is-open>a::after{
-                transform:translateY(-28%) rotate(-135deg);
+            .bv-mobile-menu-token__nav .menu-root>li.has-submenu.is-open>.bv-submenu-toggle::after{
+                transform:translateY(2px) rotate(-135deg);
             }
             .bv-mobile-menu-token__nav .submenu{
                 display:block!important;
@@ -1654,12 +1656,46 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
                                 return;
                             }
                             link.dataset.bvSubmenuBound = '1';
-                            link.setAttribute('aria-expanded', 'false');
-                            link.addEventListener('click', (event) => {
-                                event.preventDefault();
+
+                            // O categorie de meniu e și ea o pagină. Clicul pe titlu
+                            // duce acolo, iar subpaginile se deschid din săgeata de
+                            // alături — altfel titlul nu era decât un buton de deschis
+                            // și pagina lui rămânea de neatins de pe telefon.
+                            const href = (link.getAttribute('href') || '').trim();
+                            const areDestinatie = href !== '' && href !== '#';
+
+                            const toggle = document.createElement('button');
+                            toggle.type = 'button';
+                            toggle.className = 'bv-submenu-toggle';
+                            toggle.setAttribute('aria-expanded', 'false');
+                            toggle.setAttribute(
+                                'aria-label',
+                                'Arată subpaginile pentru ' + (link.textContent || '').trim(),
+                            );
+                            const comuta = () => {
                                 const isOpen = item.classList.toggle('is-open');
-                                link.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                                toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                            };
+                            toggle.addEventListener('click', (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                comuta();
                             });
+                            link.insertAdjacentElement('afterend', toggle);
+
+                            // Fără o pagină proprie (link gol sau „#"), titlul n-are
+                            // unde să ducă; atunci rămâne el butonul de deschidere.
+                            if (!areDestinatie) {
+                                link.setAttribute('aria-expanded', 'false');
+                                link.addEventListener('click', (event) => {
+                                    event.preventDefault();
+                                    comuta();
+                                    link.setAttribute(
+                                        'aria-expanded',
+                                        item.classList.contains('is-open') ? 'true' : 'false',
+                                    );
+                                });
+                            }
                         });
                     }
 
@@ -1693,8 +1729,17 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
                         if (!(link instanceof HTMLAnchorElement)) {
                             return;
                         }
+                        // Titlul de categorie duce acum într-o pagină, deci
+                        // sertarul se închide ca la orice alt link. Excepția
+                        // rămâne doar pentru cel fără destinație, care doar
+                        // deschide submeniul.
                         const owner = link.closest('li.has-submenu');
-                        if (owner instanceof HTMLElement && owner.firstElementChild === link) {
+                        const href = (link.getAttribute('href') || '').trim();
+                        if (
+                            owner instanceof HTMLElement
+                            && owner.firstElementChild === link
+                            && (href === '' || href === '#')
+                        ) {
                             return;
                         }
                         setOpen(false);
