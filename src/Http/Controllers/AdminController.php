@@ -4708,7 +4708,7 @@ final class AdminController
                         billing_is_company, billing_company_name, billing_company_tax_id, billing_company_registration_no,
                         shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                         shipping_address_line1, shipping_city, shipping_county, shipping_postcode,
-                        notes,
+                        notes, admin_notes,
                         erp_status, erp_order_id, erp_attempts, erp_last_error, erp_problems, erp_synced_at,
                         erp_factura_numar, paid_amount,
                         edit_unlocked_at, edit_unlock_reason, edit_unlocked_by,
@@ -5472,6 +5472,65 @@ final class AdminController
      * gratuită. Comanda deja aprobată în ERP nu se mai atinge — acolo există
      * factură, iar corecția se face prin storno.
      */
+    /**
+     * Nota internă a comenzii: ce s-a vorbit cu clientul.
+     *
+     * Se poate scrie în orice stare, inclusiv după facturare — tocmai atunci
+     * apar discuțiile („a confirmat", „așteaptă marfa"). Nu atinge niciun
+     * număr de pe comandă, deci n-are de ce să fie blocată ca reducerile.
+     *
+     * Dacă a fost deja trimisă în ERP, comanda se retrimite ca nota să ajungă
+     * și acolo, în „Observații interne"; de acolo o preia factura la emitere.
+     */
+    public function orderNotesSave(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, erp_status FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu a fost găsită.']);
+            return;
+        }
+
+        $nota = trim((string) ($_POST['admin_notes'] ?? ''));
+        if (mb_strlen($nota) > 5000) {
+            $nota = mb_substr($nota, 0, 5000);
+        }
+
+        try {
+            $upd = $db->prepare('UPDATE orders SET admin_notes = :nota WHERE id = :id');
+            $upd->execute(['nota' => $nota !== '' ? $nota : null, 'id' => $orderId]);
+        } catch (Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut salva nota.']);
+            return;
+        }
+
+        $mesaj = 'Nota internă a fost salvată.';
+        if ((string) ($order['erp_status'] ?? '') === 'sent') {
+            $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
+            $mesaj .= ($rezultat['ok'] ?? false)
+                ? ' Trimisă și în ERP.'
+                : ' În ERP nu a ajuns încă — o trimite următoarea sincronizare.';
+        }
+
+        echo json_encode(['ok' => true, 'message' => $mesaj, 'admin_notes' => $nota]);
+    }
+
     public function orderDiscountSave(array $params): void
     {
         if (!$this->guard()) {

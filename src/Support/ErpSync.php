@@ -398,6 +398,9 @@ final class ErpSync
             // plată, e mai mic decât totalul, iar diferența rămâne de încasat.
             'sumaIncasata' => self::sumaIncasata($order),
             'observatii' => (string) ($order['notes'] ?? ''),
+            // Nota internă merge în câmpul intern al comenzii din ERP, iar de
+            // acolo pe factură. Rămâne între noi, nu ajunge la client.
+            'observatiiInterne' => (string) ($order['admin_notes'] ?? ''),
 
             'linii' => self::buildLines($db, $orderId),
         ];
@@ -628,6 +631,11 @@ final class ErpSync
             'edit_unlocked_at' => 'DATETIME DEFAULT NULL',
             'edit_unlock_reason' => 'VARCHAR(500) DEFAULT NULL',
             'edit_unlocked_by' => 'VARCHAR(190) DEFAULT NULL',
+            // Ce s-a vorbit cu clientul la telefon: „a confirmat", „aşteaptă
+            // marfa", „sună joi". Nu ajunge la client pe niciun drum — nici pe
+            // factură, nici în emailuri — dar pleacă în ERP, ca să nu fie
+            // sunat a doua oară pentru acelaşi lucru.
+            'admin_notes' => 'TEXT DEFAULT NULL',
         ];
 
         // Reducerea pusă de operator din ERP pe o linie. Prețul din

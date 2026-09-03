@@ -1161,6 +1161,19 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                         </p>
                     </div>`}
                 </div>
+                <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;">
+                    <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:6px;">Observații interne</div>
+                    <textarea id="order-notes-${order.id}" rows="3" maxlength="5000"
+                              placeholder="Ce s-a vorbit cu clientul. Ex: a confirmat, așteaptă marfa, sună joi."
+                              style="width:100%;box-sizing:border-box;border:1px solid #e5d08a;border-radius:5px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;">${esc(String(order.admin_notes || ''))}</textarea>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+                        <button type="button" onclick="saveOrderNotes(${order.id})" style="padding:6px 12px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Salvează nota</button>
+                        <span id="order-notes-status-${order.id}" style="font-size:13px;"></span>
+                    </div>
+                    <p style="margin:6px 0 0;color:#926a1e;font-size:12px;">
+                        Nu ajunge la client — nici pe factură, nici în emailuri. Se trimite în ERP, pe comandă și pe factura emisă din ea.
+                    </p>
+                </div>
                 ${promoHtml}
                 <div class="order-totals">
                     ${totalsHtml}
@@ -1530,6 +1543,30 @@ function saveOrderItems(orderId){
             setTimeout(() => { window.location.reload(); }, intarziere);
         })
         .catch(() => { if(status){status.style.color='#dc2626';status.textContent='Eroare server';} });
+}
+
+/* --- Nota interna: ce s-a vorbit cu clientul --- */
+async function saveOrderNotes(orderId){
+  const camp = document.getElementById('order-notes-' + orderId);
+  const stare = document.getElementById('order-notes-status-' + orderId);
+  if (!camp) { return; }
+  if (stare) { stare.textContent = 'Se salvează...'; stare.style.color = '#64748b'; }
+  try {
+    const body = new URLSearchParams();
+    body.set('admin_notes', camp.value);
+    const res = await fetch('/admin/orders/' + orderId + '/note-interne', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const data = await res.json();
+    if (stare) {
+      stare.textContent = data.ok ? (data.message || 'Salvat.') : (data.error || 'Nu am putut salva.');
+      stare.style.color = data.ok ? '#15803d' : '#b91c1c';
+    }
+  } catch (e) {
+    if (stare) { stare.textContent = 'Eroare de rețea.'; stare.style.color = '#b91c1c'; }
+  }
 }
 
 /* --- Reducere comercială pe o comandă venită din site --- */

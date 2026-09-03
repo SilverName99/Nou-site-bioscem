@@ -260,6 +260,7 @@ $router->post('/admin/orders/{id}/deblocheaza', [AdminController::class, 'orderU
 $router->post('/admin/orders/{id}/blocheaza', [AdminController::class, 'orderLockEdit']);
 $router->post('/admin/orders/{id}/fanbox', [AdminController::class, 'orderFanboxSave']);
 $router->post('/admin/orders/{id}/discount', [AdminController::class, 'orderDiscountSave']);
+$router->post('/admin/orders/{id}/note-interne', [AdminController::class, 'orderNotesSave']);
 $router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);
 $router->post('/admin/orders/{id}/payment-link', [AdminController::class, 'orderPaymentLinkSend']);
 $router->get('/admin/orders/{id}/client-promo', [AdminController::class, 'orderClientPromo']);
