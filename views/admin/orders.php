@@ -223,6 +223,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                     <th>Sumă</th>
                     <th>Status</th>
                     <th>Livrare</th>
+                    <th style="width:190px;">Observații interne</th>
                     <th style="width:220px;">Acțiuni</th>
                 </tr>
                 </thead>
@@ -405,6 +406,27 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 <small style="display:block;color:#64748b;"><?= htmlspecialchars($trackingStatus !== '' ? $trackingStatus : 'AWB generat', ENT_QUOTES) ?></small>
                             <?php else: ?>
                                 <small style="color:#94a3b8;">Puncte: <?= $pointsAwarded ?> / <?= (int) ($order['loyalty_points_pending_claim'] ?? 0) ?></small>
+                            <?php endif; ?>
+                        </td>
+                        <?php
+                            // Nota se citește din listă, fără să mai deschizi comanda:
+                            // asta era rostul ei — să vezi dintr-o privire cu cine s-a
+                            // vorbit deja. Se scurtează, iar textul întreg stă în tooltip
+                            // și în fereastra comenzii.
+                            $notaInterna = trim((string) ($order['admin_notes'] ?? ''));
+                            $notaScurt = $notaInterna === ''
+                                ? ''
+                                : (function_exists('mb_strimwidth')
+                                    ? mb_strimwidth($notaInterna, 0, 90, '…', 'UTF-8')
+                                    : substr($notaInterna, 0, 90));
+                        ?>
+                        <td class="orders-col-notes">
+                            <?php if ($notaInterna !== ''): ?>
+                                <span class="order-note-pill" title="<?= htmlspecialchars($notaInterna, ENT_QUOTES) ?>">
+                                    <?= nl2br(htmlspecialchars($notaScurt, ENT_QUOTES)) ?>
+                                </span>
+                            <?php else: ?>
+                                <small style="color:#cbd5e1;">—</small>
                             <?php endif; ?>
                         </td>
                         <td class="orders-col-actions">

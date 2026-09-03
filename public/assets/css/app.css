@@ -4972,6 +4972,28 @@ body > main.container {
     min-width: 170px;
 }
 
+/* Nota interna in lista de comenzi: se citeste dintr-o privire, dar nu are
+   voie sa impinga celelalte coloane, de aceea e taiata la doua randuri. */
+.orders-col-notes {
+    max-width: 190px;
+    vertical-align: top;
+}
+
+.order-note-pill {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #78350f;
+    font-size: 12px;
+    line-height: 1.35;
+    cursor: help;
+}
+
 .orders-actions-disabled {
     display: inline-flex;
     align-items: center;
