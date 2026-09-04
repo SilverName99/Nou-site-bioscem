@@ -257,7 +257,7 @@ if ($sortOptions === []) {
 .bv-popular-card__reviews{font:400 12px/1 "DM Sans",Arial,sans-serif;color:#6f8277;}
 .bv-popular-card__bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .bv-popular-card__price{margin:0;font:700 22px/1.1 "DM Sans",Arial,sans-serif;color:#1f2a25;}
-.bv-popular-card__old{margin-left:6px;font:500 12px/1 "DM Sans",Arial,sans-serif;color:#8ea196;text-decoration:line-through;}
+.bv-popular-card__old{margin-left:6px;font:500 12px/1 "DM Sans",Arial,sans-serif;color:#c0392b;text-decoration:line-through;}
 .bv-popular-card__cart-btn{width:40px;height:40px;border:0;border-radius:999px;background:#1f8b57;color:#fff;display:grid;place-items:center;cursor:pointer;}
 .bv-popular-card__cart-btn svg{width:16px;height:16px;}
 .bv-popular-card__stock-out{
