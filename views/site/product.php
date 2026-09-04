@@ -1054,6 +1054,34 @@ if ($galleryUrls === []) {
                 return;
             }
 
+            // Template-urile care au deja câmp propriu pentru prețul vechi îl
+            // afișează singure. Fără verificarea asta le mai adăugam unul peste,
+            // iar pe pagină apăreau două prețuri tăiate lângă cel redus.
+            const arePretulVechiDejaAfisat = Array.from(
+                renderRoot.querySelectorAll('p,div,span,strong,b,del,s,h1,h2,h3,h4,h5,h6')
+            ).some((node) => {
+                if (!(node instanceof HTMLElement) || node.children.length > 0) {
+                    return false;
+                }
+                if (node.classList.contains('price-old') || node.dataset.injectedOldPrice === '1') {
+                    return false;
+                }
+                if (priceNodes.some((pretNode) => pretNode === node || pretNode.contains(node))) {
+                    return false;
+                }
+                const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
+                // Doar sumele scrise ca preț („165.00 lei"), ca să nu confundăm
+                // cu un gramaj sau o cantitate din descriere.
+                if (!/lei/i.test(text)) {
+                    return false;
+                }
+                const amount = toAmount(text);
+                return Number.isFinite(amount) && Math.abs(amount - oldAmount) < 0.02;
+            });
+            if (arePretulVechiDejaAfisat) {
+                return;
+            }
+
             priceNodes.forEach((node) => {
                 if (!(node instanceof HTMLElement)) {
                     return;
