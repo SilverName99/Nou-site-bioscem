@@ -9613,9 +9613,37 @@ final class AdminController
         }
 
         $candidati = [$base];
-        $faraPrefix = trim((string) preg_replace('/^(municipiul|orasul|oras|comuna|satul|sat)\s+/', '', $base));
+        $faraPrefix = trim((string) preg_replace('/^(municipiul|orasul|oras|comuna|com|satul|sat)\s+/', '', $base));
         if ($faraPrefix !== '' && $faraPrefix !== $base) {
             $candidati[] = $faraPrefix;
+        }
+
+        // Clienții scriu des două localități într-un singur câmp: „Partestii de
+        // Jos, sat. Deleni". FAN cunoaște satul, nu perechea, deci se încearcă
+        // fiecare bucată — satul întâi, că acolo se duce coletul; comuna e doar
+        // reperul administrativ.
+        $sate = [];
+        $simple = [];
+        $comune = [];
+        foreach (preg_split('/[,;\/]+/', $locality) ?: [] as $parte) {
+            $token = $this->normalizeFanLocalityToken((string) $parte);
+            if ($token === '' || $token === $base) {
+                continue;
+            }
+            if (preg_match('/^sat(ul)?\s+(.+)$/', $token, $m) === 1) {
+                $sate[] = trim($m[2]);
+            } elseif (preg_match('/^(?:com|comuna)\s+(.+)$/', $token, $m) === 1) {
+                $comune[] = trim($m[1]);
+            } else {
+                $simple[] = trim((string) preg_replace('/^(municipiul|orasul|oras)\s+/', '', $token));
+            }
+        }
+        // Bucățile fără prefix se iau de la coadă spre început: forma obișnuită
+        // e „comună, sat", deci ultima e cea mai precisă.
+        foreach ([...$sate, ...array_reverse($simple), ...$comune] as $parte) {
+            if (trim((string) $parte) !== '') {
+                $candidati[] = trim((string) $parte);
+            }
         }
         foreach ($candidati as $candidat) {
             $candidati[] = str_replace(' ', '-', $candidat);
@@ -15334,6 +15362,18 @@ HTML;
             $recipientStreet = $lockerAddress;
             $recipientZip = trim((string) ($order['fan_locker_postcode'] ?? '')) ?: $recipientZip;
         }
+
+        // Localitatea scrisă de client se aduce la grafia din nomenclatorul FAN
+        // înainte de a cere AWB-ul. Fără pasul ăsta pleca exact ce a tastat
+        // omul — „Partestii de Jos,sat.Deleni" — iar FAN răspundea „Locality is
+        // invalid", deși satul există la ei. Checkout-ul făcea deja asta la
+        // calculul transportului; aici nu.
+        $dbFan = $this->db();
+        [$recipientCounty, $recipientLocality] = $this->fanCanonicalAddress(
+            $dbFan instanceof PDO ? $dbFan : null,
+            $recipientCounty,
+            $recipientLocality
+        );
 
         // FAN nu acceptă opțiunea de FANbox pe orice serviciu: livrarea în locker
         // are propriul tip de serviciu. Se schimbă doar pentru aceste comenzi,
@@ -22897,7 +22937,10 @@ HTML;
             'ț' => 't',
             'ţ' => 't',
         ]);
-        $value = preg_replace('/[^a-z0-9\s\-]/', '', $value) ?? '';
+        // Semnele de punctuație devin spații, nu dispar: „sat.Deleni" trebuie
+        // să ajungă „sat deleni", ca prefixul să poată fi tăiat. Șterse pur și
+        // simplu, ieșea „satdeleni" și nicio localitate nu se mai potrivea.
+        $value = preg_replace('/[^a-z0-9\s\-]/', ' ', $value) ?? '';
         $value = preg_replace('/\s+/', ' ', $value) ?? '';
         return trim($value);
     }

@@ -7337,7 +7337,10 @@ CSS;
             'ț' => 't',
             'ţ' => 't',
         ]);
-        $value = preg_replace('/[^a-z0-9\s\-]/', '', $value) ?? '';
+        // Semnele de punctuație devin spații, nu dispar: „sat.Deleni" trebuie
+        // să ajungă „sat deleni", ca prefixul să poată fi tăiat. Șterse pur și
+        // simplu, ieșea „satdeleni" și nicio localitate nu se mai potrivea.
+        $value = preg_replace('/[^a-z0-9\s\-]/', ' ', $value) ?? '';
         $value = preg_replace('/\s+/', ' ', $value) ?? '';
         return trim($value);
     }
@@ -7403,10 +7406,39 @@ CSS;
         }
         $candidates = [$base];
 
-        $trimmed = preg_replace('/^(municipiul|oras(ul)?|comuna|sat(ul)?)\s+/', '', $base) ?? $base;
+        $trimmed = preg_replace('/^(municipiul|oras(ul)?|com(una)?|sat(ul)?)\s+/', '', $base) ?? $base;
         $trimmed = trim($trimmed);
         if ($trimmed !== '' && $trimmed !== $base) {
             $candidates[] = $trimmed;
+        }
+
+        // Clienții scriu des două localități într-un singur câmp: „Partestii de
+        // Jos, sat. Deleni". FAN cunoaște satul, nu perechea, așa că se încearcă
+        // fiecare bucată. Satul are prioritate: coletul acolo se duce, iar
+        // comuna e doar reper administrativ.
+        $sate = [];
+        $simple = [];
+        $comune = [];
+        foreach (preg_split('/[,;\/]+/', $locality) ?: [] as $parte) {
+            $token = $this->normalizeFanLocalityToken((string) $parte);
+            if ($token === '' || $token === $base) {
+                continue;
+            }
+            if (preg_match('/^sat(ul)?\s+(.+)$/', $token, $m) === 1) {
+                $sate[] = trim($m[2]);
+            } elseif (preg_match('/^(?:com|comuna)\s+(.+)$/', $token, $m) === 1) {
+                $comune[] = trim($m[1]);
+            } else {
+                $simple[] = preg_replace('/^(municipiul|oras(ul)?)\s+/', '', $token) ?? $token;
+            }
+        }
+        // Bucățile fără prefix se iau de la coadă spre început: forma obișnuită
+        // e „comună, sat", deci ultima bucată e cea mai precisă.
+        foreach ([...$sate, ...array_reverse($simple), ...$comune] as $parte) {
+            $parte = trim((string) $parte);
+            if ($parte !== '') {
+                $candidates[] = $parte;
+            }
         }
 
         // FAN typically expects locality "bucuresti", not sector variants.
