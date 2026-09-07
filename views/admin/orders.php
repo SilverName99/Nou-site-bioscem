@@ -190,6 +190,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                     <option value="status">Schimbă status</option>
                     <option value="awb">Generează AWB</option>
                     <option value="shipping">Corectează transportul</option>
+                    <option value="erp_retry">Retrimite în ERP</option>
                 </select>
                 <input type="number" name="bulk_shipping_value" id="orders-bulk-shipping" step="0.01" min="0"
                        placeholder="Transport (lei)" style="display:none;width:150px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;">
@@ -488,9 +489,23 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                             <button type="submit" class="order-action-btn" title="Confirmă plata OP — comanda devine plătită și pleacă în ERP">💰</button>
                                         </form>
                                     <?php endif; ?>
-                                    <?php if ($erpEnabled && !in_array($erpStatus, ['sent', 'skipped'], true)): ?>
-                                        <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry">
-                                            <button type="submit" class="order-action-btn" title="Retrimite în ERP<?= $erpError !== '' ? (' — ultima eroare: ' . htmlspecialchars($erpError, ENT_QUOTES)) : '' ?>">🔄</button>
+                                    <?php if ($erpEnabled && $erpStatus !== 'skipped'): ?>
+                                        <?php
+                                        // Comanda deja trimisă se poate retrimite, dar e o apăsare
+                                        // cu intenție, nu o reparare de eroare: ERP-ul o ia de la
+                                        // capăt cu conținutul de acum. Ingestia e idempotentă pe
+                                        // numărul comenzii, deci nu se dublează — se actualizează.
+                                        $erpTrimisa = $erpStatus === 'sent';
+                                        $erpTitlu = $erpTrimisa
+                                            ? 'Retrimite în ERP (a fost deja trimisă — se actualizează acolo, nu se dublează)'
+                                            : 'Retrimite în ERP'
+                                                . ($erpError !== '' ? ' — ultima eroare: ' . $erpError : '');
+                                        ?>
+                                        <form method="post" action="/admin/orders/<?= $orderId ?>/erp-retry"
+                                              <?= $erpTrimisa ? 'onsubmit="return confirm(\'Comanda ' . htmlspecialchars((string) ($order['order_number'] ?? ''), ENT_QUOTES) . ' a fost deja trimisă în ERP.\n\nO retrimiți? Acolo se actualizează cu ce e acum pe site.\')"' : '' ?>>
+                                            <button type="submit" class="order-action-btn"
+                                                    title="<?= htmlspecialchars($erpTitlu, ENT_QUOTES) ?>"
+                                                    <?= $erpTrimisa ? 'style="opacity:.55;"' : '' ?>>🔄</button>
                                         </form>
                                     <?php endif; ?>
                                     <button
@@ -699,6 +714,14 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             return;
         }
         if (bulkAction.value === 'awb' && !window.confirm('Generezi AWB FAN pentru comenzile selectate?')) {
+            event.preventDefault();
+            return;
+        }
+        if (bulkAction.value === 'erp_retry' && !window.confirm(
+            'Retrimiți ' + selectedIds.length + ' comenzi în ERP?\n\n'
+            + 'Cele pe care ERP-ul le are deja se actualizează cu ce e acum pe site, nu se dublează.\n'
+            + 'Durează câteva secunde per comandă — nu închide pagina.'
+        )) {
             event.preventDefault();
             return;
         }

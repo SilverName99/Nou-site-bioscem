@@ -6514,6 +6514,47 @@ final class AdminController
             return;
         }
 
+        if ($action === 'erp_retry') {
+            // Retrimiterea în masă e pentru cazul în care ERP-ul a rămas în
+            // urmă — o restaurare dintr-un backup vechi, o pană lungă. Ingestia
+            // e idempotentă pe numărul comenzii: ce există acolo se
+            // actualizează, nu se dublează.
+            $trimise = 0;
+            $esuate = [];
+            foreach ($orderIds as $orderId) {
+                $rezultat = \App\Support\ErpSync::push($db, $orderId, true);
+                if ($rezultat['ok'] ?? false) {
+                    $trimise++;
+                    continue;
+                }
+                $rezumat = $this->rezumatComandaPentruJurnal($db, $orderId);
+                $esuate[] = ($rezumat['comanda'] ?? (string) $orderId)
+                    . ': ' . trim((string) ($rezultat['message'] ?? 'retrimiterea a eșuat'));
+            }
+
+            AdminActivityLog::log($db, 'comenzi_retrimise_in_erp', [
+                'numar' => (string) $trimise,
+                'esuate' => $esuate,
+            ]);
+
+            if ($trimise > 0 && $esuate === []) {
+                Flash::set('success', 'Comenzi retrimise în ERP: ' . $trimise . '.');
+            } elseif ($trimise > 0) {
+                Flash::set(
+                    'success',
+                    'Comenzi retrimise în ERP: ' . $trimise . '. Nereușite: '
+                        . count($esuate) . ' — ' . implode(' · ', array_slice($esuate, 0, 5))
+                );
+            } else {
+                Flash::set(
+                    'error',
+                    'Nicio comandă nu a putut fi retrimisă. ' . implode(' · ', array_slice($esuate, 0, 5))
+                );
+            }
+            header('Location: ' . $backUrl);
+            return;
+        }
+
         if ($action === 'status') {
             $status = trim((string) ($_POST['bulk_status'] ?? ''));
             if (!in_array($status, self::ORDER_ALLOWED_STATUSES, true)) {
