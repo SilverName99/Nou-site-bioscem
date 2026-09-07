@@ -104,11 +104,7 @@ if ($sortOptions === []) {
         $reviewsAverage = max(0.0, min(5.0, (float) ($product['reviews_average'] ?? 0)));
         $roundedStars = (int) round($reviewsAverage);
         $outOfStock = (int) ($product['out_of_stock'] ?? 0) === 1;
-        $hasBbdOffers = (bool) ($product['requires_bbd_selection'] ?? false)
-            || (
-                (int) ($product['bbd_enabled'] ?? 0) === 1
-                && trim((string) ($product['bbd_entries_json'] ?? '')) !== ''
-            );
+        $hasBbdOffers = \App\Support\BbdOferte::cereAlegere($product);
         $discountMode = (string) ($product['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent';
         $discount = 0;
         $discountValue = 0.0;

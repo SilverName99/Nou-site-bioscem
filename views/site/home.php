@@ -954,9 +954,7 @@ $whyItems = [
               </p>
 
               <?php
-                  $cereOferta = (bool) ($product['requires_bbd_selection'] ?? false)
-                      || ((int) ($product['bbd_enabled'] ?? 0) === 1
-                          && trim((string) ($product['bbd_entries_json'] ?? '')) !== '');
+                  $cereOferta = \App\Support\BbdOferte::cereAlegere($product);
               ?>
               <?php if ((int) ($product['out_of_stock'] ?? 0) === 1): ?>
                 <span class="bs-product-card__out">Stoc epuizat</span>
