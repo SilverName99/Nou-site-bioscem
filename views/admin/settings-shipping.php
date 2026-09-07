@@ -454,6 +454,14 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                    value="<?= htmlspecialchars((string) ($settings['fan_parcel_count'] ?? '1'), ENT_QUOTES) ?>">
         </div>
         <div class="field">
+            <label>Kg maxim pe colet</label>
+            <input type="number" step="0.1" min="0" max="999" name="fan_kg_max_colet"
+                   value="<?= htmlspecialchars((string) ($settings['fan_kg_max_colet'] ?? '13'), ENT_QUOTES) ?>">
+            <small>Peste greutatea asta, comanda pleacă în mai multe colete.
+            FAN taxează suplimentar coletele declarate sub greutatea reală.
+            0 = fără împărțire automată.</small>
+        </div>
+        <div class="field">
             <label>Număr plicuri</label>
             <input type="number" step="1" min="0" max="999" name="fan_envelope_count"
                    value="<?= htmlspecialchars((string) ($settings['fan_envelope_count'] ?? '0'), ENT_QUOTES) ?>">

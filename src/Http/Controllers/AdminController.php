@@ -9459,6 +9459,12 @@ final class AdminController
             'fan_shipping_payer' => $shippingPayer,
             'fan_shipment_type' => $packageType,
             'fan_parcel_count' => (string) $parcelCount,
+            'fan_kg_max_colet' => number_format(
+                max(0.0, (float) str_replace(',', '.', trim((string) ($_POST['fan_kg_max_colet'] ?? '13')))),
+                2,
+                '.',
+                ''
+            ),
             'fan_envelope_count' => (string) $envelopeCount,
             'fan_option_codes' => $this->fanNormalizeSelectedOptions((array) ($_POST['fan_option_codes'] ?? [])),
             'fan_cod_bank' => mb_substr(trim((string) ($_POST['fan_cod_bank'] ?? '')), 0, 120),
@@ -15308,6 +15314,9 @@ HTML;
             ? $override['items']
             : (array) ($order['items'] ?? []);
         $weight = $this->fanOrderWeightKg($weightItems, $defaultWeight);
+        if ($shipmentType === 'parcel') {
+            $parcelCount = $this->fanNumarColete($weight, $parcelCount, $settings);
+        }
         $dimensions = $this->fanDimensionsFromSettings($settings);
 
         // AWB-ul se emite către adresa de LIVRARE. Dacă livrarea diferă de facturare
@@ -15598,6 +15607,23 @@ HTML;
             'username' => $username,
             'password' => $password,
         ];
+    }
+
+    /**
+     * Câte colete pleacă pentru greutatea dată.
+     *
+     * FAN plafonează coletul (implicit 13 kg); ce trece peste înseamnă încă un
+     * colet. Declarat greșit — un colet de 1 kg pentru o comandă de 20 —, FAN
+     * recântărește la depozit și taxează diferența. Setarea din „Număr colete"
+     * rămâne un minim: cine expediază mereu în două cutii nu-l pierde.
+     */
+    private function fanNumarColete(float $weightKg, int $configurat, array $settings): int
+    {
+        $maxim = (float) str_replace(',', '.', (string) ($settings['fan_kg_max_colet'] ?? '13'));
+        if ($maxim <= 0 || $weightKg <= 0) {
+            return max(1, $configurat);
+        }
+        return max(1, $configurat, (int) ceil($weightKg / $maxim));
     }
 
     private function fanOrderWeightKg(array $items, float $defaultWeight): float

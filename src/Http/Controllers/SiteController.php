@@ -6682,6 +6682,9 @@ CSS;
             $shipmentType = 'parcel';
         }
         $parcelCount = $shipmentType === 'parcel' ? max(1, (int) ($settings['fan_parcel_count'] ?? 1)) : 0;
+        if ($shipmentType === 'parcel') {
+            $parcelCount = $this->fanNumarColete($weightKg, $parcelCount, $settings);
+        }
         $envelopeCount = $shipmentType === 'envelope' ? max(1, (int) ($settings['fan_envelope_count'] ?? 1)) : 0;
         $shippingPayer = trim((string) ($settings['fan_shipping_payer'] ?? 'recipient'));
         if (!in_array($shippingPayer, ['recipient', 'sender', 'third_party'], true)) {
@@ -9850,6 +9853,9 @@ CSS;
         }
 
         $weight = $this->orderWeightKgFromItems((array) ($order['items'] ?? []), $defaultWeight);
+        if ($shipmentType === 'parcel') {
+            $parcelCount = $this->fanNumarColete($weight, $parcelCount, $settings);
+        }
         $dimensions = $this->fanDimensionsFromSettings($settings);
 
         // AWB-ul se emite către adresa de LIVRARE dacă aceasta diferă de facturare.
@@ -10044,6 +10050,23 @@ CSS;
         }
 
         return $totalWeightKg > 0 ? $totalWeightKg : $fallback;
+    }
+
+    /**
+     * Câte colete pleacă pentru greutatea dată.
+     *
+     * FAN plafonează coletul (implicit 13 kg); ce trece peste înseamnă încă un
+     * colet. Declarat greșit — un colet de 1 kg pentru o comandă de 20 —, FAN
+     * recântărește la depozit și taxează diferența. Setarea din „Număr colete"
+     * rămâne un minim: cine expediază mereu în două cutii nu-l pierde.
+     */
+    private function fanNumarColete(float $weightKg, int $configurat, array $settings): int
+    {
+        $maxim = (float) str_replace(',', '.', (string) ($settings['fan_kg_max_colet'] ?? '13'));
+        if ($maxim <= 0 || $weightKg <= 0) {
+            return max(1, $configurat);
+        }
+        return max(1, $configurat, (int) ceil($weightKg / $maxim));
     }
 
     private function fanDimensionsFromSettings(array $settings): array
