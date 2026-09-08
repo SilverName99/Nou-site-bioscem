@@ -128,6 +128,71 @@ final class SiteController
         ), static fn (string $v): bool => $v !== ''));
     }
 
+    /**
+     * Marca și etichetele unui produs, gata de pus în pagină.
+     *
+     * Aceleași linkuri ca în layoutul implicit: marca duce la /marca/<slug>,
+     * fiecare etichetă la /eticheta/<slug>. Întors gol dacă produsul n-are
+     * nici marcă, nici etichete — ca să nu rămână un bloc gol în template.
+     *
+     * @param array<string, mixed> $produs
+     */
+    private function buildProductTaxonomiesHtml(array $produs): string
+    {
+        $marca = trim((string) ($produs['brand'] ?? ''));
+        $etichete = $this->productTags($produs);
+        if ($marca === '' && $etichete === []) {
+            return '';
+        }
+
+        $html = '<div class="product-meta-taxonomii" style="margin-top:16px;display:grid;gap:8px;'
+            . 'font:500 14px/1.5 \'DM Sans\',Arial,sans-serif;color:#475569;">';
+        if ($marca !== '') {
+            $html .= '<p style="margin:0;">Marcă: ' . $this->buildProductBrandLinkHtml($marca) . '</p>';
+        }
+        if ($etichete !== []) {
+            $html .= '<p style="margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">'
+                . '<span>Etichete:</span>' . $this->buildProductTagsHtml($etichete) . '</p>';
+        }
+
+        return $html . '</div>';
+    }
+
+    /** Marca, ca link către pagina ei. */
+    private function buildProductBrandLinkHtml(string $marca): string
+    {
+        $marca = trim($marca);
+        if ($marca === '') {
+            return '';
+        }
+
+        return '<a href="/marca/' . rawurlencode($this->slugSimplu($marca)) . '"'
+            . ' style="color:#0f766e;font-weight:600;">'
+            . htmlspecialchars($marca, ENT_QUOTES) . '</a>';
+    }
+
+    /**
+     * Etichetele, ca linkuri rotunjite.
+     *
+     * @param string[] $etichete
+     */
+    private function buildProductTagsHtml(array $etichete): string
+    {
+        $html = '';
+        foreach ($etichete as $eticheta) {
+            $eticheta = trim((string) $eticheta);
+            if ($eticheta === '') {
+                continue;
+            }
+            $html .= '<a href="/eticheta/' . rawurlencode($this->slugSimplu($eticheta)) . '"'
+                . ' style="display:inline-block;padding:3px 10px;border:1px solid #d7e3dc;border-radius:999px;'
+                . 'color:#274136;text-decoration:none;font-size:13px;">'
+                . htmlspecialchars($eticheta, ENT_QUOTES) . '</a>';
+        }
+
+        return $html;
+    }
+
     /** Pagina unei mărci: /marca/farabella. */
     public function shopBrand(array $params = []): void
     {
@@ -8880,6 +8945,27 @@ CSS;
             $productQuantityInputHtml = $productBbdSelectorHtml . $productQuantityInputHtml;
         }
         $productPostCartNoteHtml = $this->buildProductPostCartNoteHtml($product);
+        // Marca și etichetele: dacă template-ul nu are niciun cod pentru ele,
+        // se agață de butonul de coș, exact unde stau în layoutul implicit.
+        // Altfel n-ar apărea deloc, iar omul care a făcut template-ul acum
+        // doi ani n-avea de unde să pună un cod care nu exista.
+        $productBrand = trim((string) ($product['brand'] ?? ''));
+        $productTagList = $this->productTags($product);
+        $productBrandLinkHtml = $this->buildProductBrandLinkHtml($productBrand);
+        $productTagsHtml = $this->buildProductTagsHtml($productTagList);
+        $productTaxonomiesHtml = $this->buildProductTaxonomiesHtml($product);
+        $templateHasTaxonomyPlaceholder = false;
+        foreach (['brand', 'tags', 'taxonomii'] as $bucata) {
+            if (str_contains($templateHtmlRaw, '{{product_' . $bucata)
+                || str_contains($templateHtmlRaw, '{{product:' . $bucata)) {
+                $templateHasTaxonomyPlaceholder = true;
+                break;
+            }
+        }
+        $addToCartSuffixHtml = $productPostCartNoteHtml;
+        if (!$templateHasTaxonomyPlaceholder) {
+            $addToCartSuffixHtml .= $productTaxonomiesHtml;
+        }
         $map = [
             'product_name' => $productName,
             'product_slug' => $productSlug,
@@ -8928,8 +9014,18 @@ CSS;
                 $productPrice,
                 (int) ($product['out_of_stock'] ?? 0) === 1,
                 $requiresBbdSelection
-            ) . $productPostCartNoteHtml,
+            ) . $addToCartSuffixHtml,
             'product_post_cart_note' => $productPostCartNoteHtml,
+            'product_brand' => $productBrand,
+            'product_brand_url' => $productBrand !== ''
+                ? '/marca/' . rawurlencode($this->slugSimplu($productBrand))
+                : '',
+            'product_brand_link' => $productBrandLinkHtml,
+            'product_tags' => $productTagsHtml,
+            'product_tags_text' => implode(', ', $productTagList),
+            'product_taxonomii' => $productTaxonomiesHtml,
+            'product_stock' => (string) max(0, (int) ($product['stock'] ?? 0)),
+            'product_weight_grams' => (string) max(0, (int) ($product['weight_grams'] ?? 0)),
         ];
         foreach ($map as $key => $value) {
             if (strpos($key, 'product_') === 0) {
@@ -8979,6 +9075,9 @@ CSS;
                 'product_quantity_input',
                 'product_add_to_cart_button',
                 'product_post_cart_note',
+                'product_brand_link',
+                'product_tags',
+                'product_taxonomii',
             ], true)) {
                 $html = str_replace($placeholder, $value, $html);
             } else {
