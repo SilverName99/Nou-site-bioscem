@@ -58,14 +58,23 @@ foreach ($argv as $a) {
         $caleCsv = substr($a, 6);
     }
 }
-$fisier = (string) ($argumente[0] ?? '');
-// „~" îl desface de obicei shell-ul, dar nu și când calea vine în ghilimele.
-if (str_starts_with($fisier, '~/')) {
-    $acasa = getenv('HOME');
-    if (is_string($acasa) && $acasa !== '') {
-        $fisier = $acasa . substr($fisier, 1);
+/**
+ * Desface „~" la începutul unei căi.
+ *
+ * Shell-ul o face pentru argumentele obișnuite, dar nu și după „=" — un
+ * `--csv=~/undeva` ajunge aici cu tilda nemodificată, iar scrierea eșuează
+ * într-un folder numit chiar „~".
+ */
+function desfaTilda(string $cale): string
+{
+    if (!str_starts_with($cale, '~/')) {
+        return $cale;
     }
+    $acasa = getenv('HOME');
+    return is_string($acasa) && $acasa !== '' ? $acasa . substr($cale, 1) : $cale;
 }
+
+$fisier = desfaTilda((string) ($argumente[0] ?? ''));
 if ($fisier === '') {
     fwrite(STDERR, "Dă calea către fișierul de bază de date din backup:\n  php scripts/import-brand-taguri-wp.php backup_..._-db.gz [--aplica]\n");
     exit(1);
@@ -81,6 +90,7 @@ if (!is_file($fisier)) {
     }
     exit(1);
 }
+$caleCsv = desfaTilda($caleCsv);
 if ($caleCsv === '') {
     $caleCsv = dirname($fisier) . '/brand-taguri-wp.csv';
 }
@@ -493,7 +503,11 @@ foreach ($peSlug as $slug => $date) {
 }
 
 // CSV de verificat, întotdeauna.
-$csv = fopen($caleCsv, 'w');
+$csv = @fopen($caleCsv, 'w');
+if ($csv === false) {
+    // Fără avertismentul ăsta, omul caută un fișier care nu s-a creat niciodată.
+    fwrite(STDERR, "Nu am putut scrie fișierul de verificare: {$caleCsv}\n");
+}
 if ($csv !== false) {
     fwrite($csv, "\xEF\xBB\xBF");
     fputcsv($csv, ['slug', 'produs', 'brand', 'etichete', 'seo_titlu', 'seo_descriere'], ',');
@@ -519,7 +533,8 @@ if ($sarite > 0) {
 if ($negasite !== []) {
     printf("Nu mai există în magazin (%d): %s\n", count($negasite), implode(', ', array_slice($negasite, 0, 15)));
 }
-printf("Fișier de verificare: %s\n", $caleCsv);
+$caleAfisata = realpath($caleCsv);
+printf("Fișier de verificare: %s\n", $caleAfisata !== false ? $caleAfisata : $caleCsv);
 
 if (!$aplica) {
     echo "\nRaport. Nu s-a scris nimic în magazin. Verifică fișierul CSV, apoi adaugă --aplica.\n";
