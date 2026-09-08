@@ -52,6 +52,8 @@ $argumente = array_values(array_filter(
 ));
 $aplica = in_array('--aplica', $argv, true);
 $suprascrie = in_array('--suprascrie', $argv, true);
+/** Nu importă nimic: arată ce taxonomii și ce chei există în dump. */
+$ceAre = in_array('--ce-are', $argv, true);
 $caleCsv = '';
 foreach ($argv as $a) {
     if (str_starts_with($a, '--csv=')) {
@@ -213,6 +215,7 @@ $termeni = [];      // term_id → ['nume' => ..., 'slug' => ...]
 $taxonomii = [];    // term_taxonomy_id → ['term_id' => ..., 'taxonomie' => ...]
 $legaturi = [];     // post_id → [term_taxonomy_id, ...]
 $seoMeta = [];      // post_id → ['titlu' => ..., 'descriere' => ...]
+$cheiInteresante = []; // doar la --ce-are
 $numeSite = '';
 
 $handle = deschide($fisier);
@@ -222,15 +225,18 @@ while (($citit = gzgets($handle, 1024 * 1024)) !== false) {
     // trece ușor de un megabait. Citim în bucăți și le lipim până dăm de
     // capătul instrucțiunii, altfel am tăia un rând în două și l-am pierde.
     $bucata .= $citit;
+    // Orice altceva decât un INSERT se aruncă imediat. Altfel comentariile și
+    // rândurile goale dinaintea lui — un dump e plin de ele — s-ar lipi de
+    // instrucțiune, care n-ar mai începe cu „INSERT INTO" și ar fi sărită.
+    if (strncmp($bucata, 'INSERT INTO', min(11, strlen($bucata))) !== 0) {
+        $bucata = '';
+        continue;
+    }
     if (substr($bucata, -2) !== ";\n" && substr($bucata, -1) !== ';') {
         continue;
     }
     $linie = $bucata;
     $bucata = '';
-
-    if (strncmp($linie, 'INSERT INTO', 11) !== 0) {
-        continue;
-    }
     if (preg_match('/^INSERT INTO `([a-z0-9_]*?)(posts|terms|term_taxonomy|term_relationships|postmeta|options|aioseo_posts)` /i', $linie, $m) !== 1) {
         continue;
     }
@@ -275,7 +281,7 @@ while (($citit = gzgets($handle, 1024 * 1024)) !== false) {
         case 'postmeta':
             // Tabela e uriașă, dar ne interesează câteva chei. Linia se
             // desface abia dacă una dintre ele apare în text.
-            $areCheie = false;
+            $areCheie = $ceAre;
             foreach ([...SEO_CHEI_TITLU, ...SEO_CHEI_DESCRIERE] as $cheie) {
                 if (str_contains($linie, $cheie)) {
                     $areCheie = true;
@@ -292,6 +298,19 @@ while (($citit = gzgets($handle, 1024 * 1024)) !== false) {
                 $valoare = trim((string) ($rand[3] ?? ''));
                 if ($postId <= 0 || $valoare === '') {
                     continue;
+                }
+                if ($ceAre) {
+                    // Cheile interesante: orice seamănă a marcă sau a cuvinte
+                    // cheie. Se strâng cu un exemplu, ca să se vadă ce conțin.
+                    $c = mb_strtolower($cheie);
+                    if (
+                        str_contains($c, 'brand') || str_contains($c, 'marca')
+                        || str_contains($c, 'keyw') || str_contains($c, 'tag')
+                        || str_contains($c, 'producator') || str_contains($c, 'focuskw')
+                    ) {
+                        $cheiInteresante[$cheie]['numar'] = ($cheiInteresante[$cheie]['numar'] ?? 0) + 1;
+                        $cheiInteresante[$cheie]['exemplu'] ??= mb_substr($valoare, 0, 80);
+                    }
                 }
                 $pozTitlu = array_search($cheie, SEO_CHEI_TITLU, true);
                 if ($pozTitlu !== false) {
@@ -358,6 +377,54 @@ while (($citit = gzgets($handle, 1024 * 1024)) !== false) {
 }
 gzclose($handle);
 
+if ($ceAre) {
+    // Câte legături are fiecare taxonomie CU PRODUSE — o taxonomie cu 500 de
+    // termeni, dar niciunul pe produse, nu ne ajută cu nimic.
+    $peTaxonomie = [];
+    foreach ($legaturi as $postId => $ttIds) {
+        if (!isset($produse[$postId])) {
+            continue;
+        }
+        foreach ($ttIds as $ttId) {
+            $tax = $taxonomii[$ttId] ?? null;
+            if ($tax === null) {
+                continue;
+            }
+            $nume = $tax['taxonomie'];
+            $peTaxonomie[$nume]['legaturi'] = ($peTaxonomie[$nume]['legaturi'] ?? 0) + 1;
+            $termen = $termeni[$tax['term_id']] ?? null;
+            if ($termen !== null && count($peTaxonomie[$nume]['exemple'] ?? []) < 6) {
+                $peTaxonomie[$nume]['exemple'][] = $termen['nume'];
+            }
+        }
+    }
+    arsort($peTaxonomie);
+
+    printf("Produse în backup: %d\n\n", count($produse));
+    echo "TAXONOMII folosite pe produse (aici stau brandurile și etichetele):\n";
+    if ($peTaxonomie === []) {
+        echo "  — niciuna. Produsele n-aveau nici categorii, nici etichete, nici mărci.\n";
+    }
+    foreach ($peTaxonomie as $nume => $date) {
+        printf(
+            "  %-28s %5d legături   ex: %s\n",
+            $nume,
+            $date['legaturi'],
+            implode(', ', array_slice($date['exemple'] ?? [], 0, 6))
+        );
+    }
+
+    echo "\nCHEI din postmeta care seamănă a marcă / cuvinte cheie:\n";
+    if ($cheiInteresante === []) {
+        echo "  — niciuna.\n";
+    }
+    foreach ($cheiInteresante as $cheie => $date) {
+        printf("  %-34s %5d valori   ex: %s\n", $cheie, $date['numar'], $date['exemplu'] ?? '');
+    }
+    echo "\nDiagnostic. Nu s-a scris nimic.\n";
+    exit(0);
+}
+
 if ($produse === []) {
     fwrite(STDERR, "N-am găsit produse în dump. Sigur e fișierul de bază de date, cel cu „-db' în nume?\n");
     exit(1);
@@ -388,6 +455,10 @@ function desfaSablon(string $text, string $titluProdus, string $numeSite): strin
         '%sitename%' => $numeSite,
         '%sep%' => '-',
     ]);
+    // Titlurile scrise în editor conțin uneori „<br>" — pe pagină rupea rândul,
+    // dar într-un titlu de Google e doar gunoi. Orice etichetă HTML devine spațiu.
+    $text = (string) preg_replace('/<[^>]{0,60}>/', ' ', $text);
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $text = (string) preg_replace('/%%[a-z_]+%%/i', '', $text);
     $text = (string) preg_replace('/%[a-z_]+%/i', '', $text);
     $text = (string) preg_replace('/\s{2,}/u', ' ', $text);
@@ -525,7 +596,21 @@ if ($csv !== false) {
 }
 
 printf("Produse în backup: %d\n", count($produse));
-printf("Produse cu brand sau etichete: %d\n", count($peSlug));
+$cuBrand = 0;
+$cuTaguri = 0;
+$cuSeo = 0;
+foreach ($peSlug as $date) {
+    if (trim((string) ($date['brand'] ?? '')) !== '') {
+        $cuBrand++;
+    }
+    if (($date['taguri'] ?? []) !== []) {
+        $cuTaguri++;
+    }
+    if (trim((string) ($date['seo_titlu'] ?? '')) !== '' || trim((string) ($date['seo_descriere'] ?? '')) !== '') {
+        $cuSeo++;
+    }
+}
+printf("Din care: cu marcă %d, cu etichete %d, cu SEO %d\n", $cuBrand, $cuTaguri, $cuSeo);
 printf("%s: %d\n", $aplica ? 'Produse actualizate' : 'Produse de actualizat', count($deScris));
 if ($sarite > 0) {
     printf("Sărite (au deja brand/etichete; folosește --suprascrie ca să le înlocuiești): %d\n", $sarite);
