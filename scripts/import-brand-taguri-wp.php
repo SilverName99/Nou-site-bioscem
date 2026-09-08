@@ -59,8 +59,26 @@ foreach ($argv as $a) {
     }
 }
 $fisier = (string) ($argumente[0] ?? '');
-if ($fisier === '' || !is_file($fisier)) {
+// „~" îl desface de obicei shell-ul, dar nu și când calea vine în ghilimele.
+if (str_starts_with($fisier, '~/')) {
+    $acasa = getenv('HOME');
+    if (is_string($acasa) && $acasa !== '') {
+        $fisier = $acasa . substr($fisier, 1);
+    }
+}
+if ($fisier === '') {
     fwrite(STDERR, "Dă calea către fișierul de bază de date din backup:\n  php scripts/import-brand-taguri-wp.php backup_..._-db.gz [--aplica]\n");
+    exit(1);
+}
+if (!is_file($fisier)) {
+    // Pe găzduirile partajate, PHP e adesea închis în folderul domeniului
+    // (`open_basedir`), iar un fișier din afara lui pare că nu există. Spunem
+    // ce am încercat, altfel omul caută greșeala în numele fișierului.
+    fwrite(STDERR, "Nu găsesc fișierul: {$fisier}\n");
+    $limita = (string) ini_get('open_basedir');
+    if ($limita !== '') {
+        fwrite(STDERR, "PHP are voie să citească doar în: {$limita}\nMută backup-ul într-una dintre căile astea (de exemplu în folderul site-ului, dar NU în public_html).\n");
+    }
     exit(1);
 }
 if ($caleCsv === '') {
