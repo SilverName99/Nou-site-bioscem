@@ -1257,7 +1257,7 @@ final class AdminController
             \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
             try {
                 $rows = $db->query(
-                    'SELECT p.id, p.name, p.sku, p.category, p.category_id, c.name AS category_name, p.slug, p.price, p.vat_percent, p.vat_included, p.sale_price, p.sale_price_periods_json, p.discount_badge_mode, p.bbd_enabled, p.bbd_entries_json, p.post_cart_note_enabled, p.post_cart_note_text, p.stock, p.out_of_stock, p.weight_grams, p.image_url, p.is_active,
+                    'SELECT p.id, p.name, p.sku, p.category, p.category_id, c.name AS category_name, p.slug, p.price, p.vat_percent, p.vat_included, p.sale_price, p.sale_price_periods_json, p.discount_badge_mode, p.bbd_enabled, p.bbd_entries_json, p.post_cart_note_enabled, p.post_cart_note_text, p.stock, p.out_of_stock, p.weight_grams, p.brand, p.tags_json, p.image_url, p.is_active,
                             p.product_template_id, pt.name AS product_template_name,
                             p.short_description, p.description, p.product_highlights, p.similar_products_json,
                             p.gallery_images_json, p.badge_popular, p.badge_best_seller, p.badge_seasonal
@@ -1502,9 +1502,31 @@ final class AdminController
         $defaultVat = $db instanceof PDO
             ? (string) (Settings::all($db)['default_vat_percent'] ?? '19')
             : '19';
+        // Mărcile și etichetele deja folosite, pentru sugestiile din formular:
+        // altfel apar „Farabella", „farabella" și „FARABELLA" ca trei branduri.
+        $brands = [];
+        $tags = [];
+        foreach ($products as $p) {
+            $marca = trim((string) ($p['brand'] ?? ''));
+            if ($marca !== '') {
+                $brands[mb_strtolower($marca)] = $marca;
+            }
+            $decoded = json_decode((string) ($p['tags_json'] ?? ''), true);
+            foreach (is_array($decoded) ? $decoded : [] as $eticheta) {
+                $eticheta = trim((string) $eticheta);
+                if ($eticheta !== '') {
+                    $tags[mb_strtolower($eticheta)] = $eticheta;
+                }
+            }
+        }
+        ksort($brands);
+        ksort($tags);
+
         View::render('admin/products', [
             'title' => 'Produse',
             'products' => $products,
+            'brands' => array_values($brands),
+            'tags' => array_values($tags),
             'categories' => $categories,
             'galleryImages' => $galleryImages,
             'extraFields' => $extraFields,
@@ -4112,6 +4134,8 @@ final class AdminController
         $outOfStock = isset($_POST['out_of_stock']) ? 1 : 0;
         $weight = trim((string) ($_POST['weight_grams'] ?? ''));
         $weightGrams = $weight !== '' ? (int) $weight : null;
+        $brand = mb_substr(trim((string) ($_POST['brand'] ?? '')), 0, 120);
+        $tagsJson = $this->normalizeProductTagsJson($_POST['tags'] ?? '');
         $isActive = isset($_POST['is_active']) ? 1 : 0;
         $templateId = (int) ($_POST['product_template_id'] ?? 0);
         if ($templateId > 0) {
@@ -4138,9 +4162,9 @@ final class AdminController
         $badgeSeason = isset($_POST['badge_seasonal']) ? 1 : 0;
         $stmt = $db->prepare(
             'INSERT INTO products (
-                name, sku, category, category_id, product_template_id, slug, short_description, description, product_highlights, price, vat_percent, vat_included, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, stock, out_of_stock, weight_grams, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, is_active
+                name, sku, category, category_id, product_template_id, slug, short_description, description, product_highlights, price, vat_percent, vat_included, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, stock, out_of_stock, weight_grams, brand, tags_json, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, is_active
              ) VALUES (
-                :name, :sku, :category, :category_id, :product_template_id, :slug, :short_description, :description, :product_highlights, :price, :vat_percent, :vat_included, :sale_price, :sale_price_periods_json, :discount_badge_mode, :bbd_enabled, :bbd_entries_json, :post_cart_note_enabled, :post_cart_note_text, :stock, :out_of_stock, :weight_grams, :image_url, :gallery_images_json, :similar_products_json, :badge_popular, :badge_best_seller, :badge_seasonal, :is_active
+                :name, :sku, :category, :category_id, :product_template_id, :slug, :short_description, :description, :product_highlights, :price, :vat_percent, :vat_included, :sale_price, :sale_price_periods_json, :discount_badge_mode, :bbd_enabled, :bbd_entries_json, :post_cart_note_enabled, :post_cart_note_text, :stock, :out_of_stock, :weight_grams, :brand, :tags_json, :image_url, :gallery_images_json, :similar_products_json, :badge_popular, :badge_best_seller, :badge_seasonal, :is_active
              )'
         );
         $stmt->execute([
@@ -4166,6 +4190,8 @@ final class AdminController
             'stock' => $stock,
             'out_of_stock' => $outOfStock,
             'weight_grams' => $weightGrams,
+            'brand' => $brand !== '' ? $brand : null,
+            'tags_json' => $tagsJson,
             'image_url' => trim($_POST['image_url'] ?? ''),
             'gallery_images_json' => $galleryJson,
             'similar_products_json' => $similarProductsJson,
@@ -4245,6 +4271,8 @@ final class AdminController
         $vatIncluded = ((string) ($_POST['vat_included'] ?? '1')) === '0' ? 0 : 1;
         $weight = trim((string) ($_POST['weight_grams'] ?? ''));
         $weightGrams = $weight !== '' ? (int) $weight : null;
+        $brand = mb_substr(trim((string) ($_POST['brand'] ?? '')), 0, 120);
+        $tagsJson = $this->normalizeProductTagsJson($_POST['tags'] ?? '');
         $isActive = isset($_POST['is_active']) ? 1 : 0;
         $templateId = (int) ($_POST['product_template_id'] ?? 0);
         if ($templateId > 0) {
@@ -4288,6 +4316,8 @@ final class AdminController
                  stock = :stock,
                  out_of_stock = :out_of_stock,
                  weight_grams = :weight_grams,
+                 brand = :brand,
+                 tags_json = :tags_json,
                  image_url = :image_url,
                  gallery_images_json = :gallery_images_json,
                  similar_products_json = :similar_products_json,
@@ -4328,6 +4358,8 @@ final class AdminController
             'stock' => (int) ($_POST['stock'] ?? 0),
             'out_of_stock' => isset($_POST['out_of_stock']) ? 1 : 0,
             'weight_grams' => $weightGrams,
+            'brand' => $brand !== '' ? $brand : null,
+            'tags_json' => $tagsJson,
             'image_url' => trim((string) ($_POST['image_url'] ?? '')),
             'gallery_images_json' => $galleryJson,
             'similar_products_json' => $similarProductsJson,
@@ -6846,7 +6878,7 @@ final class AdminController
         \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
 
         $sqlBase = 'SELECT p.id, p.sku, p.name, p.slug, p.price, %s, p.stock, p.out_of_stock,
-                           p.weight_grams, p.is_active, p.category, c.name AS category_name
+                           p.weight_grams, p.brand, p.tags_json, p.is_active, p.category, c.name AS category_name
                     FROM products p
                     LEFT JOIN product_categories c ON c.id = p.category_id
                     WHERE p.deleted_at IS NULL
@@ -6880,7 +6912,7 @@ final class AdminController
 
         fputcsv($out, [
             'sku', 'denumire', 'pret_fara_tva', 'pret_site', 'tva_inclus', 'cota_tva',
-            'um', 'categorie', 'stoc', 'greutate_g', 'activ', 'slug', 'id_site',
+            'um', 'categorie', 'stoc', 'greutate_g', 'brand', 'etichete', 'activ', 'slug', 'id_site',
         ], ',');
 
         foreach ($products as $p) {
@@ -6904,6 +6936,11 @@ final class AdminController
                 trim((string) ($p['category_name'] ?: $p['category'] ?: '')),
                 (string) (int) ($p['stock'] ?? 0),
                 ($p['weight_grams'] === null || $p['weight_grams'] === '') ? '' : (string) (int) $p['weight_grams'],
+                trim((string) ($p['brand'] ?? '')),
+                (static function (mixed $brut): string {
+                    $lista = json_decode((string) $brut, true);
+                    return is_array($lista) ? implode(', ', array_map('strval', $lista)) : '';
+                })($p['tags_json'] ?? ''),
                 ((int) ($p['is_active'] ?? 1)) === 1 ? '1' : '0',
                 trim((string) ($p['slug'] ?? '')),
                 (string) (int) ($p['id'] ?? 0),
@@ -14424,6 +14461,54 @@ final class AdminController
         return trim($value, '_');
     }
 
+    /**
+     * Etichetele produsului, dintr-un câmp scris de om („fără gluten, vegan"),
+     * într-o listă JSON curată.
+     *
+     * Se păstrează forma scrisă — pe pagină apare „Fără gluten", nu un slug —
+     * dar duplicatele se scot comparând fără diacritice și fără majuscule, ca
+     * „Bio" și „bio" să nu fie două etichete diferite.
+     */
+    private function normalizeProductTagsJson(mixed $raw): ?string
+    {
+        if (is_array($raw)) {
+            $bucati = $raw;
+        } else {
+            $text = trim((string) $raw);
+            if ($text === '') {
+                return null;
+            }
+            // Acceptă și un JSON gata format (vine din import), și text simplu.
+            $decoded = json_decode($text, true);
+            $bucati = is_array($decoded) ? $decoded : (preg_split('/[,;\n]+/', $text) ?: []);
+        }
+
+        $out = [];
+        $vazute = [];
+        foreach ($bucati as $bucata) {
+            $eticheta = trim((string) $bucata);
+            $eticheta = (string) preg_replace('/\s+/u', ' ', $eticheta);
+            if ($eticheta === '' || mb_strlen($eticheta) > 60) {
+                continue;
+            }
+            $cheie = $this->slugify($eticheta);
+            if ($cheie === '' || isset($vazute[$cheie])) {
+                continue;
+            }
+            $vazute[$cheie] = true;
+            $out[] = $eticheta;
+            if (count($out) >= 30) {
+                break;
+            }
+        }
+
+        if ($out === []) {
+            return null;
+        }
+        $json = json_encode($out, JSON_UNESCAPED_UNICODE);
+        return $json !== false ? $json : null;
+    }
+
     private function normalizeProductGalleryJson(mixed $raw): string
     {
         $decoded = [];
@@ -19513,6 +19598,18 @@ HTML;
     {
         try {
             $db->exec('ALTER TABLE orders ADD COLUMN ad_source VARCHAR(50) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        // Marca produsului și etichetele lui. Existau pe site-ul vechi și se
+        // folosesc la fel: o pagină pe brand și una pe etichetă, plus căutarea.
+        // Etichetele stau ca listă JSON pe produs — sunt câteva sute în total,
+        // iar un tabel separat ar cere trei interogări acolo unde ajunge una.
+        try {
+            $db->exec('ALTER TABLE products ADD COLUMN brand VARCHAR(120) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        try {
+            $db->exec('ALTER TABLE products ADD COLUMN tags_json TEXT DEFAULT NULL');
         } catch (Throwable) {
         }
         // AWB-urile înlocuite, cu momentul și operatorul. Un AWB emis greșit se

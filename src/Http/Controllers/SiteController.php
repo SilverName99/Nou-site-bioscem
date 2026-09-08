@@ -95,6 +95,113 @@ final class SiteController
         $this->shop();
     }
 
+    /** Slug simplu, pentru comparat branduri și etichete scrise oricum. */
+    private function slugSimplu(string $valoare): string
+    {
+        $valoare = mb_strtolower(trim($valoare));
+        $valoare = strtr($valoare, [
+            'ă' => 'a', 'â' => 'a', 'î' => 'i', 'ș' => 's', 'ş' => 's', 'ț' => 't', 'ţ' => 't',
+        ]);
+        $valoare = (string) preg_replace('/[^a-z0-9]+/', '-', $valoare);
+        return trim($valoare, '-');
+    }
+
+    /**
+     * Etichetele unui produs, ca listă de texte.
+     *
+     * @param array<string, mixed> $produs
+     * @return string[]
+     */
+    private function productTags(array $produs): array
+    {
+        $brut = $produs['tags_json'] ?? null;
+        if (is_array($brut)) {
+            return array_values(array_filter(array_map('strval', $brut)));
+        }
+        $decoded = json_decode((string) $brut, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        return array_values(array_filter(array_map(
+            static fn ($v): string => trim((string) $v),
+            $decoded
+        ), static fn (string $v): bool => $v !== ''));
+    }
+
+    /** Pagina unei mărci: /marca/farabella. */
+    public function shopBrand(array $params = []): void
+    {
+        $this->renderListaFiltrata('brand', trim((string) ($params['slug'] ?? ''), '/'));
+    }
+
+    /** Pagina unei etichete: /eticheta/fara-gluten. */
+    public function shopTag(array $params = []): void
+    {
+        $this->renderListaFiltrata('eticheta', trim((string) ($params['slug'] ?? ''), '/'));
+    }
+
+    /**
+     * Lista de produse a unei mărci sau a unei etichete, în același șablon ca
+     * magazinul — omul vede aceleași carduri, doar lista e mai scurtă.
+     */
+    private function renderListaFiltrata(string $tip, string $slug): void
+    {
+        $slug = $this->slugSimplu($slug);
+        $db = $this->db();
+        [$toate] = $this->loadProducts();
+        $eticheta = '';
+        foreach ($toate as $produs) {
+            if ($tip === 'brand') {
+                $valoare = trim((string) ($produs['brand'] ?? ''));
+                if ($valoare !== '' && $this->slugSimplu($valoare) === $slug) {
+                    $eticheta = $valoare;
+                    break;
+                }
+                continue;
+            }
+            foreach ($this->productTags($produs) as $t) {
+                if ($this->slugSimplu($t) === $slug) {
+                    $eticheta = $t;
+                    break 2;
+                }
+            }
+        }
+
+        if ($eticheta === '') {
+            http_response_code(404);
+        }
+
+        $titlu = $eticheta !== ''
+            ? ($tip === 'brand' ? $eticheta : 'Produse: ' . $eticheta)
+            : 'Nu am găsit produse';
+        $catalog = $this->renderShopCatalogSection(
+            $db instanceof PDO ? $db : null,
+            '',
+            ['tip' => $tip, 'slug' => $slug]
+        );
+
+        $shopPage = $this->findPublishedPageBySlug('magazin');
+        if (is_array($shopPage)) {
+            $settings = $this->cachedSettings($db instanceof PDO ? $db : null);
+            View::render('site/custom-page', array_merge([
+                'title' => $titlu,
+                'page' => $shopPage,
+                'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
+                'shopCatalogHtml' => $catalog,
+                'shopCategoryLabel' => $titlu,
+                'shopPageTitle' => $titlu,
+            ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $shopPage)));
+            return;
+        }
+
+        View::render('site/shop', [
+            'products' => [],
+            'title' => $titlu,
+            'activeCategory' => '',
+            'shopCatalogHtml' => $catalog,
+        ]);
+    }
+
     /**
      * Caută numele categoriei după slug: întâi în product_categories
      * (unde importul a păstrat slug-urile din WooCommerce), apoi prin
@@ -1556,10 +1663,14 @@ final class SiteController
                         LOWER(COALESCE(name, "")) LIKE :like
                         OR LOWER(COALESCE(short_description, "")) LIKE :like
                         OR LOWER(COALESCE(description, "")) LIKE :like
+                        OR LOWER(COALESCE(brand, "")) LIKE :like
+                        OR LOWER(COALESCE(tags_json, "")) LIKE :like
                    )
                  ORDER BY
                     CASE WHEN LOWER(COALESCE(name, "")) LIKE :prefix THEN 0 ELSE 1 END,
                     CASE WHEN LOWER(COALESCE(name, "")) LIKE :like THEN 0 ELSE 1 END,
+                    CASE WHEN LOWER(COALESCE(brand, "")) LIKE :like THEN 0 ELSE 1 END,
+                    CASE WHEN LOWER(COALESCE(tags_json, "")) LIKE :like THEN 0 ELSE 1 END,
                     id DESC
                  LIMIT 12'
             );
@@ -3611,12 +3722,31 @@ final class SiteController
         return $this->normalizeShopCatalogSort((string) ($_GET['sort'] ?? 'alpha_asc'));
     }
 
-    private function renderShopCatalogSection(?PDO $db, string $categoryFilter = ''): string
-    {
+    /**
+     * @param array{tip: string, slug: string}|null $filtruExtra brand sau etichetă
+     */
+    private function renderShopCatalogSection(
+        ?PDO $db,
+        string $categoryFilter = '',
+        ?array $filtruExtra = null
+    ): string {
         $categoryFilter = trim($categoryFilter);
         $sort = $this->requestShopCatalogSort();
         [$products] = $this->loadProducts();
         $products = $this->enrichShopCatalogProducts($db, $products);
+        if ($filtruExtra !== null) {
+            $tip = (string) ($filtruExtra['tip'] ?? '');
+            $slug = (string) ($filtruExtra['slug'] ?? '');
+            $products = array_values(array_filter(
+                $products,
+                fn (array $produs): bool => $tip === 'brand'
+                    ? $this->slugSimplu((string) ($produs['brand'] ?? '')) === $slug
+                    : in_array($slug, array_map(
+                        fn ($e) => $this->slugSimplu((string) $e),
+                        $this->productTags($produs)
+                    ), true)
+            ));
+        }
         $categories = $this->loadShopCatalogCategories($db);
         if ($categories === []) {
             $categories = $this->buildShopCatalogCategoriesFromProducts($products);
@@ -8362,6 +8492,17 @@ CSS;
     private function ensureProductCustomSchema(PDO $db): void
     {
         CheckoutCalculator::ensureProductVatSchema($db);
+        // Marca și etichetele. Se creează și de aici, nu doar din admin: pagina
+        // publică le citește, iar dacă nimeni n-a intrat încă în administrare
+        // căutarea ar cădea pe o coloană inexistentă.
+        try {
+            $db->exec('ALTER TABLE products ADD COLUMN brand VARCHAR(120) DEFAULT NULL');
+        } catch (Throwable) {
+        }
+        try {
+            $db->exec('ALTER TABLE products ADD COLUMN tags_json TEXT DEFAULT NULL');
+        } catch (Throwable) {
+        }
         try {
             $db->exec(
                 'CREATE TABLE IF NOT EXISTS product_extra_fields (

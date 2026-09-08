@@ -109,6 +109,11 @@ $router->get('/', [SiteController::class, 'home']);
 $router->get('/magazin', [SiteController::class, 'shop']);
 // URL-urile de categorie din site-ul vechi (/categorie/probiotice) rămân valide.
 $router->get('/categorie/{slug}', [SiteController::class, 'shopCategory']);
+// Marca și eticheta au pagini proprii, ca pe site-ul vechi: linkuri pe care
+// firma le dă clienților („toate produsele Farabella") și pe care Google le
+// indexează separat.
+$router->get('/marca/{slug}', [SiteController::class, 'shopBrand']);
+$router->get('/eticheta/{slug}', [SiteController::class, 'shopTag']);
 $router->get('/blog', [SiteController::class, 'blog']);
 $router->get('/blog/{slug}', [SiteController::class, 'blogPost']);
 $router->get('/api/blog/posts', [SiteController::class, 'blogPostsApi']);

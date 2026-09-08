@@ -178,6 +178,47 @@ if ($galleryUrls === []) {
                 <?php endif; ?>
             </form>
         <?php endif; ?>
+        <?php
+            // Marca și etichetele, sub butonul de coș: sunt informații despre
+            // produs, dar și drumuri mai departe — către restul produselor
+            // aceleiași mărci sau cu aceeași etichetă.
+            $marcaProdus = trim((string) ($product['brand'] ?? ''));
+            $eticheteProdus = [];
+            $eticheteBrut = json_decode((string) ($product['tags_json'] ?? ''), true);
+            foreach (is_array($eticheteBrut) ? $eticheteBrut : [] as $e) {
+                $e = trim((string) $e);
+                if ($e !== '') {
+                    $eticheteProdus[] = $e;
+                }
+            }
+            $slugSimplu = static function (string $v): string {
+                $v = mb_strtolower(trim($v));
+                $v = strtr($v, ['ă'=>'a','â'=>'a','î'=>'i','ș'=>'s','ş'=>'s','ț'=>'t','ţ'=>'t']);
+                return trim((string) preg_replace('/[^a-z0-9]+/', '-', $v), '-');
+            };
+        ?>
+        <?php if ($marcaProdus !== '' || $eticheteProdus !== []): ?>
+            <div class="product-meta-taxonomii" style="margin-top:16px;display:grid;gap:8px;font:500 14px/1.5 'DM Sans',Arial,sans-serif;color:#475569;">
+                <?php if ($marcaProdus !== ''): ?>
+                    <p style="margin:0;">Marcă:
+                        <a href="/marca/<?= rawurlencode($slugSimplu($marcaProdus)) ?>" style="color:#0f766e;font-weight:600;">
+                            <?= htmlspecialchars($marcaProdus, ENT_QUOTES) ?>
+                        </a>
+                    </p>
+                <?php endif; ?>
+                <?php if ($eticheteProdus !== []): ?>
+                    <p style="margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                        <span>Etichete:</span>
+                        <?php foreach ($eticheteProdus as $eticheta): ?>
+                            <a href="/eticheta/<?= rawurlencode($slugSimplu($eticheta)) ?>"
+                               style="display:inline-block;padding:3px 10px;border:1px solid #d7e3dc;border-radius:999px;color:#274136;text-decoration:none;font-size:13px;">
+                                <?= htmlspecialchars($eticheta, ENT_QUOTES) ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         <section id="product-reviews" class="product-reviews" style="margin-top:18px;">
             <div class="product-reviews-head">
                 <div class="product-reviews-head__inline">

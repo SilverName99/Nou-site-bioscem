@@ -257,6 +257,26 @@
                                 <label>Greutate (g)</label>
                                 <input type="number" name="weight_grams" id="p_weight_grams">
                             </div>
+                            <div class="field">
+                                <label>Brand (marcă)</label>
+                                <input type="text" name="brand" id="p_brand" maxlength="120" list="p_brand_list" placeholder="ex. Farabella">
+                                <datalist id="p_brand_list">
+                                    <?php foreach (($brands ?? []) as $marca): ?>
+                                        <option value="<?= htmlspecialchars((string) $marca, ENT_QUOTES) ?>"></option>
+                                    <?php endforeach; ?>
+                                </datalist>
+                                <small class="muted">Producătorul. Apare pe pagina produsului și are pagină proprie: /marca/&lt;brand&gt;.</small>
+                            </div>
+                            <div class="field full">
+                                <label>Cuvinte cheie (etichete)</label>
+                                <input type="text" name="tags" id="p_tags" list="p_tags_list" placeholder="ex. fără gluten, vegan, bio">
+                                <datalist id="p_tags_list">
+                                    <?php foreach (($tags ?? []) as $eticheta): ?>
+                                        <option value="<?= htmlspecialchars((string) $eticheta, ENT_QUOTES) ?>"></option>
+                                    <?php endforeach; ?>
+                                </datalist>
+                                <small class="muted">Separate prin virgulă. Fiecare are pagină proprie (/eticheta/&lt;nume&gt;) și intră în căutarea de pe site.</small>
+                            </div>
                         </div>
                     </section>
 
@@ -1135,6 +1155,17 @@
                 if (nota) { nota.style.display = dinErp ? 'block' : 'none'; }
             })();
             document.getElementById('p_weight_grams').value = product.weight_grams || '';
+            document.getElementById('p_brand').value = product.brand || '';
+            (function () {
+                // Etichetele vin ca listă JSON; în formular se scriu separate
+                // prin virgulă, cum le tastează omul.
+                let etichete = [];
+                try {
+                    const brut = product.tags_json || '[]';
+                    etichete = Array.isArray(brut) ? brut : (JSON.parse(brut) || []);
+                } catch (e) { etichete = []; }
+                document.getElementById('p_tags').value = Array.isArray(etichete) ? etichete.join(', ') : '';
+            })();
             document.getElementById('p_short_description').value = product.short_description || '';
             document.getElementById('p_description').value = product.description || '';
             document.getElementById('p_product_highlights').value = product.product_highlights || '';
