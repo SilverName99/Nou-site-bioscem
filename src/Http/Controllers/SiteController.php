@@ -5403,7 +5403,7 @@ CSS;
                 $params['category_filter2'] = $categoryFilter;
             }
             try {
-                $sql = 'SELECT id, name, slug, short_description, product_highlights, category, price, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, out_of_stock, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal FROM products WHERE ' . $whereSql . ' ORDER BY id DESC' . $limitSql;
+                $sql = 'SELECT id, name, slug, short_description, product_highlights, category, price, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, out_of_stock, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, brand, tags_json FROM products WHERE ' . $whereSql . ' ORDER BY id DESC' . $limitSql;
                 $stmt = $db->prepare($sql);
                 $stmt->execute($params);
                 $rows = $stmt->fetchAll();
