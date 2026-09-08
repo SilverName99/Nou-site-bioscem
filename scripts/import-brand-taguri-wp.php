@@ -188,9 +188,18 @@ $seoMeta = [];      // post_id → ['titlu' => ..., 'descriere' => ...]
 $numeSite = '';
 
 $handle = deschide($fisier);
-$linii = 0;
-while (($linie = gzgets($handle, 1024 * 1024 * 8)) !== false) {
-    $linii++;
+$bucata = '';
+while (($citit = gzgets($handle, 1024 * 1024)) !== false) {
+    // Un `INSERT` din mysqldump ține sute de rânduri pe o singură linie și
+    // trece ușor de un megabait. Citim în bucăți și le lipim până dăm de
+    // capătul instrucțiunii, altfel am tăia un rând în două și l-am pierde.
+    $bucata .= $citit;
+    if (substr($bucata, -2) !== ";\n" && substr($bucata, -1) !== ';') {
+        continue;
+    }
+    $linie = $bucata;
+    $bucata = '';
+
     if (strncmp($linie, 'INSERT INTO', 11) !== 0) {
         continue;
     }
