@@ -170,6 +170,32 @@ final class ErpClient
         ];
     }
 
+    /**
+     * Greutățile produselor, pe cod (SKU), așa cum sunt ținute în ERP.
+     *
+     * Din ele iese greutatea de pe AWB și numărul de colete. Ambalajele se
+     * schimbă, iar cine le cântărește lucrează în ERP.
+     *
+     * @return array<string, int> cod produs → grame
+     */
+    public function productWeights(): array
+    {
+        $raw = $this->request('GET', '/api/site/greutati');
+        $out = [];
+        foreach ((array) $raw as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            $grame = (int) ($row['greutateGrame'] ?? 0);
+            if ($sku === '' || $grame <= 0) {
+                continue;
+            }
+            $out[$sku] = $grame;
+        }
+        return $out;
+    }
+
     /** Trimite o comandă în ERP. Idempotent: ERP-ul deduplică pe numărul comenzii. */
     public function pushOrder(array $payload): array
     {

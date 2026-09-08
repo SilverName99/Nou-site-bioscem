@@ -135,4 +135,39 @@ printf(
     $notificari['esuate']
 );
 
+// 4) Greutățile produselor, ținute în ERP (ambalajele se schimbă, iar cine le
+//    cântărește lucrează acolo). Fără ele, AWB-ul pleacă cu greutatea implicită
+//    din setări și FAN taxează diferența după recântărire.
+$greutati = ['primite' => 0, 'actualizate' => 0];
+if ($client !== null) {
+    try {
+        $dinErp = $client->productWeights();
+        $greutati['primite'] = count($dinErp);
+        if ($dinErp !== []) {
+            $citeste = $db->prepare('SELECT id, weight_grams FROM products WHERE UPPER(sku) = :sku AND deleted_at IS NULL LIMIT 1');
+            $scrie = $db->prepare('UPDATE products SET weight_grams = :greutate WHERE id = :id');
+            foreach ($dinErp as $sku => $grame) {
+                $citeste->execute(['sku' => $sku]);
+                $produs = $citeste->fetch() ?: null;
+                if (!is_array($produs) || (int) ($produs['weight_grams'] ?? 0) === $grame) {
+                    continue;
+                }
+                $scrie->execute(['greutate' => $grame, 'id' => (int) $produs['id']]);
+                $greutati['actualizate']++;
+            }
+        }
+    } catch (Throwable $exception) {
+        fwrite(STDERR, 'Nu am putut citi greutățile din ERP: ' . $exception->getMessage() . "\n");
+    }
+}
+
+if ($greutati['actualizate'] > 0) {
+    printf(
+        "[%s] Greutăți din ERP: primite %d — actualizate %d\n",
+        date('Y-m-d H:i:s'),
+        $greutati['primite'],
+        $greutati['actualizate']
+    );
+}
+
 exit(($rezultat['esuate'] > 0 || $anulari['esuate'] > 0 || $notificari['esuate'] > 0) ? 1 : 0);
