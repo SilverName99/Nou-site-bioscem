@@ -68,7 +68,15 @@ final class FanCourierGateway
 
         $awb = self::extractAwbNumber($response);
         if ($awb === null) {
-            throw new RuntimeException('FAN nu a returnat un numar AWB valid. Raspuns: ' . self::responsePreview($response));
+            // FAN răspunde cu HTTP 200 și un `success: false` în corp, deci
+            // eroarea reală e ascunsă în `errors`. Netradusă, ajunge în fața
+            // omului ca „awbGeneration.lockerInactive" — corect, dar fără nicio
+            // indicație despre ce are de făcut.
+            $explicatie = self::explicaEroareaAwb(self::erorileRaspunsului($response));
+            throw new RuntimeException(
+                ($explicatie !== '' ? $explicatie . ' ' : '')
+                . 'FAN nu a returnat un numar AWB valid. Raspuns: ' . self::responsePreview($response)
+            );
         }
 
         return [
@@ -270,6 +278,66 @@ final class FanCourierGateway
         }
 
         return $compact;
+    }
+
+    /**
+     * Toate mesajele de eroare dintr-un răspuns FAN, oricât de adânc stau.
+     *
+     * Structura diferă de la endpoint la endpoint: uneori `errors` e o listă de
+     * texte, alteori un dicționar câmp → listă de coduri
+     * (`{"recipient.address.pickupLocation":["awbGeneration.lockerInactive"]}`).
+     * Ne interesează doar textele, de oriunde ar veni.
+     *
+     * @return list<string>
+     */
+    public static function erorileRaspunsului(mixed $nod): array
+    {
+        if (is_string($nod)) {
+            $text = trim($nod);
+            return $text !== '' ? [$text] : [];
+        }
+        if (!is_array($nod)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($nod as $valoare) {
+            foreach (self::erorileRaspunsului($valoare) as $mesaj) {
+                $out[] = $mesaj;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Punctul FANbox ales nu mai e activ la FAN.
+     *
+     * Nomenclatorul nostru e o copie: un punct închis sau scos din uz de FAN
+     * rămâne activ la noi până la următoarea sincronizare, iar clientul îl mai
+     * poate alege la checkout. Refuzul vine abia la emiterea AWB-ului.
+     */
+    public static function esteLockerInactiv(string $mesaj): bool
+    {
+        $text = self::strLower($mesaj);
+        if (str_contains($text, 'lockerinactive')) {
+            return true;
+        }
+
+        return str_contains($text, 'pickuplocation') && str_contains($text, 'inactive');
+    }
+
+    /** @param list<string> $erori */
+    private static function explicaEroareaAwb(array $erori): string
+    {
+        foreach ($erori as $eroare) {
+            if (self::esteLockerInactiv($eroare)) {
+                return 'Punctul FANbox ales de client nu mai este activ la FAN, așa că AWB-ul nu poate pleca spre el.'
+                    . ' Schimbă destinația comenzii pe alt punct FANbox sau pe livrare la adresă, apoi reemite AWB-ul.';
+            }
+        }
+
+        return '';
     }
 
     private static function responsePreview(array $response): string

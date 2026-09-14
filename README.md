@@ -90,6 +90,20 @@ php /home/USER/public_html/scripts/fan-tracking-sync.php --limit=150
 
 Recomandare cron: la 10-15 minute.
 
+- lista de puncte FANbox se tine local (asa o cere FAN la emiterea AWB-ului,
+  dupa id-ul lor). Daca ramane veche, un punct inchis de FAN ramane vizibil la
+  checkout si AWB-ul e refuzat abia la expediere, cu `awbGeneration.lockerInactive`.
+  Se poate improspata oricand din `Admin -> Setari livrare -> FANbox`, dar mai
+  bine printr-un cron zilnic:
+
+```bash
+php /home/USER/public_html/scripts/fan-lockers-sync.php
+```
+
+Recomandare cron: o data pe zi (lista se schimba rar). Daca FAN raspunde cu o
+lista goala, scriptul se opreste fara sa modifice nimic — altfel ar dezactiva
+tot nomenclatorul.
+
 ### Email-uri (template-uri + test + abandon cos)
 
 - in admin exista modulul `Email-uri` (`/admin/emails`) unde poti:

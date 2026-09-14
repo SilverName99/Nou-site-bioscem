@@ -255,6 +255,44 @@ final class FanLockers
     }
 
     /**
+     * Scoate un punct din listă, după ce FAN l-a refuzat ca inactiv.
+     *
+     * Altfel punctul rămâne vizibil la checkout și fiecare client care-l alege
+     * ajunge la aceeași comandă blocată. Dacă FAN îl repune în funcțiune,
+     * sincronizarea din API îl reactivează singură — nu se pierde nimic.
+     */
+    public static function dezactiveaza(?PDO $db, int $id, string $fanId = ''): bool
+    {
+        if (!$db instanceof PDO) {
+            return false;
+        }
+        $fanId = trim($fanId);
+        if ($id <= 0 && $fanId === '') {
+            return false;
+        }
+
+        try {
+            self::ensureSchema($db);
+            $acum = date('Y-m-d H:i:s');
+            $afectate = 0;
+            if ($id > 0) {
+                $stmt = $db->prepare('UPDATE fan_lockers SET active = 0, updated_at = :acum WHERE id = :id');
+                $stmt->execute(['acum' => $acum, 'id' => $id]);
+                $afectate += $stmt->rowCount();
+            }
+            if ($fanId !== '') {
+                $stmt = $db->prepare('UPDATE fan_lockers SET active = 0, updated_at = :acum WHERE fan_id = :fan_id');
+                $stmt->execute(['acum' => $acum, 'fan_id' => $fanId]);
+                $afectate += $stmt->rowCount();
+            }
+
+            return $afectate > 0;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Antetele acceptate pentru fiecare câmp, în variantele în care le trimite
      * FAN sau în care le poate salva cineva din Excel.
      */

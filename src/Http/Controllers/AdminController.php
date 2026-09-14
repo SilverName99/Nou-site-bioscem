@@ -7567,6 +7567,24 @@ final class AdminController
         } catch (RuntimeException $exception) {
             $mesaj = $exception->getMessage();
 
+            // Punctul FANbox a fost închis de FAN după ce clientul l-a ales.
+            // Nu se poate reîncerca nimic — se poate doar ca punctul să nu mai
+            // fie oferit nimănui altcuiva, iar comanda asta să fie redirijată.
+            if (FanCourierGateway::esteLockerInactiv($mesaj)) {
+                $dbLocker = $this->db();
+                \App\Support\FanLockers::dezactiveaza(
+                    $dbLocker instanceof PDO ? $dbLocker : null,
+                    (int) ($order['fan_locker_id'] ?? 0),
+                    trim((string) ($payload['shipments'][0]['recipient']['address']['pickupLocationId'] ?? ''))
+                );
+                throw new RuntimeException(
+                    'Punctul FANbox „' . (string) ($order['fan_locker_name'] ?? '') . '" nu mai este activ la FAN, '
+                    . 'așa că nu se poate emite AWB spre el. L-am scos din lista de puncte a magazinului, '
+                    . 'ca să nu-l mai poată alege alți clienți. Deschide comanda, alege alt punct FANbox sau '
+                    . 'treci-o pe livrare la adresă, apoi emite AWB-ul din nou.'
+                );
+            }
+
             if ($this->shouldRetryFanAwbWithStandardService($order, $payload, $mesaj)) {
                 $serviciuVechi = trim((string) ($payload['shipments'][0]['info']['service'] ?? ''));
                 $payload = $this->fanPayloadWithService($payload, 'Standard');
