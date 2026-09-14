@@ -6304,6 +6304,119 @@ final class AdminController
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
+    /** Cum se poate încasa restul, pe lângă site. */
+    private const INCASARE_METODE = [
+        'ramburs' => 'ramburs la curier',
+        'op' => 'ordin de plată',
+        'numerar' => 'numerar',
+        'card' => 'card (POS / link extern)',
+    ];
+
+    /**
+     * Înregistrează banii veniți pe lângă site.
+     *
+     * Până acum `paid_amount` creștea doar din confirmarea plății cu cardul și
+     * din linkurile de plată. Restul drumurilor pe care intră bani — rambursul
+     * virat de curier pe un AWB făcut de mână, un OP, numerarul de la ridicare
+     * — nu aveau unde să fie scrise, așa că o comandă încasată integral rămânea
+     * pe veci „Plătit parțial" și ieșea în filtrul de restanțe.
+     *
+     * Nu trimite nimic nicăieri: nu e o plată nouă, ci consemnarea uneia deja
+     * făcute. Comanda a plecat demult în ERP, iar încasarea se înregistrează
+     * acolo separat, pe factură.
+     */
+    public function orderIncasareManuala(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header('Content-Type: application/json');
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Date invalide.']);
+            return;
+        }
+        \App\Support\ErpSync::ensureSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, total, paid_amount, payment_status
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch();
+        if (!is_array($order)) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu există.']);
+            return;
+        }
+
+        $rest = \App\Support\PaymentLink::restDeIncasat($order);
+        if ($rest <= 0.009) {
+            echo json_encode(['ok' => false, 'error' => 'Comanda nu are rest de încasat.']);
+            return;
+        }
+
+        $suma = round((float) str_replace(',', '.', (string) ($_POST['suma'] ?? '0')), 2);
+        if ($suma <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Scrie suma încasată.']);
+            return;
+        }
+        // Mai mult decât restul ar face comanda să pară supra-încasată, iar
+        // diferența n-ar avea nicio explicație în evidență.
+        if ($suma > $rest + 0.009) {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Suma depășește restul de încasat (' . number_format($rest, 2, ',', '.') . ' lei).',
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        $metoda = strtolower(trim((string) ($_POST['metoda'] ?? '')));
+        if (!array_key_exists($metoda, self::INCASARE_METODE)) {
+            echo json_encode(['ok' => false, 'error' => 'Alege metoda de încasare.']);
+            return;
+        }
+
+        // Suma încasată se calculează din restul rămas, nu prin adunare peste
+        // câmpul din bază: așa nu contează cum a fost completat până acum și
+        // nici nu poate ieși un „încasat" mai mare decât totalul comenzii.
+        $total = round((float) ($order['total'] ?? 0), 2);
+        $ramas = round(max(0.0, $rest - $suma), 2);
+        $incasatNou = round($total - $ramas, 2);
+
+        try {
+            $db->prepare(
+                'UPDATE orders
+                 SET paid_amount = :paid,
+                     payment_status = \'paid\',
+                     paid_at = COALESCE(paid_at, NOW())
+                 WHERE id = :id AND deleted_at IS NULL'
+            )->execute([
+                'paid' => number_format($incasatNou, 2, '.', ''),
+                'id' => $orderId,
+            ]);
+        } catch (Throwable $e) {
+            echo json_encode(['ok' => false, 'error' => 'Nu am putut salva încasarea: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        AdminActivityLog::log($db, 'order_incasare_manuala', [
+            'order_id' => $orderId,
+            'numar_comanda' => (string) ($order['order_number'] ?? ''),
+            'suma' => $suma,
+            'metoda' => $metoda,
+        ]);
+
+        echo json_encode([
+            'ok' => true,
+            'suma' => $suma,
+            'rest' => $ramas > 0.009 ? $ramas : 0,
+            'mesaj' => $ramas > 0.009
+                ? 'Încasare înregistrată. Mai rămâne ' . number_format($ramas, 2, ',', '.') . ' lei.'
+                : 'Încasare înregistrată. Comanda e achitată integral.',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     private function promoFmtDate(string $v): string
     {
         $v = trim($v);

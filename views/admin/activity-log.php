@@ -16,6 +16,7 @@ $actionLabels = [
     'comanda_reducere_anulata' => 'Reducere comercială anulată',
     'order_delivery_change' => 'Destinație livrare schimbată',
     'fan_lockers_sync' => 'Puncte FANbox sincronizate',
+    'order_incasare_manuala' => 'Încasare înregistrată manual',
 ];
 $label = static fn(string $a): string => $actionLabels[$a] ?? $a;
 

@@ -362,7 +362,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 <?php if (!$isCod): ?>
                                     <?php if ($platitPartial): ?>
                                         <span class="status-pill status-pill--warn"
-                                              title="Încasat <?= number_format((float) ($order['total'] ?? 0) - $restDeIncasat, 2) ?> RON din <?= number_format((float) ($order['total'] ?? 0), 2) ?> RON. Diferența se cere din fereastra comenzii, cu „Trimite link de plată pentru diferență”.">
+                                              title="Încasat <?= number_format((float) ($order['total'] ?? 0) - $restDeIncasat, 2) ?> RON din <?= number_format((float) ($order['total'] ?? 0), 2) ?> RON. Din fereastra comenzii: „Trimite link de plată pentru diferență”, dacă banii se cer de la client, sau „Înregistrează încasarea”, dacă au venit deja (ramburs, OP, numerar).">
                                             Plătit parțial — rest <?= number_format($restDeIncasat, 2) ?> RON
                                         </span>
                                     <?php else: ?>
@@ -1149,11 +1149,29 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     ${restDeIncasat > 0
                         ? `<div style="margin:8px 0 0;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;">
                         <p style="margin:0 0 8px;color:#92400e;font-size:13px;">
-                            Comanda a fost plătită cu cardul, dar totalul a crescut între timp.
-                            Rest de încasat: <strong>${orderMoney(restDeIncasat)}</strong>.
+                            Comanda e plătită doar în parte. Rest de încasat: <strong>${orderMoney(restDeIncasat)}</strong>.
                         </p>
                         <button type="button" onclick="sendPaymentLink(${order.id})" style="padding:6px 12px;background:#1a7a5e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Trimite link de plată pentru diferență</button>
                         <span id="payment-link-status-${order.id}" style="font-size:13px;margin-left:8px;"></span>
+                        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #fde68a;">
+                            <p style="margin:0 0 6px;color:#92400e;font-size:12px;">
+                                Sau, dacă banii au venit deja pe lângă site — ramburs de la curier, OP, numerar —
+                                consemnează-i aici. Nu se trimite nimic clientului.
+                            </p>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                                <input type="number" step="0.01" min="0.01" id="incasare-suma-${order.id}"
+                                       value="${restDeIncasat.toFixed(2)}"
+                                       style="width:110px;padding:6px 8px;border:1px solid #d6d3d1;border-radius:5px;font-size:13px;">
+                                <select id="incasare-metoda-${order.id}" style="padding:6px 8px;border:1px solid #d6d3d1;border-radius:5px;font-size:13px;">
+                                    <option value="ramburs">Ramburs la curier</option>
+                                    <option value="op">Ordin de plată</option>
+                                    <option value="numerar">Numerar</option>
+                                    <option value="card">Card (POS / link extern)</option>
+                                </select>
+                                <button type="button" onclick="inregistreazaIncasare(${order.id})" style="padding:6px 12px;background:#fff;border:1px solid #92400e;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">Înregistrează încasarea</button>
+                                <span id="incasare-status-${order.id}" style="font-size:13px;"></span>
+                            </div>
+                        </div>
                     </div>`
                         : ''}
                     ${comandaBlocata
@@ -1731,6 +1749,38 @@ function sendPaymentLink(orderId){
             status.textContent = data.error || 'Eroare';
             // Emailul a picat, dar linkul există: îl poate trimite manual.
             if (data.url) { window.prompt('Trimite manual acest link clientului:', data.url); }
+        })
+        .catch(() => { if (status) { status.style.color = '#dc2626'; status.textContent = 'Eroare server'; } });
+}
+
+/* --- Bani veniți pe lângă site (ramburs, OP, numerar) --- */
+function inregistreazaIncasare(orderId){
+    const status = document.getElementById('incasare-status-' + orderId);
+    const suma = document.getElementById('incasare-suma-' + orderId);
+    const metoda = document.getElementById('incasare-metoda-' + orderId);
+    if (!suma || !metoda) { return; }
+    if (status) { status.style.color = '#6b7280'; status.textContent = 'Se salvează...'; }
+    const date = new URLSearchParams();
+    date.append('suma', suma.value);
+    date.append('metoda', metoda.value);
+    fetch('/admin/orders/' + orderId + '/incasare', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: date.toString()
+    })
+        .then((r) => r.json())
+        .then((data) => {
+            if (!status) return;
+            if (data.ok) {
+                status.style.color = '#16a34a';
+                status.textContent = (data.mesaj || 'Salvat') + ' — reîncarcă pagina';
+                // Eticheta „Plătit parțial" se calculează la randare, deci
+                // rămâne veche până la o reîncărcare.
+                setTimeout(() => window.location.reload(), 1200);
+                return;
+            }
+            status.style.color = '#dc2626';
+            status.textContent = data.error || 'Eroare';
         })
         .catch(() => { if (status) { status.style.color = '#dc2626'; status.textContent = 'Eroare server'; } });
 }
