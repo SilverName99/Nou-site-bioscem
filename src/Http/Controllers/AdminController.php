@@ -4088,6 +4088,31 @@ final class AdminController
         header('Location: /admin/categories');
     }
 
+    /**
+     * Bifa de precomandă și cele două plafoane, citite din formularul de produs.
+     *
+     * Stau într-un singur loc fiindcă se citesc din două metode — adăugare și
+     * editare — iar prima dată n-au fost citite decât într-una: la editare
+     * variabilele rămâneau nedefinite, deci pe fiecare salvare bifa se stingea
+     * și plafoanele se goleau. Gol înseamnă „fără limită", nu zero: zero ar
+     * închide vânzarea din prima, fără ca nimeni să fi cerut asta.
+     *
+     * @return array{enabled:int, per_order:?int, total:?int}
+     */
+    private function plafoanePrecomandaDinPost(): array
+    {
+        $numar = static function (mixed $brut): ?int {
+            $text = trim((string) ($brut ?? ''));
+            return $text !== '' && (int) $text > 0 ? (int) $text : null;
+        };
+
+        return [
+            'enabled' => isset($_POST['preorder_enabled']) ? 1 : 0,
+            'per_order' => $numar($_POST['preorder_max_per_order'] ?? ''),
+            'total' => $numar($_POST['preorder_max_total'] ?? ''),
+        ];
+    }
+
     public function createProductForm(): void
     {
         if (!$this->guard()) {
@@ -4145,17 +4170,7 @@ final class AdminController
         $postCartNoteText = trim((string) ($_POST['post_cart_note_text'] ?? ''));
         $stock = (int) ($_POST['stock'] ?? 0);
         $outOfStock = isset($_POST['out_of_stock']) ? 1 : 0;
-        // Plafoanele precomenzii: gol înseamnă „fără limită", nu zero. Zero ar
-        // închide vânzarea din prima, fără ca nimeni să fi cerut asta.
-        $preorderEnabled = isset($_POST['preorder_enabled']) ? 1 : 0;
-        $preorderPerOrder = trim((string) ($_POST['preorder_max_per_order'] ?? ''));
-        $preorderMaxPerOrder = $preorderPerOrder !== '' && (int) $preorderPerOrder > 0
-            ? (int) $preorderPerOrder
-            : null;
-        $preorderTotal = trim((string) ($_POST['preorder_max_total'] ?? ''));
-        $preorderMaxTotal = $preorderTotal !== '' && (int) $preorderTotal > 0
-            ? (int) $preorderTotal
-            : null;
+        $precomanda = $this->plafoanePrecomandaDinPost();
         $weight = trim((string) ($_POST['weight_grams'] ?? ''));
         $weightGrams = $weight !== '' ? (int) $weight : null;
         $brand = mb_substr(trim((string) ($_POST['brand'] ?? '')), 0, 120);
@@ -4213,9 +4228,9 @@ final class AdminController
             'post_cart_note_text' => $postCartNoteText !== '' ? $postCartNoteText : null,
             'stock' => $stock,
             'out_of_stock' => $outOfStock,
-            'preorder_enabled' => $preorderEnabled,
-            'preorder_max_per_order' => $preorderMaxPerOrder,
-            'preorder_max_total' => $preorderMaxTotal,
+            'preorder_enabled' => $precomanda['enabled'],
+            'preorder_max_per_order' => $precomanda['per_order'],
+            'preorder_max_total' => $precomanda['total'],
             'weight_grams' => $weightGrams,
             'brand' => $brand !== '' ? $brand : null,
             'tags_json' => $tagsJson,
@@ -4320,6 +4335,7 @@ final class AdminController
         $badgePopular = isset($_POST['badge_popular']) ? 1 : 0;
         $badgeBest = isset($_POST['badge_best_seller']) ? 1 : 0;
         $badgeSeason = isset($_POST['badge_seasonal']) ? 1 : 0;
+        $precomandaUpdate = $this->plafoanePrecomandaDinPost();
         $stmt = $db->prepare(
             'UPDATE products
              SET name = :name,
@@ -4388,9 +4404,9 @@ final class AdminController
             'post_cart_note_text' => $postCartNoteText !== '' ? $postCartNoteText : null,
             'stock' => (int) ($_POST['stock'] ?? 0),
             'out_of_stock' => isset($_POST['out_of_stock']) ? 1 : 0,
-            'preorder_enabled' => $preorderEnabled,
-            'preorder_max_per_order' => $preorderMaxPerOrder,
-            'preorder_max_total' => $preorderMaxTotal,
+            'preorder_enabled' => $precomandaUpdate['enabled'],
+            'preorder_max_per_order' => $precomandaUpdate['per_order'],
+            'preorder_max_total' => $precomandaUpdate['total'],
             'weight_grams' => $weightGrams,
             'brand' => $brand !== '' ? $brand : null,
             'tags_json' => $tagsJson,
