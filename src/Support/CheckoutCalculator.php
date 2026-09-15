@@ -223,6 +223,9 @@ final class CheckoutCalculator
                 // Produsul are o reducere/promoție activă dacă prețul efectiv (sale,
                 // perioadă programată sau BBD) e sub prețul de bază.
                 'is_discounted' => $price < (max(0.0, (float) ($product['price'] ?? 0.0)) - 0.0001),
+                // Produsul se vinde inainte sa existe in gestiune: cosul si
+                // checkout-ul o spun, ca sa nu astepte nimeni coletul maine.
+                'preorder' => ((int) ($product['preorder_enabled'] ?? 0)) === 1,
                 'image_url' => trim((string) ($product['image_url'] ?? '')) ?: '/assets/img/product-placeholder.svg',
                 'vat_percent' => $vatPercent,
                 'vat_included' => $vatIncluded,
@@ -302,6 +305,10 @@ final class CheckoutCalculator
         }
 
         self::ensureProductVatSchema($db);
+        // Fără coloana precomenzii, interogarea de mai jos ar cădea pe ramura de
+        // rezervă — care nu știe de preț redus. Se creează aici o dată, nu la
+        // fiecare rând din coș.
+        Precomanda::ensureSchema($db);
 
         // Disponibilitatea NU e criteriu de vizibilitate aici. Interogarea cerea
         // `out_of_stock = 0`, adică steagul din fișa produsului de pe site — dar
@@ -317,14 +324,14 @@ final class CheckoutCalculator
         $placeholders = implode(',', array_fill(0, count($safeIds), '?'));
         try {
             $stmt = $db->prepare(
-                "SELECT id, name, slug, category_id, short_description, price, sale_price, sale_price_periods_json, bbd_enabled, bbd_entries_json, vat_percent, vat_included, stock, out_of_stock, weight_grams, image_url
+                "SELECT id, name, slug, category_id, short_description, price, sale_price, sale_price_periods_json, bbd_enabled, bbd_entries_json, vat_percent, vat_included, stock, out_of_stock, preorder_enabled, weight_grams, image_url
                  FROM products
                  WHERE is_active = 1 AND deleted_at IS NULL AND id IN ($placeholders)"
             );
             $stmt->execute($safeIds);
         } catch (Throwable) {
             $stmt = $db->prepare(
-                "SELECT id, name, slug, category_id, NULL AS short_description, price, NULL AS sale_price, NULL AS sale_price_periods_json, 0 AS bbd_enabled, NULL AS bbd_entries_json, 19.00 AS vat_percent, 1 AS vat_included, stock, 0 AS out_of_stock, weight_grams, NULL AS image_url
+                "SELECT id, name, slug, category_id, NULL AS short_description, price, NULL AS sale_price, NULL AS sale_price_periods_json, 0 AS bbd_enabled, NULL AS bbd_entries_json, 19.00 AS vat_percent, 1 AS vat_included, stock, 0 AS out_of_stock, 0 AS preorder_enabled, weight_grams, NULL AS image_url
                  FROM products
                  WHERE is_active = 1 AND deleted_at IS NULL AND id IN ($placeholders)"
             );

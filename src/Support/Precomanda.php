@@ -35,11 +35,15 @@ final class Precomanda
     /** Butonul a fost apăsat: comanda a plecat pe drumul obișnuit. */
     public const ELIBERATA = 'eliberata';
 
+    /** Coloanele se creează o singură dată pe cerere, nu la fiecare apel. */
+    private static bool $schemaVerificata = false;
+
     public static function ensureSchema(?PDO $db): void
     {
-        if (!$db instanceof PDO) {
+        if (!$db instanceof PDO || self::$schemaVerificata) {
             return;
         }
+        self::$schemaVerificata = true;
         foreach ([
             'ALTER TABLE products ADD COLUMN preorder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER out_of_stock',
             'ALTER TABLE products ADD COLUMN preorder_max_per_order INT UNSIGNED DEFAULT NULL AFTER preorder_enabled',

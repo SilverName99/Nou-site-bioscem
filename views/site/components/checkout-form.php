@@ -17,6 +17,16 @@ $total = (float) ($summary['total'] ?? 0);
 $coupon = is_array($summary['coupon'] ?? null) ? $summary['coupon'] : null;
 $couponCode = trim((string) ($coupon['code'] ?? ''));
 $couponAppliesOnlySelectedProducts = ((int) (($coupon['applies_only_selected_products'] ?? 0))) === 1;
+// Produsele de precomanda se platesc acum, dar pleaca abia cand vine marfa.
+// Se spune si pe fiecare rand, si o data langa butonul de plasare — omul
+// trebuie sa vada asta inainte sa plateasca, nu dupa.
+$liniiPrecomanda = [];
+foreach ($lines as $linieVerificata) {
+    if (is_array($linieVerificata) && !empty($linieVerificata['preorder'])) {
+        $liniiPrecomanda[] = trim((string) ($linieVerificata['name'] ?? ''));
+    }
+}
+$arePrecomanda = $liniiPrecomanda !== [];
 $points = is_array($summary['points'] ?? null) ? $summary['points'] : [];
 $pointsEnabled = !empty($points['enabled']);
 $pointsAvailable = max(0, (int) ($points['available'] ?? 0));
@@ -396,6 +406,11 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                             <div>
                                 <p class="bv-checkout-v3__item-name"><?= htmlspecialchars((string) ($line['name'] ?? 'Produs'), ENT_QUOTES) ?></p>
                                 <p class="bv-checkout-v3__item-meta">Cantitate: <?= (int) ($line['quantity'] ?? 1) ?></p>
+                                <?php if (!empty($line['preorder'])): ?>
+                                    <p style="margin:4px 0 0;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;">
+                                        ⏳ Precomandă
+                                    </p>
+                                <?php endif; ?>
                             </div>
                             <div class="bv-checkout-v3__item-value-wrap">
                                 <?php if ($lineCouponDiscount > 0.0): ?>
@@ -492,6 +507,14 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                         <a href="/prelucrarea-datelor-personale" target="_blank" rel="noopener">Politica de confidențialitate</a>.
                     </span>
                 </label>
+                <?php if ($arePrecomanda): ?>
+                    <div style="margin:0 0 14px;padding:12px 14px;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;background:#fffbeb;color:#78350f;font-size:13px;line-height:1.5;">
+                        <strong style="display:block;margin-bottom:4px;">⏳ Comanda ta conține produse în precomandă</strong>
+                        <?= htmlspecialchars(implode(', ', array_filter($liniiPrecomanda)), ENT_QUOTES) ?>.
+                        Le rezervi acum, iar plata se face în condițiile alese mai sus. Coletul pleacă
+                        însă abia când marfa ajunge la noi — te anunțăm pe email când se expediază.
+                    </div>
+                <?php endif; ?>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
                     <?= $previewMode ? 'Preview checkout' : (in_array($paymentMethod, ['euplatesc', 'stripe'], true) ? 'Către plată' : 'Plasează comanda') ?>
                 </button>

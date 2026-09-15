@@ -1464,6 +1464,21 @@ final class SiteController
             unset($_SESSION['checkout_form']);
         }
 
+        // Precomanda se spune si aici: pagina de confirmare e ultimul loc in care
+        // clientul mai citeste ceva inainte sa astepte coletul.
+        $estePrecomanda = false;
+        if ($db instanceof PDO && $orderNumber !== '') {
+            try {
+                $stmtPre = $db->prepare(
+                    'SELECT preorder_status FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1'
+                );
+                $stmtPre->execute(['nr' => $orderNumber]);
+                $estePrecomanda = trim((string) ($stmtPre->fetchColumn() ?: '')) !== '';
+            } catch (Throwable) {
+                $estePrecomanda = false;
+            }
+        }
+
         if ($db instanceof PDO) {
             $successPage = $this->findPublishedPageBySlug('checkout/succes');
             if (is_array($successPage)) {
@@ -1475,7 +1490,8 @@ final class SiteController
                         $orderNumber,
                         $orderTotal,
                         $orderCurrency,
-                        $orderEmail
+                        $orderEmail,
+                        $estePrecomanda
                     );
                 }
 
@@ -1505,6 +1521,7 @@ final class SiteController
             'title' => 'Comandă plasată',
             'opInstructiuni' => $opInstructiuni,
             'orderNumber' => $orderNumber,
+            'notaPrecomanda' => $estePrecomanda ? self::notaPrecomandaHtml() : '',
             'paymentStatus' => $paymentStatus,
             'orderStatus' => $orderStatus,
             'orderTotal' => $orderTotal,
@@ -4325,7 +4342,8 @@ HTML;
         string $orderNumber,
         ?float $orderTotal = null,
         string $orderCurrency = 'RON',
-        string $orderEmail = ''
+        string $orderEmail = '',
+        bool $estePrecomanda = false
     ): string {
         $safeOrderNumber = trim($orderNumber);
         $safeCurrency = trim($orderCurrency) !== '' ? strtoupper(trim($orderCurrency)) : 'RON';
@@ -4346,9 +4364,30 @@ HTML;
         if (trim($orderEmail) !== '') {
             $html .= $row('Email', trim($orderEmail));
         }
+        if ($estePrecomanda) {
+            $html .= self::notaPrecomandaHtml();
+        }
         $html .= '</div>';
 
         return $html;
+    }
+
+    /**
+     * Mențiunea care îi spune clientului că a comandat marfă care încă n-a venit.
+     *
+     * Apare peste tot unde omul se uită după ce a apăsat butonul: în coș, în
+     * checkout și pe pagina de confirmare. O precomandă neanunțată e o comandă
+     * despre care clientul crede că pleacă mâine.
+     */
+    private static function notaPrecomandaHtml(): string
+    {
+        return '<div style="margin:14px 0 0;padding:12px 14px;border:1px solid #fcd34d;'
+            . 'border-left:4px solid #f59e0b;border-radius:8px;background:#fffbeb;color:#78350f;'
+            . 'font-size:13px;line-height:1.5;">'
+            . '<strong style="display:block;margin-bottom:4px;">⏳ Comanda conține produse în precomandă</strong>'
+            . 'Le-ai rezervat acum, dar coletul pleacă abia când marfa ajunge la noi. '
+            . 'Te anunțăm pe email în momentul expedierii.'
+            . '</div>';
     }
 
     private function claimPendingLoyaltyPointsForUser(PDO $db, int $userId): int

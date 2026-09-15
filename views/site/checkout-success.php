@@ -208,6 +208,8 @@ if ($returCard && $platit) {
             <?php endif; ?>
         </div>
 
+        <?= (string) ($notaPrecomanda ?? '') ?>
+
         <?php if ($instructiuni !== ''): ?>
             <div class="bs-succes__plata">
                 <h2>Cum plătiți prin ordin de plată</h2>

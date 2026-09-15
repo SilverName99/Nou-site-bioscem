@@ -115,6 +115,12 @@ tot nomenclatorul.
 - produsul bifat se poate cumpara si fara stoc (asta e rostul precomenzii). In
   magazin butonul scrie „Precomanda", iar pe pagina produsului apare o banda
   care spune ca marfa vine mai tarziu;
+- clientul e anuntat pe tot drumul, nu doar pe fisa produsului: eticheta
+  „⏳ Precomanda" pe randul din cos si din rezumatul de checkout, o caseta
+  galbena deasupra butonului de plasare (cu numele produselor) si aceeasi
+  mentiune pe pagina de confirmare;
+- toate cele trei metode de plata merg normal (card, OP, ramburs): banii se
+  incaseaza ca la orice comanda, doar trimiterea in ERP asteapta butonul;
 - comanda care contine macar un astfel de produs NU pleaca in ERP la plasare:
   ramane in `Admin -> Comenzi`, in tabul **„Precomenzi"** (`?precomanda=asteptare`).
   ERP-ul ar rezerva altfel stoc inexistent si ar cere o factura pe care n-o poate
