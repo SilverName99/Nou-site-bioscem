@@ -75,7 +75,7 @@ if ($adminFavicon === '') {
             };
         };
 
-        $magazinOpen = $isActive(['/admin/products', '/admin/orders', '/admin/coupons', '/admin/categories', '/admin/promo-products', '/admin/settings/floating-cart', '/admin/products/fields', '/admin/products/templates', '/admin/products/reviews'])
+        $magazinOpen = $isActive(['/admin/products', '/admin/orders', '/admin/precomenzi', '/admin/coupons', '/admin/categories', '/admin/promo-products', '/admin/settings/floating-cart', '/admin/products/fields', '/admin/products/templates', '/admin/products/reviews'])
             || $path === '/admin/orders/trash';
         $usersOpen = $isActive(['/admin/users']);
         $usersSettingsActive = $isActive(['/admin/users/settings']) && trim((string) ($_GET['tab'] ?? 'settings')) !== 'points';
@@ -155,6 +155,9 @@ if ($adminFavicon === '') {
                             </a>
                             <a class="<?= ($path === '/admin/orders' || $path === '/admin/orders/trash') ? 'active' : '' ?>" href="/admin/orders">
                                 <span class="nav-icon"><?= $icon('orders') ?></span> Comenzi
+                            </a>
+                            <a class="<?= $isActive(['/admin/precomenzi']) ? 'active' : '' ?>" href="/admin/precomenzi">
+                                <span class="nav-icon"><?= $icon('orders') ?></span> Precomenzi
                             </a>
                             <a class="<?= ($path === '/admin/coupons') ? 'active' : '' ?>" href="/admin/coupons">
                                 <span class="nav-icon"><?= $icon('coupon') ?></span> Cupoane

@@ -104,6 +104,32 @@ Recomandare cron: o data pe zi (lista se schimba rar). Daca FAN raspunde cu o
 lista goala, scriptul se opreste fara sa modifice nimic — altfel ar dezactiva
 tot nomenclatorul.
 
+### Precomanda
+
+- pe fisa produsului, in `Admin -> Produse`, exista bifa **„Valabil pentru
+  precomanda"** si doua plafoane:
+  - **Maxim per comanda** — cate bucati poate lua un client intr-o comanda;
+  - **Maxim precomandat (total)** — cate bucati se pot precomanda cu totul, pe
+    toate comenzile.
+  Ambele goale inseamna „fara limita";
+- produsul bifat se poate cumpara si fara stoc (asta e rostul precomenzii). In
+  magazin butonul scrie „Precomanda", iar pe pagina produsului apare o banda
+  care spune ca marfa vine mai tarziu;
+- comanda care contine macar un astfel de produs NU pleaca in ERP la plasare:
+  ramane in `Admin -> Precomenzi`. ERP-ul ar rezerva altfel stoc inexistent si
+  ar cere o factura pe care n-o poate emite nimeni;
+- cand marfa a venit, apesi **„Trimite in ERP"** pe fiecare comanda. De acolo
+  incolo e o comanda obisnuita;
+- cate bucati s-au precomandat se numara din comenzi, nu dintr-un contor: o
+  comanda anulata elibereaza locul inapoi in plafon;
+- verificarea intregului drum:
+
+```bash
+php /home/USER/domains/bioscem.ro/public_html/scripts/test-precomanda.php
+```
+
+Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
+
 ### Email-uri (template-uri + test + abandon cos)
 
 - in admin exista modulul `Email-uri` (`/admin/emails`) unde poti:

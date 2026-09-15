@@ -50,7 +50,12 @@
                             // refuzată: alegerea se face pe pagina produsului.
                             $cereOferta = \App\Support\BbdOferte::cereAlegere($product);
                         ?>
-                        <?php if ((int) ($product['out_of_stock'] ?? 0) === 1): ?>
+                        <?php $ePrecomanda = \App\Support\Precomanda::estePrecomanda($product); ?>
+                        <?php if ($ePrecomanda): ?>
+                            <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
+                                <button class="btn" type="submit">Precomandă</button>
+                            </form>
+                        <?php elseif ((int) ($product['out_of_stock'] ?? 0) === 1): ?>
                             <span class="btn btn-secondary" style="opacity:.9;cursor:default;pointer-events:none;">Stoc epuizat</span>
                         <?php elseif ($cereOferta): ?>
                             <a class="btn btn-primary" href="/produs/<?= rawurlencode((string) ($product['slug'] ?? '')) ?>">Alege oferta</a>

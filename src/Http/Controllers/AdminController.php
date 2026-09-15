@@ -1257,7 +1257,7 @@ final class AdminController
             \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
             try {
                 $rows = $db->query(
-                    'SELECT p.id, p.name, p.sku, p.category, p.category_id, c.name AS category_name, p.slug, p.price, p.vat_percent, p.vat_included, p.sale_price, p.sale_price_periods_json, p.discount_badge_mode, p.bbd_enabled, p.bbd_entries_json, p.post_cart_note_enabled, p.post_cart_note_text, p.stock, p.out_of_stock, p.weight_grams, p.brand, p.tags_json, p.image_url, p.is_active,
+                    'SELECT p.id, p.name, p.sku, p.category, p.category_id, c.name AS category_name, p.slug, p.price, p.vat_percent, p.vat_included, p.sale_price, p.sale_price_periods_json, p.discount_badge_mode, p.bbd_enabled, p.bbd_entries_json, p.post_cart_note_enabled, p.post_cart_note_text, p.stock, p.out_of_stock, p.preorder_enabled, p.preorder_max_per_order, p.preorder_max_total, p.weight_grams, p.brand, p.tags_json, p.image_url, p.is_active,
                             p.product_template_id, pt.name AS product_template_name,
                             p.short_description, p.description, p.product_highlights, p.similar_products_json,
                             p.gallery_images_json, p.badge_popular, p.badge_best_seller, p.badge_seasonal
@@ -4138,6 +4138,17 @@ final class AdminController
         $postCartNoteText = trim((string) ($_POST['post_cart_note_text'] ?? ''));
         $stock = (int) ($_POST['stock'] ?? 0);
         $outOfStock = isset($_POST['out_of_stock']) ? 1 : 0;
+        // Plafoanele precomenzii: gol înseamnă „fără limită", nu zero. Zero ar
+        // închide vânzarea din prima, fără ca nimeni să fi cerut asta.
+        $preorderEnabled = isset($_POST['preorder_enabled']) ? 1 : 0;
+        $preorderPerOrder = trim((string) ($_POST['preorder_max_per_order'] ?? ''));
+        $preorderMaxPerOrder = $preorderPerOrder !== '' && (int) $preorderPerOrder > 0
+            ? (int) $preorderPerOrder
+            : null;
+        $preorderTotal = trim((string) ($_POST['preorder_max_total'] ?? ''));
+        $preorderMaxTotal = $preorderTotal !== '' && (int) $preorderTotal > 0
+            ? (int) $preorderTotal
+            : null;
         $weight = trim((string) ($_POST['weight_grams'] ?? ''));
         $weightGrams = $weight !== '' ? (int) $weight : null;
         $brand = mb_substr(trim((string) ($_POST['brand'] ?? '')), 0, 120);
@@ -4168,9 +4179,9 @@ final class AdminController
         $badgeSeason = isset($_POST['badge_seasonal']) ? 1 : 0;
         $stmt = $db->prepare(
             'INSERT INTO products (
-                name, sku, category, category_id, product_template_id, slug, short_description, description, product_highlights, price, vat_percent, vat_included, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, stock, out_of_stock, weight_grams, brand, tags_json, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, is_active
+                name, sku, category, category_id, product_template_id, slug, short_description, description, product_highlights, price, vat_percent, vat_included, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, stock, out_of_stock, preorder_enabled, preorder_max_per_order, preorder_max_total, weight_grams, brand, tags_json, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, is_active
              ) VALUES (
-                :name, :sku, :category, :category_id, :product_template_id, :slug, :short_description, :description, :product_highlights, :price, :vat_percent, :vat_included, :sale_price, :sale_price_periods_json, :discount_badge_mode, :bbd_enabled, :bbd_entries_json, :post_cart_note_enabled, :post_cart_note_text, :stock, :out_of_stock, :weight_grams, :brand, :tags_json, :image_url, :gallery_images_json, :similar_products_json, :badge_popular, :badge_best_seller, :badge_seasonal, :is_active
+                :name, :sku, :category, :category_id, :product_template_id, :slug, :short_description, :description, :product_highlights, :price, :vat_percent, :vat_included, :sale_price, :sale_price_periods_json, :discount_badge_mode, :bbd_enabled, :bbd_entries_json, :post_cart_note_enabled, :post_cart_note_text, :stock, :out_of_stock, :preorder_enabled, :preorder_max_per_order, :preorder_max_total, :weight_grams, :brand, :tags_json, :image_url, :gallery_images_json, :similar_products_json, :badge_popular, :badge_best_seller, :badge_seasonal, :is_active
              )'
         );
         $stmt->execute([
@@ -4195,6 +4206,9 @@ final class AdminController
             'post_cart_note_text' => $postCartNoteText !== '' ? $postCartNoteText : null,
             'stock' => $stock,
             'out_of_stock' => $outOfStock,
+            'preorder_enabled' => $preorderEnabled,
+            'preorder_max_per_order' => $preorderMaxPerOrder,
+            'preorder_max_total' => $preorderMaxTotal,
             'weight_grams' => $weightGrams,
             'brand' => $brand !== '' ? $brand : null,
             'tags_json' => $tagsJson,
@@ -4321,6 +4335,9 @@ final class AdminController
                  post_cart_note_text = :post_cart_note_text,
                  stock = :stock,
                  out_of_stock = :out_of_stock,
+                 preorder_enabled = :preorder_enabled,
+                 preorder_max_per_order = :preorder_max_per_order,
+                 preorder_max_total = :preorder_max_total,
                  weight_grams = :weight_grams,
                  brand = :brand,
                  tags_json = :tags_json,
@@ -4363,6 +4380,9 @@ final class AdminController
             'post_cart_note_text' => $postCartNoteText !== '' ? $postCartNoteText : null,
             'stock' => (int) ($_POST['stock'] ?? 0),
             'out_of_stock' => isset($_POST['out_of_stock']) ? 1 : 0,
+            'preorder_enabled' => $preorderEnabled,
+            'preorder_max_per_order' => $preorderMaxPerOrder,
+            'preorder_max_total' => $preorderMaxTotal,
             'weight_grams' => $weightGrams,
             'brand' => $brand !== '' ? $brand : null,
             'tags_json' => $tagsJson,
@@ -10397,6 +10417,111 @@ final class AdminController
             ? 'Plata prin OP confirmată. '
             : 'Comanda a fost marcată plătită prin link extern. ';
         return ['ok' => $rezultat['ok'], 'message' => $prefix . $rezultat['message']];
+    }
+
+    /**
+     * Comenzile care așteaptă eliberarea în ERP.
+     *
+     * Precomanda se vinde înainte ca marfa să existe, deci comanda nu poate
+     * pleca în „Comenzi site" la plasare: ERP-ul ar rezerva stoc inexistent și
+     * ar cere o factură pe care n-o poate emite nimeni. Aici stau până când
+     * marfa a venit și cineva apasă butonul.
+     */
+    public function precomenzi(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $db = $this->db();
+        $comenzi = [];
+        $eliberate = [];
+        $produse = [];
+        if ($db instanceof PDO) {
+            \App\Support\Precomanda::ensureSchema($db);
+            try {
+                $stmt = $db->query(
+                    "SELECT o.id, o.order_number, o.status, o.payment_method, o.payment_status,
+                            o.total, o.created_at, o.preorder_status, o.preorder_released_at,
+                            o.erp_status, o.erp_order_id, o.erp_last_error,
+                            o.billing_first_name, o.billing_last_name, o.billing_email, o.billing_phone
+                       FROM orders o
+                      WHERE o.preorder_status IS NOT NULL AND o.deleted_at IS NULL
+                      ORDER BY (o.preorder_status = 'asteptare') DESC, o.created_at DESC
+                      LIMIT 400"
+                );
+                foreach (($stmt->fetchAll() ?: []) as $rand) {
+                    if ((string) ($rand['preorder_status'] ?? '') === \App\Support\Precomanda::ASTEPTARE) {
+                        $comenzi[] = $rand;
+                    } else {
+                        $eliberate[] = $rand;
+                    }
+                }
+            } catch (Throwable) {
+                $comenzi = [];
+            }
+
+            // Produsele comenzilor, ca să se vadă ce s-a precomandat fără să
+            // deschidă fiecare comandă în parte.
+            $ids = array_map(
+                static fn(array $c): int => (int) ($c['id'] ?? 0),
+                array_merge($comenzi, $eliberate)
+            );
+            $ids = array_values(array_filter($ids, static fn(int $i): bool => $i > 0));
+            if ($ids !== []) {
+                try {
+                    $in = implode(',', array_fill(0, count($ids), '?'));
+                    $stmtItems = $db->prepare(
+                        "SELECT oi.order_id, oi.product_name, oi.quantity, p.preorder_enabled
+                           FROM order_items oi
+                           LEFT JOIN products p ON p.id = oi.product_id
+                          WHERE oi.order_id IN ($in)
+                          ORDER BY oi.id ASC"
+                    );
+                    $stmtItems->execute($ids);
+                    foreach (($stmtItems->fetchAll() ?: []) as $item) {
+                        $produse[(int) $item['order_id']][] = $item;
+                    }
+                } catch (Throwable) {
+                    $produse = [];
+                }
+            }
+        }
+
+        View::render('admin/precomenzi', [
+            'title' => 'Precomenzi',
+            'comenzi' => $comenzi,
+            'eliberate' => $eliberate,
+            'produse' => $produse,
+        ]);
+    }
+
+    /** Eliberează o precomandă: o scoate din așteptare și o trimite în ERP. */
+    public function precomandaElibereaza(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            Flash::set('error', 'Comandă invalidă.');
+            header('Location: /admin/precomenzi');
+            return;
+        }
+
+        $rezultat = \App\Support\Precomanda::elibereaza($db, $orderId);
+        if ($rezultat['ok']) {
+            AdminActivityLog::log($db, 'precomanda_eliberata', ['order_id' => $orderId]);
+            Flash::set('success', 'Precomanda a fost trimisă în ERP. ' . $rezultat['message']);
+        } else {
+            // Comanda rămâne eliberată chiar dacă ERP-ul n-a răspuns: marcajul
+            // nu se dă înapoi, iar reîncercarea merge pe drumul obișnuit, din
+            // pagina de comenzi.
+            Flash::set('error', 'Eliberată, dar trimiterea în ERP n-a reușit: ' . $rezultat['message']);
+        }
+        header('Location: /admin/precomenzi');
     }
 
     public function googleSettingsForm(): void

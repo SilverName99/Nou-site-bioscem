@@ -141,11 +141,17 @@ final class ErpSync
     public static function retryPending(PDO $db, int $limit = 25): array
     {
         self::ensureSchema($db);
+        // Coloana de precomandă lipsește pe o bază care n-a mai fost atinsă;
+        // fără ea, interogarea de mai jos ar cădea și cronul n-ar mai trimite
+        // nimic — nici comenzile obișnuite.
+        Precomanda::ensureSchema($db);
 
         $stmt = $db->prepare(
             "SELECT id FROM orders
              WHERE deleted_at IS NULL
                AND erp_status IN ('pending', 'failed')
+               -- Precomenzile așteaptă butonul, nu cronul de reîncercare.
+               AND (preorder_status IS NULL OR preorder_status <> 'asteptare')
                AND erp_attempts < :max_attempts
                AND (erp_next_retry_at IS NULL OR erp_next_retry_at <= NOW())
                AND status NOT IN ('cancelled', 'refunded', 'failed')
@@ -483,8 +489,28 @@ final class ErpSync
     // ───────────────────────────────────────────────────────────
 
     /** Motivul pentru care comanda nu are voie să plece încă, sau null. */
+    /**
+     * De ce nu pleacă o comandă în ERP, dacă nu pleacă.
+     *
+     * Aceeași regulă pe care o aplică `push`, dar fără să trimită nimic: o
+     * poate întreba și un ecran, și un script de verificare, fără să creeze un
+     * document în ERP doar ca să afle răspunsul.
+     */
+    public static function motivBlocare(PDO $db, int $orderId): ?string
+    {
+        $order = self::loadOrder($db, $orderId);
+        return $order === null ? 'Comanda nu a fost găsită.' : self::blockingReason($order);
+    }
+
     private static function blockingReason(array $order): ?string
     {
+        // Precomanda nu e o comandă obișnuită: marfa încă nu există. Trimisă
+        // acum, ERP-ul ar rezerva stoc inexistent și ar cere o factură pe care
+        // n-o poate emite nimeni. Pleacă abia când cineva apasă butonul din
+        // „Precomenzi".
+        if (Precomanda::esteInAsteptare($order)) {
+            return 'Comanda e în precomandă: pleacă în ERP după ce o eliberezi din „Precomenzi".';
+        }
         $status = strtolower((string) ($order['status'] ?? ''));
         if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
             return 'Comanda e anulată/eșuată, nu se trimite în ERP.';

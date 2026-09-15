@@ -96,7 +96,18 @@ if ($galleryUrls === []) {
             <?php endif; ?>
             <span class="price-current"><?= number_format((float) ($product['price'] ?? 0), 2) ?> lei</span>
         </p>
-        <?php if ($isOutOfStock): ?>
+        <?php
+            // Precomanda arată altfel decât un produs epuizat: acolo clientul
+            // n-are ce face, aici poate comanda. Butonul rămâne, doar numele
+            // lui se schimbă, ca omul să știe că marfa vine mai târziu.
+            $ePrecomanda = \App\Support\Precomanda::estePrecomanda($product);
+        ?>
+        <?php if ($ePrecomanda): ?>
+            <p style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 14px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-weight:700;border-radius:999px;">
+                Produs în precomandă — se livrează după ce marfa ajunge la noi
+            </p>
+        <?php endif; ?>
+        <?php if ($isOutOfStock && !$ePrecomanda): ?>
             <p style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #e5e7eb;background:#f8fafc;color:#b91c1c;font-weight:700;border-radius:999px;">Stoc epuizat</p>
         <?php else: ?>
             <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>" style="<?= $singleFormGap ?>" data-product-single-cart-form="1">

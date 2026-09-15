@@ -1118,7 +1118,11 @@ final class SiteController
             // (înainte dispăreau tăcut din listă, deși contorul le număra), deci
             // oprirea lor se face aici, la finalizare, cu mesaj — nu prin
             // ștergerea lor pe nesimțite din coș.
-            if (is_array($produsStoc) && (int) ($produsStoc['out_of_stock'] ?? 0) === 1) {
+            if (
+                is_array($produsStoc)
+                && (int) ($produsStoc['out_of_stock'] ?? 0) === 1
+                && !\App\Support\Precomanda::estePrecomanda($produsStoc)
+            ) {
                 Flash::set(
                     'error',
                     trim((string) ($linie['name'] ?? 'Un produs')) . ': produsul este epuizat momentan.'
@@ -1131,7 +1135,7 @@ final class SiteController
             if ($limitaStoc !== null && (int) ($linie['quantity'] ?? 0) > $limitaStoc) {
                 Flash::set(
                     'error',
-                    trim((string) ($linie['name'] ?? 'Un produs')) . ': ' . $this->mesajStocInsuficient($limitaStoc)
+                    trim((string) ($linie['name'] ?? 'Un produs')) . ': ' . $this->mesajLimitaProdus($produsStoc, $limitaStoc)
                         . ' Ajustează cantitatea din coș.'
                 );
                 header('Location: /cos');
@@ -1319,6 +1323,11 @@ final class SiteController
             return;
         }
 
+        // Comanda cu produse de precomandă se marchează acum, nu mai jos:
+        // plata cu cardul pleacă la procesator și nu mai trece pe acolo, iar
+        // confirmarea încasării ar fi împins-o în ERP nemarcată.
+        \App\Support\Precomanda::marcheazaComanda($db, $orderId);
+
         if ($billing['payment_method'] === 'euplatesc') {
             try {
                 $fields = $this->createEuPlatescRequest($db, $orderId, $orderNumber, $summary, $billing);
@@ -1355,7 +1364,8 @@ final class SiteController
 
         EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'new_order');
         // Comanda pleacă spre ERP; dacă ERP-ul nu răspunde, rămâne marcată
-        // pentru reîncercare și clientul nu vede nicio eroare.
+        // pentru reîncercare și clientul nu vede nicio eroare. Precomenzile se
+        // opresc singure în `ErpSync`, până la butonul din „Precomenzi".
         \App\Support\ErpSync::push($db, $orderId);
         EmailAutomation::markCartConverted($db, session_id());
         Cart::clear();
@@ -1789,7 +1799,12 @@ final class SiteController
             ], 404);
             return;
         }
-        if ((int) ($product['out_of_stock'] ?? 0) === 1) {
+        // Precomanda se vinde tocmai pentru că n-are stoc: „epuizat" nu e un
+        // motiv de oprire acolo, ci starea normală.
+        if (
+            (int) ($product['out_of_stock'] ?? 0) === 1
+            && !\App\Support\Precomanda::estePrecomanda($product)
+        ) {
             $this->jsonResponse([
                 'ok' => false,
                 'message' => 'Produsul este epuizat momentan.',
@@ -1820,7 +1835,7 @@ final class SiteController
         if ($limitaStoc !== null && $this->cantitateInCos($productId) + $quantity > $limitaStoc) {
             $this->jsonResponse([
                 'ok' => false,
-                'message' => $this->mesajStocInsuficient($limitaStoc),
+                'message' => $this->mesajLimitaProdus($product, $limitaStoc),
             ], 422);
             return;
         }
@@ -1866,7 +1881,7 @@ final class SiteController
             if ($limitaStoc !== null && $inAlteVariante + $quantity > $limitaStoc) {
                 $this->jsonResponse([
                     'ok' => false,
-                    'message' => $this->mesajStocInsuficient($limitaStoc),
+                    'message' => $this->mesajLimitaProdus($product, $limitaStoc),
                 ], 422);
                 return;
             }
@@ -1948,7 +1963,10 @@ final class SiteController
             header('Location: /magazin');
             return;
         }
-        if ((int) ($product['out_of_stock'] ?? 0) === 1) {
+        if (
+            (int) ($product['out_of_stock'] ?? 0) === 1
+            && !\App\Support\Precomanda::estePrecomanda($product)
+        ) {
             Flash::set('error', 'Produsul este epuizat momentan.');
             header('Location: /produs/' . rawurlencode((string) ($product['slug'] ?? '')));
             return;
@@ -1970,7 +1988,7 @@ final class SiteController
         }
         $limitaStoc = $this->limitaStocProdus($product);
         if ($limitaStoc !== null && $this->cantitateInCos($productId) + $quantity > $limitaStoc) {
-            Flash::set('error', $this->mesajStocInsuficient($limitaStoc));
+            Flash::set('error', $this->mesajLimitaProdus($product, $limitaStoc));
             header('Location: /produs/' . rawurlencode((string) ($product['slug'] ?? '')));
             return;
         }
@@ -2012,7 +2030,7 @@ final class SiteController
                     if ($limitaStoc !== null && $inAlteVariante + $safeQuantity > $limitaStoc) {
                         Flash::set(
                             'error',
-                            trim((string) ($produsStoc['name'] ?? 'Un produs')) . ': ' . $this->mesajStocInsuficient($limitaStoc)
+                            trim((string) ($produsStoc['name'] ?? 'Un produs')) . ': ' . $this->mesajLimitaProdus($produsStoc, $limitaStoc)
                         );
                         header('Location: /cos');
                         return;
@@ -5403,7 +5421,7 @@ CSS;
                 $params['category_filter2'] = $categoryFilter;
             }
             try {
-                $sql = 'SELECT id, name, slug, short_description, product_highlights, category, price, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, out_of_stock, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, brand, tags_json FROM products WHERE ' . $whereSql . ' ORDER BY id DESC' . $limitSql;
+                $sql = 'SELECT id, name, slug, short_description, product_highlights, category, price, sale_price, sale_price_periods_json, discount_badge_mode, bbd_enabled, bbd_entries_json, post_cart_note_enabled, post_cart_note_text, out_of_stock, preorder_enabled, preorder_max_per_order, preorder_max_total, image_url, gallery_images_json, similar_products_json, badge_popular, badge_best_seller, badge_seasonal, brand, tags_json FROM products WHERE ' . $whereSql . ' ORDER BY id DESC' . $limitSql;
                 $stmt = $db->prepare($sql);
                 $stmt->execute($params);
                 $rows = $stmt->fetchAll();
@@ -5494,7 +5512,7 @@ CSS;
             return null;
         }
 
-        $stmt = $db->prepare('SELECT id, name, slug, stock, out_of_stock, bbd_enabled, bbd_entries_json FROM products WHERE id = :id AND is_active = 1 AND deleted_at IS NULL LIMIT 1');
+        $stmt = $db->prepare('SELECT id, name, slug, stock, out_of_stock, preorder_enabled, preorder_max_per_order, preorder_max_total, bbd_enabled, bbd_entries_json FROM products WHERE id = :id AND is_active = 1 AND deleted_at IS NULL LIMIT 1');
         $stmt->execute(['id' => $id]);
         $product = $stmt->fetch() ?: null;
         if (!is_array($product)) {
@@ -8121,6 +8139,10 @@ CSS;
         $product['post_cart_note_enabled'] = (int) ($product['post_cart_note_enabled'] ?? 0) === 1 ? 1 : 0;
         $product['post_cart_note_text'] = trim((string) ($product['post_cart_note_text'] ?? ''));
         $product['out_of_stock'] = (int) ($product['out_of_stock'] ?? 0) === 1 ? 1 : 0;
+        // Precomanda se citește o singură dată, aici: de la fișa produsului
+        // până la butonul din pagină trec vreo zece funcții, iar fiecare ar fi
+        // trebuit altfel să caute singură prin coloane.
+        $product['preorder_enabled'] = (int) ($product['preorder_enabled'] ?? 0) === 1 ? 1 : 0;
         $product['discount_badge_mode'] = (string) ($product['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent';
 
         $imageUrl = trim((string) ($product['image_url'] ?? ''));
@@ -8417,11 +8439,26 @@ CSS;
      */
     private function limitaStocProdus(array $product): ?int
     {
+        // Produsul de precomandă nu se măsoară în stoc — stocul lui e zero,
+        // asta e tot rostul precomenzii. Se măsoară în plafoanele campaniei:
+        // cât ia un client odată și cât s-a precomandat deja în total.
+        if (\App\Support\Precomanda::estePrecomanda($product)) {
+            return \App\Support\Precomanda::limitaEfectiva($this->db(), $product);
+        }
+
         if ((int) ($product['stock_from_erp'] ?? 0) !== 1) {
             return null;
         }
 
         return max(0, (int) ($product['stock'] ?? 0));
+    }
+
+    /** Mesajul potrivit: „epuizat" la marfă, „s-a închis" la precomandă. */
+    private function mesajLimitaProdus(array $product, int $limita): string
+    {
+        return \App\Support\Precomanda::estePrecomanda($product)
+            ? \App\Support\Precomanda::mesajLimita($limita)
+            : $this->mesajStocInsuficient($limita);
     }
 
     /** Cantitatea totală din coș pentru un produs, cu toate variantele lui. */
@@ -8557,6 +8594,10 @@ CSS;
     private function ensureProductCustomSchema(PDO $db): void
     {
         CheckoutCalculator::ensureProductVatSchema($db);
+        // Coloanele precomenzii se creează tot de aici: magazinul le citește la
+        // fiecare listare, iar pe o bază neatinsă încă interogarea ar cădea pe
+        // o coloană inexistentă — și n-ar mai afișa niciun produs.
+        \App\Support\Precomanda::ensureSchema($db);
         // Marca și etichetele. Se creează și de aici, nu doar din admin: pagina
         // publică le citește, iar dacă nimeni n-a intrat încă în administrare
         // căutarea ar cădea pe o coloană inexistentă.

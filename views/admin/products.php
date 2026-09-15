@@ -480,7 +480,25 @@
                                         <input type="checkbox" name="out_of_stock" id="p_out_of_stock" value="1">
                                         Fără stoc
                                     </label>
+                                    <label>
+                                        <input type="checkbox" name="preorder_enabled" id="p_preorder_enabled" value="1">
+                                        Valabil pentru precomandă
+                                    </label>
                                 </div>
+                                <p class="field-hint" style="margin-top:6px;">
+                                    Produsul de precomandă se poate cumpăra și fără stoc. Comenzile
+                                    cu el nu pleacă în ERP până nu le eliberezi din „Precomenzi".
+                                </p>
+                            </div>
+                            <div class="field">
+                                <label for="p_preorder_max_per_order">Maxim per comandă</label>
+                                <input type="number" min="1" step="1" name="preorder_max_per_order" id="p_preorder_max_per_order" placeholder="fără limită">
+                                <p class="field-hint">Câte bucăți poate lua un client într-o comandă.</p>
+                            </div>
+                            <div class="field">
+                                <label for="p_preorder_max_total">Maxim precomandat (total)</label>
+                                <input type="number" min="1" step="1" name="preorder_max_total" id="p_preorder_max_total" placeholder="fără limită">
+                                <p class="field-hint">Câte bucăți se pot precomanda cu totul, pe toate comenzile.</p>
                             </div>
                         </div>
                     </section>
@@ -1190,6 +1208,18 @@
             if (badgeSeason) badgeSeason.checked = Number(product.badge_seasonal || 0) === 1;
             if (outOfStockInput instanceof HTMLInputElement) {
                 outOfStockInput.checked = Number(product.out_of_stock || 0) === 1;
+                const preorderInput = document.getElementById('p_preorder_enabled');
+                if (preorderInput) {
+                    preorderInput.checked = Number(product.preorder_enabled || 0) === 1;
+                }
+                const preorderPerOrder = document.getElementById('p_preorder_max_per_order');
+                if (preorderPerOrder) {
+                    preorderPerOrder.value = product.preorder_max_per_order ?? '';
+                }
+                const preorderTotal = document.getElementById('p_preorder_max_total');
+                if (preorderTotal) {
+                    preorderTotal.value = product.preorder_max_total ?? '';
+                }
             }
             document.getElementById('p_is_active').checked = Number(product.is_active) === 1;
             salePricePeriods = normalizeSalePeriods(
