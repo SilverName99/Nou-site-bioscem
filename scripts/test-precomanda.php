@@ -241,6 +241,25 @@ try {
         (string) Precomanda::cantitatePrecomandata($db, $produsId)
     );
 
+    // Mentiunea care ajunge in ERP, ca sa se stie de ce o comanda veche apare
+    // abia acum in lista.
+    $stmt = $db->prepare('SELECT * FROM orders WHERE id = :id');
+    $stmt->execute(['id' => $comanda1]);
+    $randPentruNota = (array) $stmt->fetch();
+    $nota = ErpSync::notaPentruErp($randPentruNota);
+    $verifica(
+        str_contains($nota, 'Precomand'),
+        'nota interna trimisa in ERP spune ca a fost precomanda',
+        $nota
+    );
+    $stmt->execute(['id' => $comandaSimpla]);
+    $notaSimpla = ErpSync::notaPentruErp((array) $stmt->fetch());
+    $verifica(
+        !str_contains($notaSimpla, 'Precomand'),
+        'comanda obisnuita nu primeste nicio mentiune',
+        $notaSimpla
+    );
+
     $rezultatGresit = Precomanda::elibereaza($db, $comandaSimpla);
     $verifica(
         ($rezultatGresit['ok'] ?? true) === false,

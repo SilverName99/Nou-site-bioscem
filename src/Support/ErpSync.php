@@ -406,10 +406,34 @@ final class ErpSync
             'observatii' => (string) ($order['notes'] ?? ''),
             // Nota internă merge în câmpul intern al comenzii din ERP, iar de
             // acolo pe factură. Rămâne între noi, nu ajunge la client.
-            'observatiiInterne' => (string) ($order['admin_notes'] ?? ''),
+            'observatiiInterne' => self::notaPentruErp($order),
 
             'linii' => self::buildLines($db, $orderId),
         ];
+    }
+
+    /**
+     * Nota internă trimisă în ERP, cu mențiunea precomenzii dacă e cazul.
+     *
+     * O precomandă ajunge în ERP cu data la care clientul a plasat-o — aia e
+     * data comenzii, n-are de ce să se schimbe. Dar lista de comenzi site se
+     * sortează după ea, așa că o comandă eliberată peste o lună apare la
+     * mijlocul listei, printre cele vechi, și pare rătăcită acolo. Mențiunea
+     * asta spune de ce, chiar pe comandă.
+     */
+    public static function notaPentruErp(array $order): string
+    {
+        $nota = trim((string) ($order['admin_notes'] ?? ''));
+        if (trim((string) ($order['preorder_status'] ?? '')) === '') {
+            return $nota;
+        }
+
+        $eliberata = trim((string) ($order['preorder_released_at'] ?? ''));
+        $cand = $eliberata !== '' ? strtotime($eliberata) : false;
+        $mentiune = 'Precomandă' . ($cand !== false ? ', eliberată la ' . date('d.m.Y', $cand) : '')
+            . '. Data comenzii e cea în care a plasat-o clientul, nu cea în care a ajuns aici.';
+
+        return $nota !== '' ? $mentiune . "\n" . $nota : $mentiune;
     }
 
     /**
