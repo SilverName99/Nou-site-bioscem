@@ -1255,6 +1255,12 @@ final class AdminController
         if ($db instanceof PDO) {
             $this->ensureOptionalSchema($db);
             \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
+            // Coloanele precomenzii le crea doar magazinul, la prima vizită pe
+            // un produs. În panou nu le crea nimeni, iar interogarea de mai jos
+            // cădea pe ramura de rezervă — care nu le cere. Rezultatul: bifa și
+            // plafoanele se salvau, dar formularul se deschidea gol, ca și cum
+            // nu s-ar fi păstrat nimic.
+            \App\Support\Precomanda::ensureSchema($db);
             try {
                 $rows = $db->query(
                     'SELECT p.id, p.name, p.sku, p.category, p.category_id, c.name AS category_name, p.slug, p.price, p.vat_percent, p.vat_included, p.sale_price, p.sale_price_periods_json, p.discount_badge_mode, p.bbd_enabled, p.bbd_entries_json, p.post_cart_note_enabled, p.post_cart_note_text, p.stock, p.out_of_stock, p.preorder_enabled, p.preorder_max_per_order, p.preorder_max_total, p.weight_grams, p.brand, p.tags_json, p.image_url, p.is_active,
@@ -4108,6 +4114,7 @@ final class AdminController
         }
         $this->ensureOptionalSchema($db);
         \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
+        \App\Support\Precomanda::ensureSchema($db);
 
         $name = trim($_POST['name'] ?? '');
         $slug = trim($_POST['slug'] ?? '');
@@ -4263,6 +4270,7 @@ final class AdminController
         }
         $this->ensureOptionalSchema($db);
         \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
+        \App\Support\Precomanda::ensureSchema($db);
 
         $name = trim($_POST['name'] ?? '');
         $slug = trim($_POST['slug'] ?? '');
@@ -7049,6 +7057,7 @@ final class AdminController
         }
         $this->ensureOptionalSchema($db);
         \App\Support\CheckoutCalculator::ensureProductVatSchema($db);
+        \App\Support\Precomanda::ensureSchema($db);
 
         $sqlBase = 'SELECT p.id, p.sku, p.name, p.slug, p.price, %s, p.stock, p.out_of_stock,
                            p.weight_grams, p.brand, p.tags_json, p.is_active, p.category, c.name AS category_name
