@@ -116,10 +116,12 @@ tot nomenclatorul.
   magazin butonul scrie „Precomanda", iar pe pagina produsului apare o banda
   care spune ca marfa vine mai tarziu;
 - comanda care contine macar un astfel de produs NU pleaca in ERP la plasare:
-  ramane in `Admin -> Precomenzi`. ERP-ul ar rezerva altfel stoc inexistent si
-  ar cere o factura pe care n-o poate emite nimeni;
-- cand marfa a venit, apesi **„Trimite in ERP"** pe fiecare comanda. De acolo
-  incolo e o comanda obisnuita;
+  ramane in `Admin -> Comenzi`, in tabul **„Precomenzi"** (`?precomanda=asteptare`).
+  ERP-ul ar rezerva altfel stoc inexistent si ar cere o factura pe care n-o poate
+  emite nimeni;
+- cand marfa a venit, apesi **▶** pe randul comenzii. Pleaca in „Comenzi site"
+  si trece in tabul **„Precomenzi eliberate"**; de acolo incolo e o comanda
+  obisnuita;
 - cate bucati s-au precomandat se numara din comenzi, nu dintr-un contor: o
   comanda anulata elibereaza locul inapoi in plafon;
 - verificarea intregului drum:

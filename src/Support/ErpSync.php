@@ -531,9 +531,9 @@ final class ErpSync
         // Precomanda nu e o comandă obișnuită: marfa încă nu există. Trimisă
         // acum, ERP-ul ar rezerva stoc inexistent și ar cere o factură pe care
         // n-o poate emite nimeni. Pleacă abia când cineva apasă butonul din
-        // „Precomenzi".
+        // tabul „Precomenzi" al listei de comenzi.
         if (Precomanda::esteInAsteptare($order)) {
-            return 'Comanda e în precomandă: pleacă în ERP după ce o eliberezi din „Precomenzi".';
+            return 'Comanda e în precomandă: pleacă în ERP după ce o eliberezi din tabul „Precomenzi” al listei de comenzi.';
         }
         $status = strtolower((string) ($order['status'] ?? ''));
         if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {

@@ -19,7 +19,7 @@ use Throwable;
  *
  * Comanda care conține măcar un astfel de produs nu pleacă în ERP la plasare,
  * cum pleacă restul: rămâne în așteptare până când cineva apasă butonul din
- * „Precomenzi". Altfel ERP-ul ar primi o comandă pentru marfă care încă nu
+ * tabul „Precomenzi" al listei de comenzi. Altfel ERP-ul ar primi o comandă pentru marfă care încă nu
  * există, ar rezerva stoc inexistent și ar cere o factură pe care n-o poate
  * emite nimeni.
  *
@@ -30,7 +30,7 @@ use Throwable;
  */
 final class Precomanda
 {
-    /** Comanda așteaptă butonul din „Precomenzi". */
+    /** Comanda așteaptă butonul din tabul „Precomenzi" al listei de comenzi. */
     public const ASTEPTARE = 'asteptare';
     /** Butonul a fost apăsat: comanda a plecat pe drumul obișnuit. */
     public const ELIBERATA = 'eliberata';

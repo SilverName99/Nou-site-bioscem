@@ -18,7 +18,9 @@ declare(strict_types=1);
  *      precomanda;
  *   6. o comanda anulata elibereaza locul inapoi in plafon;
  *   7. eliberarea scoate comanda din asteptare, iar dupa ea drumul spre ERP e
- *      liber.
+ *      liber;
+ *   8. tabul „Precomenzi" din lista de comenzi arata exact comenzile in
+ *      asteptare, iar cele eliberate trec in tabul lor.
  *
  * NU trimite nimic in ERP: pasul 7 se verifica pe starea din baza si pe motivul
  * blocarii, nu apasand butonul — un test nu are ce cauta cu o comanda inventata
@@ -265,6 +267,32 @@ try {
         ($rezultatGresit['ok'] ?? true) === false,
         'o comanda care nu e in precomanda nu se poate „elibera"',
         (string) ($rezultatGresit['message'] ?? '')
+    );
+
+    // ── 7. Tabul „Precomenzi" din lista de comenzi ────────────
+    // Nu e o pagina separata, e acelasi `SELECT ... FROM orders` cu o conditie
+    // in plus — exact ce adauga controllerul cand vine `?precomanda=...`.
+    echo "\n7) Tabul din lista de comenzi\n";
+    $idurileDinTab = static function (PDO $db, string $stare): array {
+        $stmt = $db->prepare(
+            'SELECT id FROM orders WHERE deleted_at IS NULL AND preorder_status = :st'
+        );
+        $stmt->execute(['st' => $stare]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    };
+    $inAsteptare = $idurileDinTab($db, Precomanda::ASTEPTARE);
+    $eliberate = $idurileDinTab($db, Precomanda::ELIBERATA);
+    $verifica(
+        in_array($comanda2, $inAsteptare, true),
+        'comanda nedeblocata apare in tabul „Precomenzi"'
+    );
+    $verifica(
+        !in_array($comandaSimpla, $inAsteptare, true) && !in_array($comandaSimpla, $eliberate, true),
+        'comanda obisnuita nu apare in niciunul dintre taburile de precomanda'
+    );
+    $verifica(
+        in_array($comanda1, $eliberate, true) && !in_array($comanda1, $inAsteptare, true),
+        'comanda eliberata a trecut in tabul „Precomenzi eliberate"'
     );
 } finally {
     echo "\nCuratenie…\n";

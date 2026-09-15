@@ -20,6 +20,23 @@ $sortDir = (string) ($filters['sort_dir'] ?? 'desc');
 $search = trim((string) ($filters['q'] ?? ''));
 $paymentFilter = (string) ($filters['payment_method'] ?? '');
 $doarRestDeIncasat = !empty($filters['rest_incasat']);
+// Precomenzile nu sunt o pagină separată: sunt aceeași listă, filtrată. Tabul
+// „În așteptare" arată comenzile care încă n-au plecat în ERP.
+$arePrecomanda = !empty($arePrecomanda ?? false);
+$precomenziCount = is_array($precomenziCount ?? null) ? $precomenziCount : [];
+$precomenziAsteptare = (int) ($precomenziCount['asteptare'] ?? 0);
+$precomenziEliberate = (int) ($precomenziCount['eliberata'] ?? 0);
+$tabPrecomanda = (string) ($filters['precomanda'] ?? '');
+/** Aceeași listă, alt tab: restul filtrelor rămân pe loc. */
+$urlTabPrecomanda = static function (string $valoare): string {
+    $query = is_array($_GET) ? $_GET : [];
+    unset($query['precomanda']);
+    if ($valoare !== '') {
+        $query['precomanda'] = $valoare;
+    }
+    $qs = http_build_query($query);
+    return '/admin/orders' . ($qs !== '' ? ('?' . $qs) : '');
+};
 $statusLabels = is_array($orderStatusLabels ?? null) ? $orderStatusLabels : [];
 $paymentStatusLabels = is_array($orderPaymentStatusLabels ?? null) ? $orderPaymentStatusLabels : [];
 $paymentMethodLabels = is_array($orderPaymentMethodLabels ?? null) ? $orderPaymentMethodLabels : [];
@@ -116,7 +133,45 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
         </article>
     </div>
 
+    <?php if ($arePrecomanda): ?>
+        <?php
+        $stilTab = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid #e2e8f0;'
+            . 'border-bottom:none;border-radius:8px 8px 0 0;font-size:13px;font-weight:600;text-decoration:none;';
+        $stilActiv = $stilTab . 'background:#fff;color:#0f172a;border-color:#cbd5e1;box-shadow:0 -2px 0 #2563eb inset;';
+        $stilInactiv = $stilTab . 'background:#f8fafc;color:#64748b;';
+        ?>
+        <nav style="display:flex;gap:4px;margin:4px 0 -1px;border-bottom:1px solid #cbd5e1;flex-wrap:wrap;">
+            <a href="<?= htmlspecialchars($urlTabPrecomanda(''), ENT_QUOTES) ?>"
+               style="<?= $tabPrecomanda === '' ? $stilActiv : $stilInactiv ?>">Toate comenzile</a>
+            <a href="<?= htmlspecialchars($urlTabPrecomanda('asteptare'), ENT_QUOTES) ?>"
+               title="Comenzi cu produse în precomandă. Nu pleacă în „Comenzi site” din ERP până nu apeși ▶ pe fiecare."
+               style="<?= $tabPrecomanda === 'asteptare' ? $stilActiv : $stilInactiv ?>">
+                ⏳ Precomenzi
+                <?php if ($precomenziAsteptare > 0): ?>
+                    <span style="background:#b45309;color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;"><?= $precomenziAsteptare ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="<?= htmlspecialchars($urlTabPrecomanda('eliberata'), ENT_QUOTES) ?>"
+               title="Precomenzi deja trimise în ERP."
+               style="<?= $tabPrecomanda === 'eliberata' ? $stilActiv : $stilInactiv ?>">
+                ✅ Precomenzi eliberate
+                <?php if ($precomenziEliberate > 0): ?>
+                    <span style="background:#e2e8f0;color:#334155;border-radius:999px;padding:1px 7px;font-size:11px;"><?= $precomenziEliberate ?></span>
+                <?php endif; ?>
+            </a>
+        </nav>
+        <?php if ($tabPrecomanda === 'asteptare'): ?>
+            <p style="margin:12px 0 0;color:#64748b;font-size:13px;">
+                Comenzi cu produse bifate „Valabil pentru precomandă". Marfa încă n-a venit, deci
+                comanda nu pleacă în „Comenzi site" din ERP — apasă ▶ pe rândul ei când poți onora.
+            </p>
+        <?php endif; ?>
+    <?php endif; ?>
+
     <form method="get" action="/admin/orders" class="orders-filters orders-filters--compact">
+        <?php if ($tabPrecomanda !== ''): ?>
+            <input type="hidden" name="precomanda" value="<?= htmlspecialchars($tabPrecomanda, ENT_QUOTES) ?>">
+        <?php endif; ?>
         <div class="orders-filters-grid">
             <div class="orders-filter-field orders-filter-field--search">
                 <span class="orders-filter-label">Căutare</span>
@@ -168,7 +223,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
             <input type="hidden" name="dir" value="<?= htmlspecialchars($sortDir, ENT_QUOTES) ?>">
             <div class="orders-filter-actions">
                 <button class="btn" type="submit">Aplică</button>
-                <a class="btn btn-secondary" href="/admin/orders">Reset</a>
+                <a class="btn btn-secondary" href="/admin/orders<?= $tabPrecomanda !== '' ? ('?precomanda=' . urlencode($tabPrecomanda)) : '' ?>">Reset</a>
             </div>
         </div>
     </form>
@@ -325,6 +380,8 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'cancel_pending' => 'warn',
                         ][$erpStatus] ?? 'warn';
                         $erpFactura = trim((string) ($order['erp_factura_numar'] ?? ''));
+                        $precomandaStare = strtolower(trim((string) ($order['preorder_status'] ?? '')));
+                        $ePrecomandaInAsteptare = $precomandaStare === 'asteptare';
                     ?>
                     <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?>">
                         <td class="orders-table__check">
@@ -370,7 +427,18 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                     <?php endif; ?>
                                 <?php endif; ?>
                                 <span class="status-pill status-pill--<?= htmlspecialchars($paymentMethodPillClass, ENT_QUOTES) ?>"><?= htmlspecialchars((string) ($paymentMethodLabels[$paymentMethodKey] ?? $paymentMethodRaw), ENT_QUOTES) ?></span>
-                                <?php if ($erpEnabled): ?>
+                                <?php if ($ePrecomandaInAsteptare): ?>
+                                    <span class="status-pill status-pill--warn"
+                                          title="Precomandă: nu pleacă în „Comenzi site” din ERP până nu apeși ▶ pe rândul ei.">
+                                        ⏳ Precomandă
+                                    </span>
+                                <?php elseif ($precomandaStare === 'eliberata'): ?>
+                                    <span class="status-pill status-pill--muted"
+                                          title="Precomandă eliberată<?= trim((string) ($order['preorder_released_at'] ?? '')) !== '' ? (' la ' . htmlspecialchars($formatDateTime((string) $order['preorder_released_at']), ENT_QUOTES)) : '' ?>">
+                                        Precomandă eliberată
+                                    </span>
+                                <?php endif; ?>
+                                <?php if ($erpEnabled && !$ePrecomandaInAsteptare): ?>
                                     <span class="status-pill status-pill--<?= htmlspecialchars($erpPill, ENT_QUOTES) ?>"
                                           title="<?= htmlspecialchars($erpError !== '' ? $erpError : ($erpProblems !== '' ? 'De rezolvat în ERP: ' . $erpProblems : ''), ENT_QUOTES) ?>">
                                         <?= htmlspecialchars((string) ($erpLabels[$erpStatus] ?? $erpStatus), ENT_QUOTES) ?>
@@ -489,7 +557,15 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                             <button type="submit" class="order-action-btn" title="Confirmă plata OP — comanda devine plătită și pleacă în ERP">💰</button>
                                         </form>
                                     <?php endif; ?>
-                                    <?php if ($erpEnabled && $erpStatus !== 'skipped'): ?>
+                                    <?php if ($ePrecomandaInAsteptare && !$isCancelled): ?>
+                                        <form method="post" action="/admin/orders/<?= $orderId ?>/precomanda-elibereaza"
+                                              onsubmit="return confirm('Eliberezi precomanda <?= htmlspecialchars((string) ($order['order_number'] ?? ''), ENT_QUOTES) ?>?\n\nPleacă acum în „Comenzi site” din ERP — marfa trebuie să fie disponibilă.');">
+                                            <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
+                                            <button type="submit" class="order-action-btn"
+                                                    title="Eliberează precomanda — o trimite în „Comenzi site” din ERP">▶</button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($erpEnabled && $erpStatus !== 'skipped' && !$ePrecomandaInAsteptare): ?>
                                         <?php
                                         // Comanda deja trimisă se poate retrimite, dar e o apăsare
                                         // cu intenție, nu o reparare de eroare: ERP-ul o ia de la

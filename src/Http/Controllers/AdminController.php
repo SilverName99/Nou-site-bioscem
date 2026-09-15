@@ -4616,6 +4616,9 @@ final class AdminController
         $orders = [];
         $promoProducts = [];
         $orderProducts = [];
+        $arePrecomanda = false;
+        // Numărul din tab: precomenzile se văd fără să intri pe ele.
+        $precomenziCount = ['asteptare' => 0, 'eliberata' => 0];
         $filters = $this->ordersFiltersFromInput($_GET);
         $ordersBackUrl = $this->buildOrdersBackUrl($filters);
         $ordersSummary = [
@@ -4652,6 +4655,10 @@ final class AdminController
             $this->ensureOptionalSchema($db);
             \App\Support\ErpSync::ensureSchema($db);
             $this->ensurePromoSchema($db);
+            \App\Support\Precomanda::ensureSchema($db);
+            // Coloanele precomenzii sunt adăugate prin ALTER; dacă lipsesc (bază
+            // veche, ALTER refuzat), tabul „Precomenzi” dispare în loc să crape lista.
+            $arePrecomanda = $this->tableHasColumn($db, 'orders', 'preorder_status');
             \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
             $promoProducts = $db->query('SELECT id, name FROM promotional_products WHERE is_active = 1 ORDER BY sort_order ASC, name ASC')->fetchAll() ?: [];
             try {
@@ -4714,6 +4721,10 @@ final class AdminController
                 $where[] = 'status = :status';
                 $params['status'] = $filters['status'];
             }
+            if ($arePrecomanda && ($filters['precomanda'] ?? '') !== '') {
+                $where[] = 'preorder_status = :preorder_status';
+                $params['preorder_status'] = (string) $filters['precomanda'];
+            }
             if ($filters['payment_method'] !== '') {
                 $paymentMethodFilter = strtolower($filters['payment_method']);
                 if ($paymentMethodFilter === 'card') {
@@ -4753,6 +4764,9 @@ final class AdminController
                 }
             }
             $selectPlata = $coloanePlata === [] ? '' : ', ' . implode(', ', $coloanePlata);
+            if ($arePrecomanda) {
+                $selectPlata .= ', preorder_status, preorder_released_at';
+            }
             $stmt = $db->prepare(
                 'SELECT id, order_number, status, payment_method, payment_status, total, shipping_cost, subtotal, discount_total,
                         coupon_code,
@@ -4881,10 +4895,30 @@ final class AdminController
                 $order['promo_items'] = $promoMap[(int) ($order['id'] ?? 0)] ?? [];
             }
             unset($order);
+
+            if ($arePrecomanda) {
+                try {
+                    $stmtP = $db->query(
+                        'SELECT preorder_status, COUNT(*) AS n
+                           FROM orders
+                          WHERE deleted_at IS NULL AND preorder_status IS NOT NULL
+                          GROUP BY preorder_status'
+                    );
+                    foreach (($stmtP->fetchAll() ?: []) as $randP) {
+                        $cheie = (string) ($randP['preorder_status'] ?? '');
+                        if (array_key_exists($cheie, $precomenziCount)) {
+                            $precomenziCount[$cheie] = (int) ($randP['n'] ?? 0);
+                        }
+                    }
+                } catch (Throwable) {
+                }
+            }
         }
 
         View::render('admin/orders', [
             'title' => 'Comenzi',
+            'arePrecomanda' => $arePrecomanda,
+            'precomenziCount' => $precomenziCount,
             'orders' => $orders,
             'promoProducts' => is_array($promoProducts) ? $promoProducts : [],
             'orderProducts' => is_array($orderProducts) ? $orderProducts : [],
@@ -7130,8 +7164,15 @@ final class AdminController
         $sortDir = trim(strtolower((string) ($input['dir'] ?? ($input['sort_dir'] ?? 'desc'))));
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
 
+        // Tabul „Precomenzi”: gol înseamnă lista obișnuită, care le arată pe toate.
+        $precomanda = trim(strtolower((string) ($input['precomanda'] ?? '')));
+        if (!in_array($precomanda, [\App\Support\Precomanda::ASTEPTARE, \App\Support\Precomanda::ELIBERATA], true)) {
+            $precomanda = '';
+        }
+
         return [
             'q' => $q,
+            'precomanda' => $precomanda,
             'status' => $status,
             'payment_method' => strtolower($paymentMethod),
             'payment_status' => strtolower($paymentStatus),
@@ -7164,6 +7205,11 @@ final class AdminController
         $q = trim((string) ($filters['q'] ?? ''));
         if ($q !== '') {
             $query['q'] = $q;
+        }
+
+        $precomanda = trim(strtolower((string) ($filters['precomanda'] ?? '')));
+        if (in_array($precomanda, [\App\Support\Precomanda::ASTEPTARE, \App\Support\Precomanda::ELIBERATA], true)) {
+            $query['precomanda'] = $precomanda;
         }
 
         $status = trim((string) ($filters['status'] ?? ''));
@@ -10420,94 +10466,25 @@ final class AdminController
     }
 
     /**
-     * Comenzile care așteaptă eliberarea în ERP.
+     * Eliberează o precomandă: o scoate din așteptare și o trimite în ERP.
      *
      * Precomanda se vinde înainte ca marfa să existe, deci comanda nu poate
      * pleca în „Comenzi site" la plasare: ERP-ul ar rezerva stoc inexistent și
-     * ar cere o factură pe care n-o poate emite nimeni. Aici stau până când
-     * marfa a venit și cineva apasă butonul.
+     * ar cere o factură pe care n-o poate emite nimeni. Stă în tabul
+     * „Precomenzi" din Comenzi până când marfa a venit și cineva apasă butonul.
      */
-    public function precomenzi(): void
-    {
-        if (!$this->guard()) {
-            return;
-        }
-
-        $db = $this->db();
-        $comenzi = [];
-        $eliberate = [];
-        $produse = [];
-        if ($db instanceof PDO) {
-            \App\Support\Precomanda::ensureSchema($db);
-            try {
-                $stmt = $db->query(
-                    "SELECT o.id, o.order_number, o.status, o.payment_method, o.payment_status,
-                            o.total, o.created_at, o.preorder_status, o.preorder_released_at,
-                            o.erp_status, o.erp_order_id, o.erp_last_error,
-                            o.billing_first_name, o.billing_last_name, o.billing_email, o.billing_phone
-                       FROM orders o
-                      WHERE o.preorder_status IS NOT NULL AND o.deleted_at IS NULL
-                      ORDER BY (o.preorder_status = 'asteptare') DESC, o.created_at DESC
-                      LIMIT 400"
-                );
-                foreach (($stmt->fetchAll() ?: []) as $rand) {
-                    if ((string) ($rand['preorder_status'] ?? '') === \App\Support\Precomanda::ASTEPTARE) {
-                        $comenzi[] = $rand;
-                    } else {
-                        $eliberate[] = $rand;
-                    }
-                }
-            } catch (Throwable) {
-                $comenzi = [];
-            }
-
-            // Produsele comenzilor, ca să se vadă ce s-a precomandat fără să
-            // deschidă fiecare comandă în parte.
-            $ids = array_map(
-                static fn(array $c): int => (int) ($c['id'] ?? 0),
-                array_merge($comenzi, $eliberate)
-            );
-            $ids = array_values(array_filter($ids, static fn(int $i): bool => $i > 0));
-            if ($ids !== []) {
-                try {
-                    $in = implode(',', array_fill(0, count($ids), '?'));
-                    $stmtItems = $db->prepare(
-                        "SELECT oi.order_id, oi.product_name, oi.quantity, p.preorder_enabled
-                           FROM order_items oi
-                           LEFT JOIN products p ON p.id = oi.product_id
-                          WHERE oi.order_id IN ($in)
-                          ORDER BY oi.id ASC"
-                    );
-                    $stmtItems->execute($ids);
-                    foreach (($stmtItems->fetchAll() ?: []) as $item) {
-                        $produse[(int) $item['order_id']][] = $item;
-                    }
-                } catch (Throwable) {
-                    $produse = [];
-                }
-            }
-        }
-
-        View::render('admin/precomenzi', [
-            'title' => 'Precomenzi',
-            'comenzi' => $comenzi,
-            'eliberate' => $eliberate,
-            'produse' => $produse,
-        ]);
-    }
-
-    /** Eliberează o precomandă: o scoate din așteptare și o trimite în ERP. */
     public function precomandaElibereaza(array $params): void
     {
         if (!$this->guard()) {
             return;
         }
 
+        $inapoi = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), $params);
         $orderId = max(0, (int) ($params['id'] ?? 0));
         $db = $this->db();
         if (!$db instanceof PDO || $orderId <= 0) {
             Flash::set('error', 'Comandă invalidă.');
-            header('Location: /admin/precomenzi');
+            header('Location: ' . $inapoi);
             return;
         }
 
@@ -10521,7 +10498,7 @@ final class AdminController
             // pagina de comenzi.
             Flash::set('error', 'Eliberată, dar trimiterea în ERP n-a reușit: ' . $rezultat['message']);
         }
-        header('Location: /admin/precomenzi');
+        header('Location: ' . $inapoi);
     }
 
     public function googleSettingsForm(): void

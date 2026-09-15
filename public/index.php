@@ -269,8 +269,7 @@ $router->post('/admin/orders/{id}/note-interne', [AdminController::class, 'order
 $router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);
 $router->post('/admin/orders/{id}/payment-link', [AdminController::class, 'orderPaymentLinkSend']);
 $router->post('/admin/orders/{id}/incasare', [AdminController::class, 'orderIncasareManuala']);
-$router->get('/admin/precomenzi', [AdminController::class, 'precomenzi']);
-$router->post('/admin/precomenzi/{id}/elibereaza', [AdminController::class, 'precomandaElibereaza']);
+$router->post('/admin/orders/{id}/precomanda-elibereaza', [AdminController::class, 'precomandaElibereaza']);
 $router->get('/admin/orders/{id}/client-promo', [AdminController::class, 'orderClientPromo']);
 $router->get('/admin/promo-products/search', [AdminController::class, 'promoClientSearchApi']);
 $router->get('/admin/promo-products/{id}/recipients', [AdminController::class, 'promoProductRecipientsApi']);
