@@ -511,8 +511,9 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     <div style="margin:0 0 14px;padding:12px 14px;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;background:#fffbeb;color:#78350f;font-size:13px;line-height:1.5;">
                         <strong style="display:block;margin-bottom:4px;">⏳ Comanda ta conține produse în precomandă</strong>
                         <?= htmlspecialchars(implode(', ', array_filter($liniiPrecomanda)), ENT_QUOTES) ?>.
-                        Le rezervi acum, iar plata se face în condițiile alese mai sus. Coletul pleacă
-                        însă abia când marfa ajunge la noi — te anunțăm pe email când se expediază.
+                        Le rezervi acum, iar plata se face în condițiile alese mai sus. Comanda pleacă
+                        însă într-un singur colet, când ajunge și marfa aflată în precomandă — deci
+                        așteaptă și restul produselor. Te anunțăm pe email în momentul expedierii.
                     </div>
                 <?php endif; ?>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>

@@ -174,7 +174,7 @@ foreach ($lines as $line) {
                                         </p>
                                         <?php if (!empty($line['preorder'])): ?>
                                             <p style="margin:6px 0 0;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;">
-                                                ⏳ Precomandă — se livrează când vine marfa
+                                                ⏳ Precomandă — toată comanda se livrează când vine marfa
                                             </p>
                                         <?php endif; ?>
                                     </div>

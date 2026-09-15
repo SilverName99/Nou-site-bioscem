@@ -4385,7 +4385,8 @@ HTML;
             . 'border-left:4px solid #f59e0b;border-radius:8px;background:#fffbeb;color:#78350f;'
             . 'font-size:13px;line-height:1.5;">'
             . '<strong style="display:block;margin-bottom:4px;">⏳ Comanda conține produse în precomandă</strong>'
-            . 'Le-ai rezervat acum, dar coletul pleacă abia când marfa ajunge la noi. '
+            . 'Le-ai rezervat acum, dar comanda pleacă într-un singur colet, când ajunge și '
+            . 'marfa aflată în precomandă — deci așteaptă și restul produselor. '
             . 'Te anunțăm pe email în momentul expedierii.'
             . '</div>';
     }
