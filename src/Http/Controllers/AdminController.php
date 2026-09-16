@@ -1528,8 +1528,30 @@ final class AdminController
         ksort($brands);
         ksort($tags);
 
+        // Categoriile suplimentare, ca să se vadă în listă lângă cea
+        // principală: un produs stă des în mai multe rafturi, iar până acum
+        // trebuia deschis ca să afli în care.
+        $categoriiExtra = [];
+        if ($db instanceof PDO && $products !== []) {
+            $numePeProdus = \App\Support\ProductCategories::namesForProducts(
+                $db,
+                array_map(static fn (array $p): int => (int) ($p['id'] ?? 0), $products)
+            );
+            foreach ($products as $rand) {
+                $id = (int) ($rand['id'] ?? 0);
+                $principala = trim((string) ($rand['category_name'] ?? $rand['category'] ?? ''));
+                $toate = $numePeProdus[$id] ?? [];
+                // Cea principală apare oricum în coloana de lângă; aici doar restul.
+                $categoriiExtra[$id] = array_values(array_filter(
+                    array_unique($toate),
+                    static fn (string $nume): bool => mb_strtolower($nume) !== mb_strtolower($principala)
+                ));
+            }
+        }
+
         View::render('admin/products', [
             'title' => 'Produse',
+            'categoriiExtra' => $categoriiExtra,
             'products' => $products,
             'brands' => array_values($brands),
             'tags' => array_values($tags),

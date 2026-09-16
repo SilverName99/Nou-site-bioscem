@@ -103,7 +103,11 @@ if ($sortOptions === []) {
         $reviewsCount = max(0, (int) ($product['reviews_count'] ?? 0));
         $reviewsAverage = max(0.0, min(5.0, (float) ($product['reviews_average'] ?? 0)));
         $roundedStars = (int) round($reviewsAverage);
-        $outOfStock = (int) ($product['out_of_stock'] ?? 0) === 1;
+        // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără rândul
+        // ăsta, produsul bifat rămânea fără buton în listă, deși pe fișa lui
+        // se putea comanda.
+        $ePrecomanda = \App\Support\Precomanda::estePrecomanda($product);
+        $outOfStock = (int) ($product['out_of_stock'] ?? 0) === 1 && !$ePrecomanda;
         $hasBbdOffers = \App\Support\BbdOferte::cereAlegere($product);
         $discountMode = (string) ($product['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent';
         $discount = 0;
@@ -153,6 +157,13 @@ if ($sortOptions === []) {
               </p>
               <?php if ($outOfStock): ?>
                 <span class="bv-popular-card__stock-out">Stoc epuizat</span>
+              <?php elseif ($ePrecomanda): ?>
+                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
+                   href="/produs/<?= rawurlencode($slug) ?>"
+                   title="Se livrează după ce marfa ajunge la noi"
+                   aria-label="Precomandă">
+                  Precomandă
+                </a>
               <?php elseif ($hasBbdOffers): ?>
                 <?php /* Produsul are oferte cu dată de expirare, deci nu poate fi
                         adăugat fără să fie aleasă una. Butonul de coș trimitea

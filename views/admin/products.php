@@ -1,3 +1,7 @@
+<?php
+/** @var array<int, list<string>> $categoriiExtra Numele celorlalte rafturi în care stă produsul. */
+$categoriiExtra = is_array($categoriiExtra ?? null) ? $categoriiExtra : [];
+?>
 <section class="panel">
     <div class="section-head">
         <div>
@@ -30,6 +34,7 @@
         <span>Imagine</span>
         <span>Produs</span>
         <span>Categorie</span>
+        <span>Alte categorii</span>
         <span>Preț</span>
         <span>TVA</span>
         <span>Stoc</span>
@@ -45,6 +50,7 @@
                     (string) ($product['sku'] ?? ''),
                     (string) ($product['category_name'] ?? ''),
                     (string) ($product['category'] ?? ''),
+                    implode(' ', $categoriiExtra[(int) ($product['id'] ?? 0)] ?? []),
                 ], static fn (string $bucata): bool => trim($bucata) !== ''));
             ?>
             <article class="product-row" data-search="<?= htmlspecialchars($cautare, ENT_QUOTES) ?>">
@@ -70,6 +76,18 @@
                 </div>
                 <div class="col-category">
                     <?= htmlspecialchars((string) ($product['category_name'] ?: $product['category'] ?: 'Fără categorie'), ENT_QUOTES) ?>
+                </div>
+                <div class="col-category-extra">
+                    <?php $alteCategorii = $categoriiExtra[(int) ($product['id'] ?? 0)] ?? []; ?>
+                    <?php if ($alteCategorii === []): ?>
+                        <span style="color:#cbd5e1;">—</span>
+                    <?php else: ?>
+                        <?php foreach ($alteCategorii as $numeCategorie): ?>
+                            <span style="display:inline-block;margin:0 4px 4px 0;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:11px;white-space:nowrap;">
+                                <?= htmlspecialchars($numeCategorie, ENT_QUOTES) ?>
+                            </span>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
                 <div class="col-price">
                     <?php

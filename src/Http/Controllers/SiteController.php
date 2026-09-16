@@ -9968,7 +9968,11 @@ CSS;
                 'short_description' => (string) ($candidate['short_description'] ?? ''),
                 'reviews_count' => max(0, (int) ($candidate['reviews_count'] ?? 0)),
                 'reviews_average' => max(0.0, min(5.0, (float) ($candidate['reviews_average'] ?? 0))),
-                'out_of_stock' => (int) ($candidate['out_of_stock'] ?? 0) === 1 ? 1 : 0,
+                // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără
+                // asta, produsul bifat apărea fără buton și în carusel.
+                'preorder' => \App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
+                'out_of_stock' => (int) ($candidate['out_of_stock'] ?? 0) === 1
+                    && !\App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
             ];
             $items[] = $item;
             $itemById[$id] = $item;

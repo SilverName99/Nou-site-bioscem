@@ -921,6 +921,7 @@ if ($galleryUrls === []) {
                     const discountValueLabel = escapeHtml(item.discount_value_label || '');
                     const bubbleText = badgeMode === 'value' && discountValueLabel ? ('-' + discountValueLabel + ' lei') : ('-' + discount + '%');
                     const outOfStock = String(item.out_of_stock || '0') === '1';
+                    const ePrecomanda = String(item.preorder || '0') === '1';
                     const productId = Math.max(0, Number.parseInt(item.id || '0', 10) || 0);
                     return ''
                         + '<article class="similar-product-card">'
@@ -935,6 +936,8 @@ if ($galleryUrls === []) {
                         + '<p class="similar-product-card__price">' + priceLabel + (regularPriceLabel !== '' ? '<span class="similar-product-card__old">' + regularPriceLabel + '</span>' : '') + '</p>'
                         + (outOfStock
                             ? '<span class="similar-product-card__stock-out">Stoc epuizat</span>'
+                            : ePrecomanda
+                            ? '<a class="similar-product-card__cart-btn" href="' + url + '" title="Se livrează după ce marfa ajunge la noi" style="padding:0 14px;width:auto;border-radius:999px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;">Precomandă</a>'
                             : '<form method="post" action="/cos/adauga/' + productId + '"><button type="submit" class="similar-product-card__cart-btn" aria-label="Adaugă în coș"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H7"/></svg></button></form>'
                         )
                         + '</div>'
