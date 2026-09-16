@@ -34,6 +34,7 @@ if ($cautare === '') {
 
 $stmt = $db->prepare(
     'SELECT id, order_number, billing_first_name, billing_last_name,
+            shipping_first_name, shipping_last_name,
             billing_phone, shipping_phone, shipping_same_as_billing,
             fan_locker_id, fan_awb
        FROM orders
@@ -91,6 +92,19 @@ if (trim((string) ($comanda['fan_locker_id'] ?? '')) !== '') {
 if (trim((string) ($comanda['fan_awb'] ?? '')) !== '') {
     echo "  AWB existent: {$comanda['fan_awb']}\n";
 }
+
+/** Are cel putin doua litere? Altfel nu e un nume, ci ceva pus ca sa treaca. */
+$numeUtil = static function (string $text): bool {
+    $litere = preg_replace('/[^\p{L}]+/u', '', trim($text)) ?? '';
+    return mb_strlen($litere) >= 2;
+};
+
+$numeFacturare = trim((string) ($comanda['billing_first_name'] ?? '') . ' ' . (string) ($comanda['billing_last_name'] ?? ''));
+$numeLivrare = trim((string) ($comanda['shipping_first_name'] ?? '') . ' ' . (string) ($comanda['shipping_last_name'] ?? ''));
+echo "\n  Nume\n";
+echo '    facturare : ' . ($numeFacturare === '' ? '(gol)' : '„' . $numeFacturare . '"') . ($numeUtil($numeFacturare) ? '' : '  ← nu e un nume') . "\n";
+echo '    livrare   : ' . ($numeLivrare === '' ? '(gol)' : '„' . $numeLivrare . '"') . ($numeUtil($numeLivrare) ? '' : '  ← nu e un nume') . "\n";
+echo '    pe AWB    : „' . ($numeUtil($numeLivrare) ? $numeLivrare : $numeFacturare) . "\"\n";
 
 $arata('Telefon facturare (billing_phone)', (string) ($comanda['billing_phone'] ?? ''));
 $arata('Telefon livrare (shipping_phone)', (string) ($comanda['shipping_phone'] ?? ''));

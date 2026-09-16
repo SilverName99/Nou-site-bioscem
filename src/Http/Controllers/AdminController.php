@@ -10415,6 +10415,19 @@ final class AdminController
         header('Location: /admin/orders');
     }
 
+    /**
+     * Textul ăsta e un nume de om, sau doar ceva pus ca să treacă de formular?
+     *
+     * Curierul tipărește numele pe AWB și îl strigă la livrare; un punct sau o
+     * liniuță nu-i folosesc nimănui. Măsura e simplă, ca să nu respingem nume
+     * scurte adevărate: cel puțin două litere, oricare ar fi alfabetul.
+     */
+    private static function numePotrivitPentruAwb(string $text): bool
+    {
+        $doarLitere = preg_replace('/[^\p{L}]+/u', '', trim($text)) ?? '';
+        return mb_strlen($doarLitere) >= 2;
+    }
+
     private function incarcaComandaPentruPlata(PDO $db, int $orderId): ?array
     {
         $stmt = $db->prepare(
@@ -15677,8 +15690,13 @@ HTML;
         $shipFirst = trim((string) ($order['shipping_first_name'] ?? ''));
         $shipLast = trim((string) ($order['shipping_last_name'] ?? ''));
         if ($useShipping) {
+            // Numele de livrare se ia doar dacă e chiar un nume. Câmpurile sunt
+            // obligatoriu de completat la checkout, iar cine trimite la FANbox
+            // pune des un punct în fiecare, ca să treacă de ele. Gol s-ar fi
+            // întors la numele de facturare, dar „. ." nu e gol — și ajungea
+            // așa tipărit pe AWB, în locul destinatarului.
             $recipientName = trim($shipFirst . ' ' . $shipLast);
-            if ($recipientName === '') {
+            if (!self::numePotrivitPentruAwb($recipientName)) {
                 $recipientName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
             }
             // Telefonul de livrare se ia doar dacă e chiar un număr. Câmpul e
