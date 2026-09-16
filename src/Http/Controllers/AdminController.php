@@ -15851,7 +15851,10 @@ HTML;
             ],
             'recipient' => [
                 'name' => $recipientName !== '' ? $recipientName : 'Client',
-                'phone' => $recipientPhone,
+                // FAN vrea zece cifre curate. Clientul scrie cum îi vine: cu
+                // +40, cu spații, cu puncte. Trimis așa, refuză cu
+                // `phoneInvalid`, deși numărul e bun.
+                'phone' => \App\Support\FanCourierGateway::normalizeazaTelefon($recipientPhone),
                 'email' => $recipientEmail,
                 'address' => [
                     'county' => $recipientCounty,

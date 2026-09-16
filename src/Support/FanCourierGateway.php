@@ -327,6 +327,51 @@ final class FanCourierGateway
         return str_contains($text, 'pickuplocation') && str_contains($text, 'inactive');
     }
 
+    /**
+     * Numărul de telefon, în forma pe care o acceptă FAN.
+     *
+     * Clientul îl scrie cum vrea: cu prefix internațional, cu spații, puncte
+     * sau paranteze, uneori cu două numere despărțite prin „/". FAN vrea zece
+     * cifre care încep cu zero și refuză tot restul cu `phoneInvalid` — un
+     * refuz care, citit de la celălalt capăt, pare că numărul e greșit, deși el
+     * e bun și doar scris altfel.
+     *
+     * Ce nu se poate curăța rămâne neatins: mai bine pleacă așa cum l-a scris
+     * omul și explicăm refuzul, decât să inventăm un număr.
+     */
+    public static function normalizeazaTelefon(string $telefon): string
+    {
+        $brut = trim($telefon);
+        if ($brut === '') {
+            return '';
+        }
+
+        // Două numere într-un câmp: se ia primul, ăla e al destinatarului.
+        $bucata = preg_split('/[\/,;]| sau /iu', $brut)[0] ?? $brut;
+        $cifre = preg_replace('/\D+/', '', $bucata) ?? '';
+        if ($cifre === '') {
+            return $brut;
+        }
+
+        if (str_starts_with($cifre, '0040')) {
+            $cifre = '0' . substr($cifre, 4);
+        } elseif (str_starts_with($cifre, '40') && strlen($cifre) === 11) {
+            $cifre = '0' . substr($cifre, 2);
+        } elseif (strlen($cifre) === 9 && $cifre[0] !== '0') {
+            // Scris fără zeroul din față: „722123456".
+            $cifre = '0' . $cifre;
+        }
+
+        return preg_match('/^0[23]\d{8}$|^07\d{8}$/', $cifre) === 1 ? $cifre : $brut;
+    }
+
+    /** Numărul e într-o formă pe care FAN o acceptă? */
+    public static function telefonValidPentruFan(string $telefon): bool
+    {
+        $curat = self::normalizeazaTelefon($telefon);
+        return preg_match('/^0[23]\d{8}$|^07\d{8}$/', $curat) === 1;
+    }
+
     /** @param list<string> $erori */
     private static function explicaEroareaAwb(array $erori): string
     {
@@ -334,6 +379,11 @@ final class FanCourierGateway
             if (self::esteLockerInactiv($eroare)) {
                 return 'Punctul FANbox ales de client nu mai este activ la FAN, așa că AWB-ul nu poate pleca spre el.'
                     . ' Schimbă destinația comenzii pe alt punct FANbox sau pe livrare la adresă, apoi reemite AWB-ul.';
+            }
+            if (str_contains(self::strLower($eroare), 'phoneinvalid')) {
+                return 'FAN a refuzat numărul de telefon al destinatarului: îl vrea cu zece cifre,'
+                    . ' de forma 07xxxxxxxx (sau un fix, 02/03xxxxxxxx), fără prefix de țară și fără alte caractere.'
+                    . ' Corectează telefonul pe comandă, apoi reemite AWB-ul.';
             }
         }
 

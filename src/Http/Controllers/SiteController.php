@@ -9010,6 +9010,12 @@ CSS;
             && $productSalePrice < $productBasePrice
             && abs($productPrice - $productSalePrice) < 0.0001;
         $requiresBbdSelection = $this->productRequiresBbdSelection($product);
+        // Produsele cu template se randează pe drumul ăsta, nu prin
+        // `views/site/product.php`. Precomanda trebuie deci spusă și aici:
+        // altfel produsul bifat, dar fără stoc, arăta „Stoc epuizat" și
+        // rămânea fără buton, exact ca oricare altul.
+        $ePrecomandaTemplate = \App\Support\Precomanda::estePrecomanda($product);
+        $epuizatTemplate = (int) ($product['out_of_stock'] ?? 0) === 1 && !$ePrecomandaTemplate;
         $productBbdSelectorHtml = $this->buildProductBbdSelectorHtml($product);
         $templateHtmlRaw = (string) ($template['html_content'] ?? '');
         $templateHasBbdPlaceholder = str_contains($templateHtmlRaw, '{{product_bbd_selector}}')
@@ -9017,7 +9023,7 @@ CSS;
         $productQuantityInputHtml = $this->buildProductQuantityInputHtml(
             $quantityControlStyle,
             $applyQuantityOnProductTemplate,
-            (int) ($product['out_of_stock'] ?? 0) === 1,
+            $epuizatTemplate,
             $requiresBbdSelection,
             $this->limitaStocProdus($product)
         );
@@ -9047,6 +9053,14 @@ CSS;
         if (!$templateHasTaxonomyPlaceholder) {
             $addToCartSuffixHtml .= $productTaxonomiesHtml;
         }
+        // Banda se agață de buton, ca marca și etichetele: template-urile
+        // făcute înainte de precomandă n-au de unde să aibă un cod pentru ea.
+        $bandaPrecomandaHtml = $ePrecomandaTemplate
+            ? '<p style="display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 14px;'
+                . 'border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-weight:700;border-radius:999px;">'
+                . 'Produs în precomandă — se livrează după ce marfa ajunge la noi'
+                . '</p>'
+            : '';
         $map = [
             'product_name' => $productName,
             'product_slug' => $productSlug,
@@ -9090,12 +9104,14 @@ CSS;
             'product_bbd_selector' => $productBbdSelectorHtml,
             'product_requires_bbd' => $requiresBbdSelection ? '1' : '0',
             'product_quantity_input' => $productQuantityInputHtml,
-            'product_add_to_cart_button' => $this->buildProductAddToCartButtonHtml(
+            'product_add_to_cart_button' => $bandaPrecomandaHtml . $this->buildProductAddToCartButtonHtml(
                 $productId,
                 $productPrice,
-                (int) ($product['out_of_stock'] ?? 0) === 1,
-                $requiresBbdSelection
+                $epuizatTemplate,
+                $requiresBbdSelection,
+                $ePrecomandaTemplate
             ) . $addToCartSuffixHtml,
+            'product_preorder_notice' => $bandaPrecomandaHtml,
             'product_post_cart_note' => $productPostCartNoteHtml,
             'product_brand' => $productBrand,
             'product_brand_url' => $productBrand !== ''
@@ -9209,8 +9225,13 @@ CSS;
             . '</div>';
     }
 
-    private function buildProductAddToCartButtonHtml(int $productId, float $unitPrice, bool $isOutOfStock = false, bool $requiresBbdSelection = false): string
-    {
+    private function buildProductAddToCartButtonHtml(
+        int $productId,
+        float $unitPrice,
+        bool $isOutOfStock = false,
+        bool $requiresBbdSelection = false,
+        bool $ePrecomanda = false
+    ): string {
         if ($isOutOfStock) {
             return '<span class="product-out-of-stock-label" style="display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 18px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:15px;font-weight:700;border-radius:999px;">Stoc epuizat</span>';
         }
@@ -9222,7 +9243,7 @@ CSS;
         return '<button class="btn" type="button" data-product-cart-button="1" data-product-id="' . $safeProductId . '" data-cart-url="/cos/adauga/' . $safeProductId . '" data-unit-price="' . htmlspecialchars((string) $safeUnitPrice, ENT_QUOTES) . '"' . $disabledAttr . ' style="display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 24px;border:1px solid #107a4d;background:#107a4d;color:#fff;font-size:16px;font-weight:600;border-radius:999px;">'
             . '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;flex:0 0 auto;"><path d="M3 4h2l1.7 8.1a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.4l1.5-5.2H7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.7" cy="19" r="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17.5" cy="19" r="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>'
             . '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">'
-            . '<span>Adaugă în coș -</span>'
+            . '<span>' . ($ePrecomanda ? 'Precomandă -' : 'Adaugă în coș -') . '</span>'
             . '<span data-cart-button-total>' . htmlspecialchars($priceLabel, ENT_QUOTES) . '</span>'
             . '</span>'
             . '</button>';
