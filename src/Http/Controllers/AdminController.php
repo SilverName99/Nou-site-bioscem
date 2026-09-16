@@ -5078,6 +5078,12 @@ final class AdminController
             'billing_is_company', 'billing_company_name',
             'billing_company_tax_id', 'billing_company_registration_no',
             'payment_method',
+            // Datele de livrare: până acum nu se puteau corecta deloc, deși
+            // tocmai ele ajung pe AWB. Clientul care trimite coletul altcuiva
+            // scrie des numele greșit, iar cine livrează la FANbox pune un
+            // punct în câmpurile obligatorii, ca să treacă de ele.
+            'shipping_first_name', 'shipping_last_name', 'shipping_phone',
+            'shipping_address_line1', 'shipping_city', 'shipping_county', 'shipping_postcode',
         ];
         header('Content-Type: application/json');
         $sets = [];
@@ -5085,8 +5091,25 @@ final class AdminController
         foreach ($allowed as $col) {
             if (isset($_POST[$col])) {
                 $val = trim((string) $_POST[$col]);
-                if ($col === 'billing_postcode' && $val !== '' && !preg_match('/^\d{6}$/', $val)) {
+                if (in_array($col, ['billing_postcode', 'shipping_postcode'], true)
+                    && $val !== '' && !preg_match('/^\d{6}$/', $val)
+                ) {
                     echo json_encode(['ok' => false, 'error' => 'Codul poștal trebuie să conțină exact 6 cifre.']);
+                    return;
+                }
+                // Câmpurile de livrare pot rămâne goale: atunci se folosesc cele
+                // de facturare, ca și până acum. Dar dacă sunt completate, să
+                // fie cu ceva adevărat — pe AWB se tipărește exact ce scrie aici.
+                if (in_array($col, ['shipping_first_name', 'shipping_last_name'], true)
+                    && $val !== '' && !self::numePotrivitPentruAwb($val)
+                ) {
+                    echo json_encode(['ok' => false, 'error' => 'Numele de livrare trebuie să aibă cel puțin două litere. Lasă-l gol dacă vrei să se folosească numele de la facturare.'], JSON_UNESCAPED_UNICODE);
+                    return;
+                }
+                if ($col === 'shipping_phone' && $val !== ''
+                    && !\App\Support\FanCourierGateway::telefonValidPentruFan($val)
+                ) {
+                    echo json_encode(['ok' => false, 'error' => 'Telefonul de livrare trebuie să fie un număr românesc valid (07xxxxxxxx sau 02/03xxxxxxxx). Lasă-l gol dacă vrei să se folosească cel de la facturare.'], JSON_UNESCAPED_UNICODE);
                     return;
                 }
                 if ($col === 'billing_email' && $val !== '' && !filter_var($val, FILTER_VALIDATE_EMAIL)) {
@@ -5129,6 +5152,15 @@ final class AdminController
                 return;
             }
         }
+        // Cine completează strada de livrare cere, de fapt, altă destinație
+        // decât cea de facturare. Fără steagul ăsta, câmpurile s-ar salva, dar
+        // AWB-ul ar pleca tot la adresa de facturare — și nimeni n-ar înțelege
+        // de ce (vezi `$useShipping` la emiterea AWB-ului).
+        if (isset($binds['shipping_address_line1'])) {
+            $sets[] = 'shipping_same_as_billing = :shipping_same_as_billing';
+            $binds['shipping_same_as_billing'] = $binds['shipping_address_line1'] === '' ? 1 : 0;
+        }
+
         if ($sets === []) {
             echo json_encode(['ok' => false, 'error' => 'Niciun câmp de actualizat.']);
             return;

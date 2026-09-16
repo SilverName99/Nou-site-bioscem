@@ -1197,6 +1197,28 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                       <span style="display:block;margin-top:3px;font-size:11px;color:#6b7280;">Schimbă doar metoda trecută pe comandă; nu marchează comanda ca plătită.</span>
                     </label>
                     <div style="border-top:1px solid #e5e7eb;padding-top:8px;">
+                      <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#374151;">Date de livrare</p>
+                      <p style="margin:0 0 8px;font-size:11px;color:#6b7280;">
+                        Se tipăresc pe AWB. Lasă gol ce vrei să fie luat de la facturare —
+                        așa se poartă și acum, când clientul a scris acolo un punct sau o liniuță.
+                        <strong>Dacă AWB-ul a plecat deja, modificarea de aici nu-l schimbă:</strong>
+                        emite altul (🚚) și anulează-l pe cel vechi în SelfAWB.
+                      </p>
+                      <div style="display:grid;gap:8px;margin-bottom:10px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                          <label style="font-size:12px;color:#374151;">Nume<br><input name="shipping_first_name" value="${esc(order.shipping_first_name||'')}" placeholder="ca la facturare" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                          <label style="font-size:12px;color:#374151;">Prenume<br><input name="shipping_last_name" value="${esc(order.shipping_last_name||'')}" placeholder="ca la facturare" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                          <label style="font-size:12px;color:#374151;">Telefon<br><input name="shipping_phone" value="${esc(order.shipping_phone||'')}" placeholder="ca la facturare" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                        </div>
+                        <label style="font-size:12px;color:#374151;">Adresă<br><input name="shipping_address_line1" value="${esc(order.shipping_address_line1||'')}" placeholder="gol = se livrează la adresa de facturare" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                          <label style="font-size:12px;color:#374151;">Oraș<br><input name="shipping_city" value="${esc(order.shipping_city||'')}" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                          <label style="font-size:12px;color:#374151;">Cod poștal<br><input name="shipping_postcode" value="${esc(order.shipping_postcode||'')}" pattern="[0-9]{6}" maxlength="6" inputmode="numeric" title="Exact 6 cifre" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                          <label style="font-size:12px;color:#374151;">Județ<br><input name="shipping_county" value="${esc(order.shipping_county||'')}" style="width:100%;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box;" class="addr-input-${order.id}"></label>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="border-top:1px solid #e5e7eb;padding-top:8px;">
                       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;">
                         <input type="checkbox" name="billing_is_company" id="order-is-company-${order.id}" ${isCompany ? 'checked' : ''} onchange="document.getElementById('order-company-fields-${order.id}').style.display = this.checked ? 'grid' : 'none';">
                         Comandă pe firmă (persoană juridică)
