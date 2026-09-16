@@ -15681,8 +15681,14 @@ HTML;
             if ($recipientName === '') {
                 $recipientName = trim((string) ($order['billing_first_name'] ?? '') . ' ' . (string) ($order['billing_last_name'] ?? ''));
             }
-            $recipientPhone = trim((string) ($order['shipping_phone'] ?? '')) !== ''
-                ? trim((string) ($order['shipping_phone'] ?? ''))
+            // Telefonul de livrare se ia doar dacă e chiar un număr. Câmpul e
+            // obligatoriu la checkout, iar cine livrează la FANbox sau la altă
+            // adresă pune des un punct ori o liniuță ca să treacă de el. Gol
+            // s-ar fi întors la cel de facturare, dar „." nu e gol — și pleca
+            // el spre FAN, care refuza AWB-ul fără să spună de ce.
+            $telefonLivrare = trim((string) ($order['shipping_phone'] ?? ''));
+            $recipientPhone = \App\Support\FanCourierGateway::telefonValidPentruFan($telefonLivrare)
+                ? $telefonLivrare
                 : trim((string) ($order['billing_phone'] ?? ''));
             $recipientCounty = trim((string) ($order['shipping_county'] ?? ''));
             $recipientLocality = trim((string) ($order['shipping_city'] ?? ''));

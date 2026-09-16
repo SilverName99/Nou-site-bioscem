@@ -96,9 +96,11 @@ $arata('Telefon facturare (billing_phone)', (string) ($comanda['billing_phone'] 
 $arata('Telefon livrare (shipping_phone)', (string) ($comanda['shipping_phone'] ?? ''));
 
 // Care dintre ele pleaca de fapt: acelasi drum ca la emiterea AWB-ului.
-$aceeasiAdresa = (int) ($comanda['shipping_same_as_billing'] ?? 1) === 1;
-$ales = !$aceeasiAdresa && trim((string) ($comanda['shipping_phone'] ?? '')) !== ''
-    ? (string) $comanda['shipping_phone']
+// Cel de livrare castiga doar daca e chiar un numar; altfel se ia cel de
+// facturare, ca sa nu plece un punct sau o liniuta spre FAN.
+$telefonLivrare = trim((string) ($comanda['shipping_phone'] ?? ''));
+$ales = FanCourierGateway::telefonValidPentruFan($telefonLivrare)
+    ? $telefonLivrare
     : (string) ($comanda['billing_phone'] ?? '');
 echo "\n  Pe AWB pleaca: " . ($ales === '' ? '(gol)' : '„' . FanCourierGateway::normalizeazaTelefon($ales) . '"') . "\n";
 echo '  ' . (FanCourierGateway::telefonValidPentruFan($ales)
