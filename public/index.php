@@ -157,6 +157,8 @@ $router->post('/webhook/stripe', [SiteController::class, 'stripeWebhook']);
 $router->post('/webhook/euplatesc', [SiteController::class, 'euPlatescIpn']);
 // Notificările venite din ERP (aprobare/anulare comandă), autentificate cu cheia de integrare.
 $router->post('/api/erp/notificare', [AdminController::class, 'erpNotification']);
+// Adresele curente ale unor comenzi, cerute de ERP ca să completeze fișele de client.
+$router->post('/api/erp/adrese', [AdminController::class, 'erpOrderAddresses']);
 $router->post('/newsletter/optin/{slug}', [SiteController::class, 'optInSubmit']);
 $router->get('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribe']);
 $router->get('/newsletter/track/open/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackOpen']);

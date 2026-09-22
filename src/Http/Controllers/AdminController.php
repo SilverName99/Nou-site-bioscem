@@ -8142,6 +8142,136 @@ final class AdminController
     }
 
     /**
+     * Adresele curente ale unor comenzi, cerute de ERP.
+     *
+     * ERP-ul păstrează adresa așa cum era la preluarea comenzii. Când e
+     * corectată pe site după aceea — sau când județul n-a fost trimis —
+     * fișa clientului din ERP rămâne pe jumătate, iar e-Factura lui e
+     * respinsă de ANAF fiindcă îi lipsește județul. Aici răspundem cu ce
+     * scrie ACUM pe comandă, ca ERP-ul să completeze de la sursă.
+     *
+     * Când județul lipsește și de pe comandă, îl căutăm după localitate în
+     * nomenclatorul de localități al curierului — acolo fiecare localitate
+     * își are județul. Dacă numele se repetă în mai multe județe, nu ghicim.
+     *
+     * Cere aceeași cheie ca notificările: antetul `X-Andaxi-Site-Key`.
+     */
+    public function erpOrderAddresses(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(503);
+            echo json_encode(['ok' => false, 'message' => 'Baza de date nu este disponibilă.']);
+            return;
+        }
+
+        $settings = Settings::all($db);
+        $expected = trim((string) ($settings['erp_api_key'] ?? ''));
+        $provided = trim((string) ($_SERVER['HTTP_X_ANDAXI_SITE_KEY'] ?? ''));
+
+        if ((string) ($settings['erp_enabled'] ?? '0') !== '1') {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'message' => 'Integrarea cu ERP-ul este dezactivată pe site.']);
+            return;
+        }
+        if ($expected === '' || $provided === '' || !hash_equals($expected, $provided)) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'message' => 'Cheie de integrare invalidă.']);
+            return;
+        }
+
+        $raw = (string) file_get_contents('php://input');
+        $payload = json_decode($raw, true);
+        $numere = is_array($payload) ? ($payload['numere'] ?? null) : null;
+        if (!is_array($numere)) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'message' => 'Lipsește lista „numere".']);
+            return;
+        }
+
+        // Plafon: o cerere e o listă de comenzi de completat, nu un export.
+        $curate = [];
+        foreach ($numere as $numar) {
+            $text = trim((string) $numar);
+            if ($text !== '' && !in_array($text, $curate, true)) {
+                $curate[] = $text;
+            }
+            if (count($curate) >= 500) {
+                break;
+            }
+        }
+        if ($curate === []) {
+            echo json_encode(['ok' => true, 'items' => []], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($curate), '?'));
+        $stmt = $db->prepare(
+            'SELECT order_number, billing_address_line1, billing_address_line2,
+                    billing_city, billing_county, billing_postcode
+             FROM orders
+             WHERE order_number IN (' . $placeholders . ')'
+        );
+        $stmt->execute($curate);
+        $rows = $stmt->fetchAll() ?: [];
+
+        $items = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $strada = trim((string) ($row['billing_address_line1'] ?? ''));
+            $linia2 = trim((string) ($row['billing_address_line2'] ?? ''));
+            if ($linia2 !== '') {
+                $strada = $strada === '' ? $linia2 : $strada . ', ' . $linia2;
+            }
+            $localitate = trim((string) ($row['billing_city'] ?? ''));
+            $judet = trim((string) ($row['billing_county'] ?? ''));
+            if ($judet === '' && $localitate !== '') {
+                $judet = $this->judetDupaLocalitate($db, $localitate);
+            }
+
+            $items[] = [
+                'numar' => (string) ($row['order_number'] ?? ''),
+                'strada' => $strada,
+                'localitate' => $localitate,
+                'judet' => $judet,
+                'codPostal' => trim((string) ($row['billing_postcode'] ?? '')),
+            ];
+        }
+
+        echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Județul unei localități, din nomenclatorul curierului. Gol când
+     * localitatea nu e găsită sau când numele ei apare în mai multe județe —
+     * un județ ghicit greșit e mai rău pe factură decât unul lipsă.
+     */
+    private function judetDupaLocalitate(PDO $db, string $localitate): string
+    {
+        $token = $this->normalizeFanLocalityToken($localitate);
+        if ($token === '') {
+            return '';
+        }
+
+        try {
+            $stmt = $db->prepare(
+                'SELECT county FROM fan_localities WHERE locality_norm = :loc GROUP BY county LIMIT 2'
+            );
+            $stmt->bindValue(':loc', $token, PDO::PARAM_STR);
+            $stmt->execute();
+            $rows = $stmt->fetchAll() ?: [];
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return count($rows) === 1 ? trim((string) ($rows[0]['county'] ?? '')) : '';
+    }
+
+    /**
      * Aplică pe site un eveniment venit din ERP. Folosit atât de endpoint-ul
      * de notificare, cât și de cron-ul care recuperează notificările nelivrate.
      *
