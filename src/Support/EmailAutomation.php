@@ -331,6 +331,7 @@ final class EmailAutomation
             'completed' => 'Finalizată',
             'cancelled' => 'Anulată',
             'refunded' => 'Rambursată',
+            'returned' => 'Returnată',
             'failed' => 'Eșuată',
             default => 'În procesare',
         };

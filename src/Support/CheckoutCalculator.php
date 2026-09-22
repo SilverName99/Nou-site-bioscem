@@ -1043,7 +1043,7 @@ final class CheckoutCalculator
                 "SELECT COUNT(*) FROM orders
                  WHERE coupon_code = :coupon_code
                    AND deleted_at IS NULL
-                   AND status NOT IN ('cancelled', 'failed', 'refunded')"
+                   AND status NOT IN ('cancelled', 'failed', 'refunded', 'returned')"
             );
             $stmt->execute(['coupon_code' => $couponCode]);
             $usedCount = (int) $stmt->fetchColumn();
@@ -1053,7 +1053,7 @@ final class CheckoutCalculator
                 $stmt = $db->prepare(
                     "SELECT COUNT(*) FROM orders
                      WHERE coupon_code = :coupon_code
-                       AND status NOT IN ('cancelled', 'failed', 'refunded')"
+                       AND status NOT IN ('cancelled', 'failed', 'refunded', 'returned')"
                 );
                 $stmt->execute(['coupon_code' => $couponCode]);
                 $usedCount = (int) $stmt->fetchColumn();

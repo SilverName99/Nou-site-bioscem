@@ -8568,7 +8568,7 @@ CSS;
                  WHERE oi.product_id = :product_id
                    AND oi.bbd_key = :bbd_key
                    AND o.deleted_at IS NULL
-                   AND o.status NOT IN ('cancelled', 'failed', 'refunded', 'pending_payment')"
+                   AND o.status NOT IN ('cancelled', 'failed', 'refunded', 'returned', 'pending_payment')"
             );
             $stmt->execute([
                 'product_id' => $productId,

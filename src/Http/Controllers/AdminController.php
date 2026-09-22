@@ -44,7 +44,7 @@ final class AdminController
     private const BLOG_POSTS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
     private const PRODUCT_REVIEWS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
     private const NEWSLETTER_SUBSCRIBERS_IMPORT_UPLOAD_MAX_SIZE = 12_000_000;
-    private const ORDER_ALLOWED_STATUSES = ['pending', 'pending_payment', 'processing', 'completed', 'cancelled', 'refunded', 'failed'];
+    private const ORDER_ALLOWED_STATUSES = ['pending', 'pending_payment', 'processing', 'completed', 'cancelled', 'refunded', 'failed', 'returned'];
 
     /**
      * Intrare în lista „Status comandă" care NU e un status, ci o încasare:
@@ -4681,6 +4681,7 @@ final class AdminController
             'completed' => 'Finalizată',
             'cancelled' => 'Anulată',
             'refunded' => 'Rambursată',
+            'returned' => 'Returnată',
             'failed' => 'Eșuată',
         ];
         $orderPaymentStatusLabels = [
@@ -7045,7 +7046,8 @@ final class AdminController
         $statusLabels = [
             'pending' => 'În așteptare', 'pending_payment' => 'Plată în așteptare',
             'processing' => 'În procesare', 'completed' => 'Finalizată',
-            'cancelled' => 'Anulată', 'refunded' => 'Rambursată', 'failed' => 'Eșuată',
+            'cancelled' => 'Anulată', 'refunded' => 'Rambursată',
+            'returned' => 'Returnată', 'failed' => 'Eșuată',
         ];
         $paymentMethodLabels = ['cod' => 'Ramburs', 'euplatesc' => 'Card', 'stripe' => 'Card', 'card' => 'Card', 'bank_transfer' => 'Card'];
         $paymentStatusLabels = ['paid' => 'Plătit', 'unpaid' => 'Neplătit', 'failed' => 'Eșuat', 'pending' => 'În așteptare'];
@@ -7388,7 +7390,17 @@ final class AdminController
                 EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'cancelled');
             }
 
-            if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
+            if ($status === 'returned') {
+                // Returul nu e o anulare oarecare: în ERP se numără la client,
+                // ca să nu i se mai trimită ramburs. Și, spre deosebire de
+                // anulare, nu pleacă niciun email — nici de aici (statusul nu e
+                // în lista de mai sus), nici din ERP.
+                \App\Support\ErpSync::marcheazaRetur(
+                    $db,
+                    $orderId,
+                    'Comandă returnată pe site.'
+                );
+            } elseif (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
                 // Dacă nu plecase încă, o scoatem din coada de reîncercări; dacă
                 // ERP-ul o are deja, îi cerem să o anuleze acolo, ca să dispară
                 // din lista „Comenzi site".
@@ -7402,7 +7414,7 @@ final class AdminController
             // Comandă scoasă dintr-o stare de anulare: în ERP a rămas anulată,
             // fiindcă acolo a fost trimisă anularea. O readucem, altfel comanda
             // trăiește pe site și e moartă în ERP, iar nimic nu arată diferența.
-            $inactive = ['cancelled', 'refunded', 'failed'];
+            $inactive = ['cancelled', 'refunded', 'failed', 'returned'];
             $erpMesaj = '';
             if (in_array($previousStatus, $inactive, true) && !in_array($status, $inactive, true)) {
                 $settings = Settings::all($db);
@@ -8073,7 +8085,7 @@ final class AdminController
             return;
         }
 
-        if (in_array($toStatus, ['cancelled', 'refunded', 'failed'], true)) {
+        if (in_array($toStatus, ['cancelled', 'refunded', 'failed', 'returned'], true)) {
             LoyaltyService::refundRedeemedPointsForOrder($db, $orderId, Auth::id());
             if ($fromStatus === 'completed' || $toStatus !== $fromStatus) {
                 LoyaltyService::reverseAwardedPointsForOrder($db, $orderId, Auth::id());
@@ -14910,7 +14922,7 @@ final class AdminController
                  WHERE oi.product_id = :pid
                    AND oi.bbd_key IS NOT NULL AND oi.bbd_key <> ''
                    AND o.deleted_at IS NULL
-                   AND o.status NOT IN ('cancelled', 'failed', 'refunded', 'pending_payment')
+                   AND o.status NOT IN ('cancelled', 'failed', 'refunded', 'returned', 'pending_payment')
                  GROUP BY oi.bbd_key"
             );
             $stmt->execute(['pid' => $productId]);
@@ -16591,7 +16603,7 @@ HTML;
             $basePointsDiscountExpr = $hasPointsDiscount ? 'COALESCE(o.loyalty_points_discount, 0)' : '0';
             $pendingClaimExpr = $hasPendingClaim ? 'COALESCE(o.loyalty_points_pending_claim, 0)' : '0';
             $pendingEligibleStatusExpr = $hasStatus
-                ? 'o.status NOT IN (\'completed\', \'cancelled\', \'refunded\', \'failed\')'
+                ? 'o.status NOT IN (\'completed\', \'cancelled\', \'refunded\', \'failed\', \'returned\')'
                 : '0 = 1';
             $completedStatusExpr = $hasStatus ? 'o.status = \'completed\'' : '0 = 1';
             $lastOrderExpr = $hasCreatedAt ? 'MAX(o.created_at)' : "''";
@@ -16826,7 +16838,7 @@ HTML;
             $pendingClaim = max(0, (int) ($row['loyalty_points_pending_claim'] ?? 0));
             $status = trim((string) ($row['status'] ?? ''));
             $isCompleted = $hasStatus && $status === 'completed';
-            $isPendingStatus = $hasStatus && !in_array($status, ['completed', 'cancelled', 'refunded', 'failed'], true);
+            $isPendingStatus = $hasStatus && !in_array($status, ['completed', 'cancelled', 'refunded', 'failed', 'returned'], true);
 
             if ($hasPendingClaim) {
                 if ($pendingClaim > 0) {

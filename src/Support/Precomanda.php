@@ -107,7 +107,7 @@ final class Precomanda
                   WHERE oi.product_id = :pid
                     AND o.preorder_status IS NOT NULL
                     AND o.deleted_at IS NULL
-                    AND LOWER(o.status) NOT IN ("cancelled", "refunded", "failed")'
+                    AND LOWER(o.status) NOT IN ("cancelled", "refunded", "failed", "returned")'
             );
             $stmt->execute(['pid' => $productId]);
             return max(0, (int) $stmt->fetchColumn());

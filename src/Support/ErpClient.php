@@ -227,6 +227,32 @@ final class ErpClient
     }
 
     /**
+     * Marchează în ERP o comandă întoarsă de la client.
+     *
+     * Deosebirea față de `cancelOrder` e că ERP-ul nu ne răspunde cu o cerere
+     * de a schimba ceva pe site și, mai ales, nu pornește nicio notificare
+     * către client: vestea a plecat de aici. Idempotentă, ca anularea.
+     *
+     * @return array{gasita: bool, status: string, avertisment: string}
+     */
+    public function returnOrder(string $numarSite, string $motiv = ''): array
+    {
+        $numar = trim($numarSite);
+        if ($numar === '') {
+            return ['gasita' => false, 'status' => 'inexistenta', 'avertisment' => ''];
+        }
+        $raw = $this->request('POST', '/api/comenzi-site/retur', [
+            'numarSite' => $numar,
+            'motiv' => trim($motiv),
+        ]);
+        return [
+            'gasita' => (bool) ($raw['gasita'] ?? false),
+            'status' => (string) ($raw['status'] ?? ''),
+            'avertisment' => trim((string) ($raw['avertisment'] ?? '')),
+        ];
+    }
+
+    /**
      * @param array<mixed>|null $body
      * @return array<mixed>
      */

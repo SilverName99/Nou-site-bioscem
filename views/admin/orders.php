@@ -2,7 +2,7 @@
 $orders = is_array($orders ?? null) ? $orders : [];
 $promoProducts = is_array($promoProducts ?? null) ? $promoProducts : [];
 $filters = is_array($filters ?? null) ? $filters : [];
-$allowedStatuses = is_array($allowedOrderStatuses ?? null) ? $allowedOrderStatuses : ['pending', 'pending_payment', 'processing', 'completed', 'cancelled', 'refunded', 'failed'];
+$allowedStatuses = is_array($allowedOrderStatuses ?? null) ? $allowedOrderStatuses : ['pending', 'pending_payment', 'processing', 'completed', 'cancelled', 'refunded', 'failed', 'returned'];
 $bulkStatusOptions = array_values(array_filter(
     $allowedStatuses,
     static fn ($status): bool => (string) $status !== 'completed'
@@ -366,7 +366,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         ];
                         // O comandă anulată/eșuată nu mai pleacă în ERP, chiar dacă a
                         // rămas marcată „în așteptare" dinainte de anulare.
-                        if (in_array($statusKey, ['cancelled', 'refunded', 'failed'], true)
+                        if (in_array($statusKey, ['cancelled', 'refunded', 'failed', 'returned'], true)
                             && in_array($erpStatus, ['pending', 'failed'], true)
                         ) {
                             $erpStatus = 'skipped';

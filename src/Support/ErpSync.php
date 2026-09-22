@@ -154,7 +154,7 @@ final class ErpSync
                AND (preorder_status IS NULL OR preorder_status <> 'asteptare')
                AND erp_attempts < :max_attempts
                AND (erp_next_retry_at IS NULL OR erp_next_retry_at <= NOW())
-               AND status NOT IN ('cancelled', 'refunded', 'failed')
+               AND status NOT IN ('cancelled', 'refunded', 'failed', 'returned')
                AND (payment_method NOT IN ('stripe', 'euplatesc') OR payment_status = 'paid')
              ORDER BY id ASC
              LIMIT " . max(1, min(200, $limit))
@@ -243,6 +243,78 @@ final class ErpSync
         }
 
         return self::trimiteAnularea($db, $orderId, (string) ($order['order_number'] ?? ''), $motiv);
+    }
+
+    /**
+     * Marfa s-a întors de la client: marchează returul în ERP.
+     *
+     * Merge pe același drum ca anularea — aceleași stări, aceeași idempotență
+     * — dar cheamă poarta de retur a ERP-ului, ca acolo comanda să fie numărată
+     * ca retur la clientul respectiv. Clientul nu primește niciun email: nici
+     * de aici, nici din ERP.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function marcheazaRetur(PDO $db, int $orderId, string $motiv = ''): array
+    {
+        if ($orderId <= 0) {
+            return ['ok' => false, 'message' => 'Comandă inexistentă.'];
+        }
+
+        try {
+            self::ensureSchema($db);
+            $stmt = $db->prepare(
+                'SELECT id, order_number, erp_status FROM orders WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute(['id' => $orderId]);
+            $order = $stmt->fetch();
+        } catch (Throwable $exception) {
+            return ['ok' => false, 'message' => $exception->getMessage()];
+        }
+
+        if (!is_array($order)) {
+            return ['ok' => false, 'message' => 'Comanda nu a fost găsită.'];
+        }
+
+        $status = strtolower(trim((string) ($order['erp_status'] ?? '')));
+        if ($status === self::STATUS_CANCELLED) {
+            return ['ok' => true, 'message' => 'Comanda era deja închisă în ERP.'];
+        }
+        if ($status !== self::STATUS_SENT && $status !== self::STATUS_CANCEL_PENDING) {
+            // N-a ajuns niciodată în ERP: nu are ce marca acolo. O scoatem din
+            // coada de trimitere, ca la anulare.
+            self::skipDacaNetrimisa($db, $orderId, $motiv);
+            return ['ok' => true, 'message' => 'Comanda nu ajunsese în ERP; am oprit trimiterea.'];
+        }
+
+        $numar = trim((string) ($order['order_number'] ?? ''));
+        if ($numar === '') {
+            return ['ok' => false, 'message' => 'Comanda nu are număr; nu o pot marca în ERP.'];
+        }
+
+        $client = ErpClient::fromDb($db);
+        if ($client === null) {
+            $message = 'Integrarea cu ERP-ul e oprită sau neconfigurată; returul nu a fost trimis.';
+            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            return ['ok' => false, 'message' => $message];
+        }
+
+        try {
+            $raspuns = $client->returnOrder($numar, $motiv);
+        } catch (Throwable $exception) {
+            $message = 'Returul nu a ajuns în ERP: ' . $exception->getMessage();
+            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            return ['ok' => false, 'message' => $message];
+        }
+
+        $avertisment = (string) ($raspuns['avertisment'] ?? '');
+        $nota = $avertisment !== ''
+            ? 'Retur marcat în ERP, dar factura de acolo trebuie verificată: ' . $avertisment
+            : (trim($motiv) !== '' ? $motiv : 'Comandă returnată; marcată și în ERP.');
+
+        self::mark($db, $orderId, self::STATUS_CANCELLED, ['error' => $nota]);
+
+        return ['ok' => true, 'message' => $nota];
     }
 
     /**
@@ -536,8 +608,8 @@ final class ErpSync
             return 'Comanda e în precomandă: pleacă în ERP după ce o eliberezi din tabul „Precomenzi” al listei de comenzi.';
         }
         $status = strtolower((string) ($order['status'] ?? ''));
-        if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
-            return 'Comanda e anulată/eșuată, nu se trimite în ERP.';
+        if (in_array($status, ['cancelled', 'refunded', 'failed', 'returned'], true)) {
+            return 'Comanda e anulată/returnată/eșuată, nu se trimite în ERP.';
         }
         $metoda = strtolower((string) ($order['payment_method'] ?? ''));
         $platit = strtolower((string) ($order['payment_status'] ?? '')) === 'paid';
