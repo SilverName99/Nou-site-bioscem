@@ -80,6 +80,10 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
                     title="Ia din ERP greutatea fiecărui produs (câmpul „Greutate (g)” din fișa produsului) și o scrie pe produsele de pe site. Din ea iese kilogramul de pe AWB.">
                 Adu greutățile din ERP
             </button>
+            <button class="btn btn-secondary" type="submit" name="action" value="retururi"
+                    title="Marchează în ERP toate comenzile cu statusul „Returnată”, ca să se numere la retururile clientului. Se poate apăsa oricând: comenzile deja marcate sunt sărite.">
+                Retrimite retururile în ERP
+            </button>
         </div>
     </form>
 </section>

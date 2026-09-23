@@ -10532,6 +10532,25 @@ final class AdminController
             return;
         }
 
+        if ($action === 'retururi') {
+            $rezultat = $this->retrimiteRetururileInErp($db);
+            if ($rezultat['gasite'] === 0) {
+                Flash::set('success', 'Nicio comandă cu statusul „Returnată".');
+            } else {
+                Flash::set(
+                    $rezultat['esuate'] > 0 ? 'error' : 'success',
+                    sprintf(
+                        'Comenzi returnate: %d. Marcate în ERP: %d, eșuate: %d.',
+                        $rezultat['gasite'],
+                        $rezultat['reusite'],
+                        $rezultat['esuate']
+                    )
+                );
+            }
+            header('Location: /admin/settings/erp');
+            return;
+        }
+
         if ($action === 'greutati') {
             $rezultat = $this->aduGreutatileDinErp($db);
             if ($rezultat['eroare'] !== '') {
@@ -10578,6 +10597,53 @@ final class AdminController
 
         Flash::set('success', 'Setările ERP au fost salvate.');
         header('Location: /admin/settings/erp');
+    }
+
+    /**
+     * Retrimite în ERP toate comenzile cu statusul „Returnată".
+     *
+     * Marcajul de retur ajunge în ERP la schimbarea statusului, dar comenzile
+     * marcate înainte ca ERP-ul să știe de retururi au plecat pe drumul
+     * obișnuit, de anulare: acolo sunt anulate, dar nu se numără la retururile
+     * clientului. Ruta de retur din ERP e idempotentă, deci butonul se poate
+     * apăsa oricând, fără să strice ceva.
+     *
+     * @return array{gasite:int, reusite:int, esuate:int}
+     */
+    private function retrimiteRetururileInErp(PDO $db): array
+    {
+        $out = ['gasite' => 0, 'reusite' => 0, 'esuate' => 0];
+
+        try {
+            $rows = $db->query(
+                "SELECT id FROM orders
+                 WHERE status = 'returned' AND deleted_at IS NULL
+                 ORDER BY id DESC
+                 LIMIT 500"
+            )->fetchAll() ?: [];
+        } catch (Throwable) {
+            return $out;
+        }
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $out['gasite']++;
+            $rezultat = \App\Support\ErpSync::marcheazaRetur(
+                $db,
+                (int) $row['id'],
+                'Retur marcat în magazin; retrimis din Setări → ERP.'
+            );
+            if (($rezultat['ok'] ?? false) === true) {
+                $out['reusite']++;
+            } else {
+                $out['esuate']++;
+            }
+        }
+
+        AdminActivityLog::log($db, 'erp_retururi_resync', $out);
+        return $out;
     }
 
     /**

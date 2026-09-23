@@ -277,10 +277,16 @@ final class ErpSync
         }
 
         $status = strtolower(trim((string) ($order['erp_status'] ?? '')));
-        if ($status === self::STATUS_CANCELLED) {
-            return ['ok' => true, 'message' => 'Comanda era deja închisă în ERP.'];
-        }
-        if ($status !== self::STATUS_SENT && $status !== self::STATUS_CANCEL_PENDING) {
+        // Comanda închisă deja în ERP trebuie totuși marcată ca retur acolo.
+        // Se opreau aici două cazuri reale: comenzile anulate întâi din ERP și
+        // apoi marcate retur în magazin, și cele marcate retur înainte ca
+        // ERP-ul să știe de retururi. În amândouă, comanda rămânea anulată în
+        // ERP dar fără marcaj de retur, deci nenumărată la clientul respectiv.
+        // Ruta de retur din ERP e idempotentă: pe o comandă deja marcată nu
+        // face nimic.
+        if ($status !== self::STATUS_SENT
+            && $status !== self::STATUS_CANCEL_PENDING
+            && $status !== self::STATUS_CANCELLED) {
             // N-a ajuns niciodată în ERP: nu are ce marca acolo. O scoatem din
             // coada de trimitere, ca la anulare.
             self::skipDacaNetrimisa($db, $orderId, $motiv);
