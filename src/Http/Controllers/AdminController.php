@@ -10532,6 +10532,31 @@ final class AdminController
             return;
         }
 
+        if ($action === 'greutati') {
+            $rezultat = $this->aduGreutatileDinErp($db);
+            if ($rezultat['eroare'] !== '') {
+                Flash::set('error', $rezultat['eroare']);
+            } elseif ($rezultat['primite'] === 0) {
+                Flash::set('error', 'ERP-ul n-a trimis nicio greutate. Verifică dacă produsele au câmpul „Greutate (g)" completat acolo.');
+            } else {
+                $coada = $rezultat['negasite'] > 0
+                    ? sprintf(' %d coduri din ERP nu există pe site — verifică dacă SKU-ul e același.', $rezultat['negasite'])
+                    : '';
+                Flash::set(
+                    'success',
+                    sprintf(
+                        'Greutăți primite din ERP: %d. Actualizate pe site: %d; %d erau deja la fel.%s',
+                        $rezultat['primite'],
+                        $rezultat['actualizate'],
+                        $rezultat['lafel'],
+                        $coada
+                    )
+                );
+            }
+            header('Location: /admin/settings/erp');
+            return;
+        }
+
         if ($action === 'retry') {
             $rezultat = \App\Support\ErpSync::retryPending($db, 50);
             if ($rezultat['incercate'] === 0) {
@@ -10553,6 +10578,63 @@ final class AdminController
 
         Flash::set('success', 'Setările ERP au fost salvate.');
         header('Location: /admin/settings/erp');
+    }
+
+    /**
+     * Aduce din ERP greutățile produselor și le scrie pe cele de pe site.
+     *
+     * Greutatea unei bucăți se ține în ERP, fiindcă acolo lucrează cine
+     * cântărește și schimbă ambalajele. Din ea iese kilogramul de pe AWB; fără
+     * ea coletul pleacă cu greutatea implicită din setările de curierat, iar
+     * FAN recântărește și taxează diferența.
+     *
+     * Același lucru îl face și cron-ul (`scripts/erp-sync.php`), la câteva
+     * minute. Butonul e pentru cine tocmai a completat gramajele și vrea să
+     * vadă pe loc dacă au ajuns — și câte coduri n-au pereche pe site.
+     *
+     * @return array{primite:int, actualizate:int, lafel:int, negasite:int, eroare:string}
+     */
+    private function aduGreutatileDinErp(PDO $db): array
+    {
+        $out = ['primite' => 0, 'actualizate' => 0, 'lafel' => 0, 'negasite' => 0, 'eroare' => ''];
+
+        $client = \App\Support\ErpClient::fromSettings(Settings::all($db));
+        if ($client === null) {
+            $out['eroare'] = 'Completează adresa ERP-ului și cheia de integrare.';
+            return $out;
+        }
+
+        try {
+            $dinErp = $client->productWeights();
+        } catch (Throwable $exception) {
+            $out['eroare'] = 'Nu am putut citi greutățile din ERP: ' . $exception->getMessage();
+            return $out;
+        }
+
+        $out['primite'] = count($dinErp);
+        if ($dinErp === []) {
+            return $out;
+        }
+
+        $citeste = $db->prepare('SELECT id, weight_grams FROM products WHERE UPPER(sku) = :sku AND deleted_at IS NULL LIMIT 1');
+        $scrie = $db->prepare('UPDATE products SET weight_grams = :greutate WHERE id = :id');
+        foreach ($dinErp as $sku => $grame) {
+            $citeste->execute(['sku' => $sku]);
+            $produs = $citeste->fetch() ?: null;
+            if (!is_array($produs)) {
+                $out['negasite']++;
+                continue;
+            }
+            if ((int) ($produs['weight_grams'] ?? 0) === $grame) {
+                $out['lafel']++;
+                continue;
+            }
+            $scrie->execute(['greutate' => $grame, 'id' => (int) $produs['id']]);
+            $out['actualizate']++;
+        }
+
+        AdminActivityLog::log($db, 'erp_greutati_sync', $out);
+        return $out;
     }
 
     /** Retrimite manual o comandă în ERP, din lista de comenzi. */

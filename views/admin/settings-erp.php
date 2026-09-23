@@ -76,6 +76,10 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
             <button class="btn btn-secondary" type="submit" name="action" value="retry">
                 Retrimite comenzile eșuate
             </button>
+            <button class="btn btn-secondary" type="submit" name="action" value="greutati"
+                    title="Ia din ERP greutatea fiecărui produs (câmpul „Greutate (g)” din fișa produsului) și o scrie pe produsele de pe site. Din ea iese kilogramul de pe AWB.">
+                Adu greutățile din ERP
+            </button>
         </div>
     </form>
 </section>

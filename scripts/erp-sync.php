@@ -138,7 +138,7 @@ printf(
 // 4) Greutățile produselor, ținute în ERP (ambalajele se schimbă, iar cine le
 //    cântărește lucrează acolo). Fără ele, AWB-ul pleacă cu greutatea implicită
 //    din setări și FAN taxează diferența după recântărire.
-$greutati = ['primite' => 0, 'actualizate' => 0];
+$greutati = ['primite' => 0, 'actualizate' => 0, 'negasite' => 0];
 if ($client !== null) {
     try {
         $dinErp = $client->productWeights();
@@ -149,7 +149,12 @@ if ($client !== null) {
             foreach ($dinErp as $sku => $grame) {
                 $citeste->execute(['sku' => $sku]);
                 $produs = $citeste->fetch() ?: null;
-                if (!is_array($produs) || (int) ($produs['weight_grams'] ?? 0) === $grame) {
+                if (!is_array($produs)) {
+                    // Cod din ERP fara pereche pe site: cel mai des, SKU scris altfel.
+                    $greutati['negasite']++;
+                    continue;
+                }
+                if ((int) ($produs['weight_grams'] ?? 0) === $grame) {
                     continue;
                 }
                 $scrie->execute(['greutate' => $grame, 'id' => (int) $produs['id']]);
@@ -161,12 +166,13 @@ if ($client !== null) {
     }
 }
 
-if ($greutati['actualizate'] > 0) {
+if ($greutati['actualizate'] > 0 || $greutati['negasite'] > 0) {
     printf(
-        "[%s] Greutăți din ERP: primite %d — actualizate %d\n",
+        "[%s] Greutăți din ERP: primite %d — actualizate %d, fără pereche pe site %d\n",
         date('Y-m-d H:i:s'),
         $greutati['primite'],
-        $greutati['actualizate']
+        $greutati['actualizate'],
+        $greutati['negasite']
     );
 }
 
