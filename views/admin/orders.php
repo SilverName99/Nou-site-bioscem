@@ -451,7 +451,23 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                 <?php endif; ?>
                             </div>
                         </td>
+                        <?php
+                            // Semnul roșu de lângă livrare: comanda are produse fără
+                            // gramaj în fișă, deci AWB-ul pleacă declarat mai ușor decât e.
+                            $faraGreutate = is_array($order['produse_fara_greutate'] ?? null)
+                                ? $order['produse_fara_greutate']
+                                : [];
+                            $faraGreutateTitlu = $faraGreutate === []
+                                ? ''
+                                : "Fără greutate în fișă: " . implode(', ', $faraGreutate)
+                                    . " — produsele astea cântăresc zero la AWB, iar FAN recântărește și taxează diferența."
+                                    . " Completează „Greutate (g)” în ERP → Produse.";
+                        ?>
                         <td>
+                            <?php if ($faraGreutate !== []): ?>
+                                <span class="orders-fara-greutate"
+                                      title="<?= htmlspecialchars($faraGreutateTitlu, ENT_QUOTES) ?>">!</span>
+                            <?php endif; ?>
                             <?php if ($erpFactura !== ''): ?>
                                 <small style="display:block;color:#0f766e;">Factură ERP: <?= htmlspecialchars($erpFactura, ENT_QUOTES) ?></small>
                             <?php endif; ?>

@@ -4862,7 +4862,8 @@ final class AdminController
                     "SELECT oi.order_id, oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.line_total,
                             oi.erp_discount_percent, oi.erp_price_before,
                             COALESCE(p.vat_percent, 19.00) AS vat_percent,
-                            COALESCE(p.vat_included, 1) AS vat_included
+                            COALESCE(p.vat_included, 1) AS vat_included,
+                            p.weight_grams AS product_weight_grams
                      FROM order_items oi
                      LEFT JOIN products p ON p.id = oi.product_id
                      WHERE oi.order_id IN ($placeholders)
@@ -4873,6 +4874,11 @@ final class AdminController
                 $itemsMap = [];
                 $vatByOrder = [];
                 $subtotalWithoutVatByOrder = [];
+                // Produsele fără gramaj în fișă: ele cântăresc ZERO la calculul
+                // AWB-ului, iar comanda pleacă declarată mai ușoară decât e. FAN
+                // recântărește la depozit și taxează diferența, deci se vede abia în
+                // factura de curierat — prea târziu. Aici se vede pe loc.
+                $faraGreutate = [];
                 foreach ($itemsRows as $row) {
                     $orderKey = (int) ($row['order_id'] ?? 0);
                     if ($orderKey <= 0) {
@@ -4899,6 +4905,11 @@ final class AdminController
                     $row['vat_value'] = $lineVat;
                     $row['subtotal_without_vat'] = $lineSubtotalWithoutVat;
 
+                    if ((int) ($row['product_weight_grams'] ?? 0) <= 0) {
+                        $numeProdus = trim((string) ($row['product_name'] ?? ''));
+                        $faraGreutate[$orderKey][] = $numeProdus !== '' ? $numeProdus : 'produs fără nume';
+                    }
+
                     $itemsMap[$orderKey][] = $row;
                     $vatByOrder[$orderKey] = ($vatByOrder[$orderKey] ?? 0.0) + $lineVat;
                     $subtotalWithoutVatByOrder[$orderKey] = ($subtotalWithoutVatByOrder[$orderKey] ?? 0.0) + $lineSubtotalWithoutVat;
@@ -4906,6 +4917,7 @@ final class AdminController
                 foreach ($orders as &$order) {
                     $orderKey = (int) ($order['id'] ?? 0);
                     $order['items'] = $itemsMap[$orderKey] ?? [];
+                    $order['produse_fara_greutate'] = array_values(array_unique($faraGreutate[$orderKey] ?? []));
                     $order['vat_total'] = round((float) ($vatByOrder[$orderKey] ?? 0.0), 2);
                     $order['subtotal_without_vat'] = round(
                         (float) ($subtotalWithoutVatByOrder[$orderKey] ?? (float) ($order['subtotal'] ?? 0.0)),

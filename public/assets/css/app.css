@@ -4994,6 +4994,26 @@ body > main.container {
     cursor: help;
 }
 
+/* Semnul de „lipsește gramajul": stă lângă livrare și spune, la trecerea cu
+   mouse-ul, care produse cântăresc zero la AWB. */
+.orders-fara-greutate {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #b91c1c;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1;
+    cursor: help;
+    vertical-align: middle;
+}
+
 .orders-actions-disabled {
     display: inline-flex;
     align-items: center;
