@@ -920,6 +920,8 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     ['Greutate', kg(t.greutate)],
                     ['Colete', String(t.colete || 0) + (t.plicuri ? ` (+${t.plicuri} plicuri)` : '')],
                     ['Serviciu', t.serviciu || '—'],
+                    ['Plata transport', t.plata_transport === 'sender' ? 'expeditor (noi)'
+                        : (t.plata_transport === 'recipient' ? 'destinatar (clientul)' : (t.plata_transport || '—'))],
                     ['Ramburs', Number(t.ramburs || 0) > 0 ? ron(t.ramburs) : 'fără'],
                     ['Valoare declarată', t.valoare_declarata === null ? 'netrimisă' : ron(t.valoare_declarata)],
                     ['Destinatar', `${t.destinatar || '—'} · ${t.telefon || '—'}`],
