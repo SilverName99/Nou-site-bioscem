@@ -557,6 +557,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                     ?>
                                     <?php if ($poateReemite): ?>
                                         <form method="post" action="/admin/orders/<?= $orderId ?>/fan-awb" data-awb-form
+                                              data-awb-comanda="<?= $orderId ?>"
                                               data-awb-confirm="<?= htmlspecialchars($confirmareAwb, ENT_QUOTES) ?>">
                                             <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
                                             <input type="hidden" name="trimite_email_tracking" value="1" data-awb-email>
@@ -656,6 +657,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
         </div>
         <div style="padding:18px 20px;display:grid;gap:14px;">
             <p id="awb-modal-text" style="margin:0;color:#334155;line-height:1.5;"></p>
+            <div id="awb-modal-preview" class="awb-preview" aria-live="polite"></div>
             <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
                 <input type="checkbox" id="awb-modal-email" checked style="margin-top:3px;">
                 <span>
@@ -886,6 +888,58 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             if (e.key === 'Escape' && awbModal.classList.contains('open')) inchideAwb();
         });
 
+        const awbPreview = document.getElementById('awb-modal-preview');
+        const kg = (v) => `${Number(v || 0).toFixed(2)} kg`;
+        const ron = (v) => `${Number(v || 0).toFixed(2)} RON`;
+
+        /** Ce pleacă spre FAN, arătat înainte de emitere. */
+        const incarcaPreview = async (comandaId) => {
+            if (!awbPreview) return;
+            awbPreview.innerHTML = '<small class="awb-preview-load">Se încarcă ce se trimite la FAN…</small>';
+            try {
+                const r = await fetch(`/admin/orders/${comandaId}/fan-awb-preview`, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                });
+                const d = await r.json();
+                if (!d || d.ok !== true) {
+                    awbPreview.innerHTML = `<small class="awb-preview-err">${esc(d?.message || 'Nu am putut citi ce se trimite.')}</small>`;
+                    return;
+                }
+                const t = d.trimis || {};
+                const randuri = [
+                    ['Greutate', kg(t.greutate)],
+                    ['Colete', String(t.colete || 0) + (t.plicuri ? ` (+${t.plicuri} plicuri)` : '')],
+                    ['Serviciu', t.serviciu || '—'],
+                    ['Ramburs', Number(t.ramburs || 0) > 0 ? ron(t.ramburs) : 'fără'],
+                    ['Valoare declarată', t.valoare_declarata === null ? 'netrimisă' : ron(t.valoare_declarata)],
+                    ['Destinatar', `${t.destinatar || '—'} · ${t.telefon || '—'}`],
+                    ['Adresă', t.fanbox
+                        ? `FANbox ${esc(t.fanbox)}`
+                        : [t.judet, t.localitate, t.strada, t.cod_postal].filter(Boolean).join(', ')],
+                ];
+                const produse = (d.produse || []).map((p) => {
+                    const gramaj = Number(p.grame || 0) > 0
+                        ? `${p.bucati} × ${p.grame} g`
+                        : `${p.bucati} × <strong>fără gramaj</strong>`;
+                    return `<li>${esc(p.nume)} — ${gramaj}</li>`;
+                }).join('');
+                const avert = (d.fara_gramaj || []).length > 0
+                    ? `<p class="awb-preview-err">Greutatea e mai mică decât adevărul: ${esc((d.fara_gramaj || []).join(', '))} n-au gramaj în fișă. FAN recântărește la depozit și taxează diferența.</p>`
+                    : '';
+                awbPreview.innerHTML = `
+                    <div class="awb-preview-grid">
+                        ${randuri.map(([k, v]) => `<span>${esc(k)}</span><strong>${v}</strong>`).join('')}
+                    </div>
+                    ${avert}
+                    <details class="awb-preview-det"><summary>Din ce iese greutatea</summary><ul>${produse}</ul>
+                        <small>Peste ${esc(String(d.kg_max_colet ?? 13))} kg se adaugă încă un colet.</small>
+                    </details>`;
+            } catch (err) {
+                awbPreview.innerHTML = '<small class="awb-preview-err">Nu am putut citi ce se trimite la FAN.</small>';
+            }
+        };
+
         document.querySelectorAll('form[data-awb-form]').forEach((form) => {
             form.addEventListener('submit', (e) => {
                 if (form.dataset.awbConfirmat === '1') return; // trimiterea reală
@@ -894,6 +948,7 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 awbText.textContent = form.dataset.awbConfirm || '';
                 awbEmail.checked = true;
                 awbModal.classList.add('open');
+                incarcaPreview(form.dataset.awbComanda || '0');
             });
         });
 

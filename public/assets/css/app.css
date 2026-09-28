@@ -4996,6 +4996,49 @@ body > main.container {
 
 /* Semnul de „lipsește gramajul": stă lângă livrare și spune, la trecerea cu
    mouse-ul, care produse cântăresc zero la AWB. */
+/* Previzualizarea a ce pleacă spre FAN, în fereastra de emitere AWB. */
+.awb-preview {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #334155;
+}
+
+.awb-preview-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 14px;
+}
+
+.awb-preview-grid span {
+    color: #64748b;
+}
+
+.awb-preview-err {
+    margin: 10px 0 0;
+    color: #b91c1c;
+}
+
+.awb-preview-load {
+    color: #64748b;
+}
+
+.awb-preview-det {
+    margin-top: 10px;
+}
+
+.awb-preview-det summary {
+    cursor: pointer;
+    color: #0f766e;
+}
+
+.awb-preview-det ul {
+    margin: 8px 0 4px 18px;
+    padding: 0;
+}
+
 .orders-fara-greutate {
     display: inline-flex;
     align-items: center;

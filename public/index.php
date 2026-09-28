@@ -279,6 +279,7 @@ $router->get('/admin/promo-products', [AdminController::class, 'promoProducts'])
 $router->post('/admin/promo-products', [AdminController::class, 'promoProductSave']);
 $router->post('/admin/promo-products/{id}/delete', [AdminController::class, 'promoProductDelete']);
 $router->post('/admin/orders/{id}/fan-awb', [AdminController::class, 'createFanAwb']);
+$router->get('/admin/orders/{id}/fan-awb-preview', [AdminController::class, 'previewFanAwb']);
 $router->post('/admin/orders/{id}/fan-tracking', [AdminController::class, 'refreshFanTracking']);
 $router->post('/admin/orders/bulk', [AdminController::class, 'ordersBulkAction']);
 $router->get('/admin/settings/store', [AdminController::class, 'storeSettingsForm']);

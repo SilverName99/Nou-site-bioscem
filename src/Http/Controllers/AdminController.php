@@ -15930,6 +15930,86 @@ HTML;
         }
     }
 
+    /**
+     * Ce se trimite la FAN, înainte să se trimită.
+     *
+     * Cine emite AWB-ul din magazin nu vede cererea, iar la FAN se uită abia
+     * cine are cont de SelfAWB. Așa se poate verifica pe loc greutatea,
+     * numărul de colete și rambursul — înainte ca eticheta să fie tipărită.
+     * Întoarce și produsele fără gramaj, fiindcă ele fac greutatea mai mică.
+     */
+    public function previewFanAwb(string $id = "0"): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        header("Content-Type: application/json; charset=utf-8");
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(500);
+            echo json_encode(["ok" => false, "message" => "Conexiunea DB nu este disponibilă."], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $orderId = (int) $id;
+        $order = $this->loadOrderForFan($db, $orderId);
+        if ($order === null) {
+            http_response_code(404);
+            echo json_encode(["ok" => false, "message" => "Comanda nu a fost găsită."], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $settings = Settings::all($db);
+        $credentials = $this->fanCredentialsFromSettings($settings);
+        try {
+            $payload = $this->buildFanShipmentPayload($order, $settings, (int) ($credentials["client_id"] ?? 0));
+        } catch (Throwable $e) {
+            echo json_encode([
+                "ok" => false,
+                "message" => $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        $info = (array) ($payload["shipments"][0]["info"] ?? ($payload["info"] ?? []));
+        $recipient = (array) ($payload["shipments"][0]["recipient"] ?? ($payload["recipient"] ?? []));
+        $adresa = (array) ($recipient["address"] ?? []);
+
+        $produse = [];
+        $faraGramaj = [];
+        foreach ((array) ($order["items"] ?? []) as $item) {
+            $nume = trim((string) ($item["product_name"] ?? ""));
+            $buc = max(1, (int) ($item["quantity"] ?? 1));
+            $grame = max(0, (int) ($item["weight_grams"] ?? 0));
+            $produse[] = ["nume" => $nume, "bucati" => $buc, "grame" => $grame];
+            if ($grame <= 0) {
+                $faraGramaj[] = $nume !== "" ? $nume : "produs fără nume";
+            }
+        }
+
+        echo json_encode([
+            "ok" => true,
+            "trimis" => [
+                "serviciu" => (string) ($info["service"] ?? ""),
+                "greutate" => (float) ($info["weight"] ?? 0),
+                "colete" => (int) ($info["packages"]["parcel"] ?? 0),
+                "plicuri" => (int) ($info["packages"]["envelope"] ?? 0),
+                "ramburs" => (float) ($info["cod"] ?? 0),
+                "plata_transport" => (string) ($info["payment"] ?? ""),
+                "valoare_declarata" => array_key_exists("declaredValue", $info) ? (float) $info["declaredValue"] : null,
+                "continut" => (string) ($info["content"] ?? ""),
+                "destinatar" => trim((string) ($recipient["name"] ?? "")),
+                "telefon" => (string) ($recipient["phone"] ?? ""),
+                "judet" => (string) ($adresa["county"] ?? ""),
+                "localitate" => (string) ($adresa["locality"] ?? ""),
+                "strada" => (string) ($adresa["street"] ?? ""),
+                "cod_postal" => (string) ($adresa["zipCode"] ?? ""),
+                "fanbox" => (string) ($adresa["pickupLocationId"] ?? ""),
+            ],
+            "produse" => $produse,
+            "fara_gramaj" => array_values(array_unique($faraGramaj)),
+            "kg_max_colet" => (float) str_replace(",", ".", (string) ($settings["fan_kg_max_colet"] ?? "13")),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     private function loadOrderForFan(PDO $db, int $orderId): ?array
     {
         // `paid_amount` e adăugată de sincronizarea cu ERP-ul; fără apelul ăsta,
