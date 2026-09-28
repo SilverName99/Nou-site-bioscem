@@ -901,7 +901,16 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     headers: { Accept: 'application/json' },
                     credentials: 'same-origin',
                 });
-                const d = await r.json();
+                const text = await r.text();
+                let d = null;
+                try {
+                    d = JSON.parse(text);
+                } catch (e) {
+                    // Serverul a răspuns cu altceva decât JSON (eroare PHP, pagină de
+                    // login). Arătăm codul și începutul răspunsului, ca să se vadă ce e.
+                    awbPreview.innerHTML = `<small class="awb-preview-err">Nu am putut citi ce se trimite la FAN (cod ${r.status}). ${esc(text.slice(0, 160))}</small>`;
+                    return;
+                }
                 if (!d || d.ok !== true) {
                     awbPreview.innerHTML = `<small class="awb-preview-err">${esc(d?.message || 'Nu am putut citi ce se trimite.')}</small>`;
                     return;

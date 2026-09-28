@@ -15938,7 +15938,7 @@ HTML;
      * numărul de colete și rambursul — înainte ca eticheta să fie tipărită.
      * Întoarce și produsele fără gramaj, fiindcă ele fac greutatea mai mică.
      */
-    public function previewFanAwb(string $id = "0"): void
+    public function previewFanAwb(array $params = []): void
     {
         if (!$this->guard()) {
             return;
@@ -15950,7 +15950,7 @@ HTML;
             echo json_encode(["ok" => false, "message" => "Conexiunea DB nu este disponibilă."], JSON_UNESCAPED_UNICODE);
             return;
         }
-        $orderId = (int) $id;
+        $orderId = max(0, (int) ($params["id"] ?? 0));
         $order = $this->loadOrderForFan($db, $orderId);
         if ($order === null) {
             http_response_code(404);
