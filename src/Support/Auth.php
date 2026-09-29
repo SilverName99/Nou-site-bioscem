@@ -24,9 +24,30 @@ final class Auth
         ];
     }
 
+    /**
+     * Cât stă un administrator logat fără să facă nimic.
+     *
+     * Sesiunea ține acum 30 de zile, ca să nu se golească coșul cumpărătorului.
+     * Pentru administrare ar fi prea mult: un calculator lăsat deschis ar
+     * rămâne cu panoul la îndemâna oricui o lună întreagă. Deci partea de
+     * administrare are ceasul ei, care se oprește separat — fără să atingă
+     * coșul sau contul cumpărătorului din aceeași sesiune.
+     */
+    private const INACTIVITATE = 60 * 60 * 12; // 12 ore
+
     public static function check(): bool
     {
-        return isset($_SESSION['admin_id']);
+        if (!isset($_SESSION['admin_id'])) {
+            return false;
+        }
+
+        $ultima = (int) ($_SESSION['admin_last_seen'] ?? 0);
+        if ($ultima > 0 && (time() - $ultima) > self::INACTIVITATE) {
+            self::logout();
+            return false;
+        }
+        $_SESSION['admin_last_seen'] = time();
+        return true;
     }
 
     public static function id(): ?int
@@ -61,6 +82,7 @@ final class Auth
         $_SESSION['admin_id'] = (int) $admin['id'];
         $_SESSION['admin_roles'] = $roles;
         $_SESSION['admin_role'] = self::primaryRole($roles);
+        $_SESSION['admin_last_seen'] = time();
         return true;
     }
 
@@ -69,6 +91,7 @@ final class Auth
         unset($_SESSION['admin_id']);
         unset($_SESSION['admin_roles']);
         unset($_SESSION['admin_role']);
+        unset($_SESSION['admin_last_seen']);
     }
 
     public static function role(): string

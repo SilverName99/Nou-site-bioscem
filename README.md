@@ -9,7 +9,7 @@ Migrare `bioscem.ro` către un magazin custom PHP (backend preluat din proiectul
 - structură aplicație PHP (fără framework extern, potrivită pentru shared hosting);
 - routing centralizat (`public/index.php`);
 - pagini publice de bază: acasă, magazin, produs, coș, checkout, cont, contact;
-- coș persistent în sesiune (adăugare/actualizare/ștergere);
+- cos care ramane plin 30 de zile, peste pauze si peste inchiderea browserului;
 - cupoane active + aplicare discount;
 - prag transport gratuit (București/provincie) configurabil din admin;
 - checkout funcțional cu salvare comandă și produse comandate în DB;
@@ -138,6 +138,31 @@ php /home/USER/domains/bioscem.ro/public_html/scripts/test-precomanda.php
 
 Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
 
+### Sesiunea si cosul
+
+Cosul sta in sesiunea PHP. Pana in septembrie 2026 sesiunea pornea fara nicio
+setare, deci lua ce zicea serverul: de obicei 24 de minute de nemiscare si un
+cookie care murea la inchiderea browserului. Pe gazduire comuna era si mai rau —
+curatenia altui site de pe aceeasi masina putea matura fisierele noastre mult
+mai devreme. De aici reclamatia „am iesit 5 minute si mi s-a golit cosul".
+
+Acum, in `bootstrap.php`:
+
+- fisierele de sesiune stau in `storage/sessions/`, nu in dosarul comun al
+  serverului (cu `.htaccess` de refuz scris automat acolo);
+- `gc_maxlifetime` si viata cookie-ului: **30 de zile**;
+- curatenia o face PHP pe dosarul nostru, cu `gc_probability = 1/200`;
+- cookie-ul e `httponly`, `SameSite=Lax` si `secure` cand cererea vine pe HTTPS.
+
+Dosarul e in `.gitignore` si se creeaza singur la prima cerere. Daca nu se poate
+scrie in el, programul merge mai departe pe dosarul serverului — nu pica, dar
+cosul se goleste iar, deci merita verificate drepturile.
+
+**Administrarea are ceasul ei.** O sesiune de 30 de zile ar tine un admin logat
+o luna, asa ca `Auth::check()` deconecteaza administratorul dupa **12 ore de
+nemiscare** (`admin_last_seen`). Cosul si contul cumparatorului din aceeasi
+sesiune nu sunt atinse.
+
 ### Email-uri (template-uri + test + abandon cos)
 
 - in admin exista modulul `Email-uri` (`/admin/emails`) unde poti:
@@ -152,6 +177,19 @@ Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
 ```bash
 php /home/USER/public_html/scripts/abandoned-cart-emails.php --limit=100
 ```
+
+- dupa cate minute pleaca se alege in admin, campul `email_abandoned_after_minutes`
+  (implicit 60; pe bioscem e pus pe 180, adica 3 ore);
+- **pleaca o singura data** pentru acelasi cos: randul din `cart_abandonments`
+  primeste `abandoned_email_sent_at` si nu mai intra in selectie niciodata.
+  Inainte, cand sesiunea murea in cateva minute, fiecare vizita facea un rand
+  nou si omul putea primi mai multe emailuri pentru acelasi cos; cu sesiunea de
+  30 de zile, randul e acelasi;
+- adresa se ia din formularul de finalizare, iar daca omul e logat si n-a ajuns
+  pana acolo, din fisa contului lui;
+- inregistrarea se face din bataia de inima trimisa de pagina cosului si de cea
+  de finalizare (`POST /api/cart/heartbeat`). Cine pune produse in cos si nu
+  deschide niciodata pagina cosului nu intra in socoteala.
 
 > **ATENTIE la comenzile de mai sus si de mai jos:** `USER` este un substituent,
 > nu un nume de cont. Inlocuieste-l cu userul real de gazduire (pe Hostinger e

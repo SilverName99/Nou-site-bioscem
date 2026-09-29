@@ -1623,6 +1623,23 @@ final class SiteController
         $email = trim((string) ($payload['email'] ?? $checkout['billing_email'] ?? ''));
         $customerName = trim((string) ($payload['customer_name'] ?? ((string) ($checkout['billing_first_name'] ?? '') . ' ' . (string) ($checkout['billing_last_name'] ?? ''))));
 
+        // Clientul cu cont nu trebuie să ajungă până la finalizare ca să-i știm
+        // adresa: o avem în fișa lui. Fără asta, cine punea produse în coș și
+        // pleca nu primea niciodată emailul, fiindcă nu scrisese nimic nicăieri.
+        if ($email === '' || $customerName === '') {
+            $utilizator = CustomerAuth::user($db);
+            if (is_array($utilizator)) {
+                if ($email === '') {
+                    $email = trim((string) ($utilizator['email'] ?? ''));
+                }
+                if ($customerName === '') {
+                    $customerName = trim(
+                        (string) ($utilizator['first_name'] ?? '') . ' ' . (string) ($utilizator['last_name'] ?? '')
+                    );
+                }
+            }
+        }
+
         $parts = [];
         foreach ((array) ($summary['lines'] ?? []) as $line) {
             $name = trim((string) ($line['name'] ?? 'Produs'));
