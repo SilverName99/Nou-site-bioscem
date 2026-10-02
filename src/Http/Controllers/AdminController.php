@@ -7486,6 +7486,7 @@ final class AdminController
         PDO $db,
         int $orderId,
         bool $trimiteEmailTracking = true,
+        ?int $colete = null,
     ): array
     {
         if ($orderId <= 0) {
@@ -7509,7 +7510,14 @@ final class AdminController
             return ['ok' => false, 'message' => 'Completeaza in Setari Livrare: FAN client id, username si parola API.'];
         }
 
-        $payload = $this->buildFanShipmentPayload($order, $settings, $credentials['client_id']);
+        // `$colete` vine din fereastra de emitere, când omul a schimbat numărul
+        // calculat din greutate; null = se calculează ca până acum.
+        $payload = $this->buildFanShipmentPayload(
+            $order,
+            $settings,
+            $credentials['client_id'],
+            $colete !== null && $colete > 0 ? ['colete' => $colete] : [],
+        );
         $awbServiceFallbackNote = '';
 
         try {
@@ -8660,7 +8668,13 @@ final class AdminController
         $trimiteEmail = (string) ($_POST['trimite_email_tracking'] ?? '1') !== '0';
 
         try {
-            $result = $this->createFanAwbInternal($db, $id, $trimiteEmail);
+            $coleteAlese = (int) ($_POST['colete'] ?? 0);
+            $result = $this->createFanAwbInternal(
+                $db,
+                $id,
+                $trimiteEmail,
+                $coleteAlese > 0 ? $coleteAlese : null,
+            );
             Flash::set(($result['ok'] ?? false) ? 'success' : 'error', (string) ($result['message'] ?? 'Nu am putut genera AWB.'));
         } catch (Throwable $exception) {
             Flash::set('error', 'Nu am putut genera AWB-ul FAN: ' . $exception->getMessage());
@@ -16114,6 +16128,12 @@ HTML;
         $weight = $this->fanOrderWeightKg($weightItems, $defaultWeight);
         if ($shipmentType === 'parcel') {
             $parcelCount = $this->fanNumarColete($weight, $parcelCount, $settings);
+            // Numărul ales de om la emitere bate calculul: greutatea nu știe că
+            // 24 de flacoane sunt un bax separat.
+            $coleteAlese = (int) ($override['colete'] ?? 0);
+            if ($coleteAlese > 0) {
+                $parcelCount = min(99, $coleteAlese);
+            }
         }
         $dimensions = $this->fanDimensionsFromSettings($settings);
 

@@ -561,6 +561,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                               data-awb-confirm="<?= htmlspecialchars($confirmareAwb, ENT_QUOTES) ?>">
                                             <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
                                             <input type="hidden" name="trimite_email_tracking" value="1" data-awb-email>
+                                            <input type="hidden" name="colete" value="" data-awb-colete>
                                             <button type="submit" class="order-action-btn" title="<?= $awb === '' ? 'Generează AWB FAN' : 'Emite alt AWB (îl înlocuiește pe ' . htmlspecialchars($awb, ENT_QUOTES) . ')' ?>">🚚</button>
                                         </form>
                                     <?php else: ?>
@@ -916,9 +917,17 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     return;
                 }
                 const t = d.trimis || {};
+                // Numărul de colete se poate schimba aici: calculul merge doar
+                // după greutate și nu știe, de exemplu, că un bax pleacă separat.
+                const coleteCamp = Number(t.colete || 0) > 0
+                    ? `<input type="number" id="awb-modal-colete" min="1" max="99" step="1" value="${Number(t.colete)}"
+                         data-calculat="${Number(t.colete)}" style="width:70px;padding:2px 6px;">`
+                      + (t.plicuri ? ` (+${t.plicuri} plicuri)` : '')
+                      + ` <small style="color:#64748b;font-weight:400;">calculat: ${Number(t.colete)} — îl poți schimba</small>`
+                    : String(t.colete || 0) + (t.plicuri ? ` (+${t.plicuri} plicuri)` : '');
                 const randuri = [
                     ['Greutate', kg(t.greutate)],
-                    ['Colete', String(t.colete || 0) + (t.plicuri ? ` (+${t.plicuri} plicuri)` : '')],
+                    ['Colete', coleteCamp],
                     ['Serviciu', t.serviciu || '—'],
                     ['Plata transport', t.plata_transport === 'sender' ? 'expeditor (noi)'
                         : (t.plata_transport === 'recipient' ? 'destinatar (clientul)' : (t.plata_transport || '—'))],
@@ -967,6 +976,15 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
             if (!awbForm) return;
             const camp = awbForm.querySelector('[data-awb-email]');
             if (camp) camp.value = awbEmail.checked ? '1' : '0';
+            // Coletele se trimit doar când omul le-a schimbat; altfel serverul
+            // le calculează singur, ca până acum.
+            const coleteInput = document.getElementById('awb-modal-colete');
+            const coleteCamp = awbForm.querySelector('[data-awb-colete]');
+            if (coleteCamp) {
+                const ales = Math.round(Number(coleteInput?.value || 0));
+                const calculat = Number(coleteInput?.dataset.calculat || 0);
+                coleteCamp.value = ales >= 1 && ales <= 99 && ales !== calculat ? String(ales) : '';
+            }
             awbForm.dataset.awbConfirmat = '1';
             const form = awbForm;
             inchideAwb();
