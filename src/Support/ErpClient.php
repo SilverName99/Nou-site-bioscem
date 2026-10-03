@@ -14,7 +14,9 @@ use Throwable;
  * Autentificarea se face cu cheia generată în ERP (Setări → Setări site),
  * trimisă în antetul `X-Andaxi-Site-Key`. Toate metodele aruncă
  * RuntimeException cu un mesaj citibil de operator — apelantul decide dacă
- * reîncearcă sau doar notează eroarea pe comandă.
+ * reîncearcă sau doar notează eroarea pe comandă. Refuzul modulului „Magazin
+ * online” vine ca ErpModulOpritException (tot o RuntimeException), ca
+ * apelantul să-l poată deosebi de o pană.
  */
 final class ErpClient
 {
@@ -56,7 +58,11 @@ final class ErpClient
         return self::fromSettings($settings);
     }
 
-    /** Verifică dacă ERP-ul răspunde și are gestiunea configurată. */
+    /**
+     * Verifică dacă ERP-ul răspunde și are gestiunea configurată. ERP-urile cu
+     * modulul „Magazin online” întorc și `modulMagazin` (pornit, se_opreste,
+     * oprit); cele mai vechi nu — vezi ErpModul::dinPing.
+     */
     public function ping(): array
     {
         return $this->request('GET', '/api/site/ping');
@@ -301,10 +307,32 @@ final class ErpClient
         $decoded = json_decode((string) $raw, true);
 
         if ($status < 200 || $status >= 300) {
+            $refuzModul = $this->refuzDeModul($status, $decoded);
+            if ($refuzModul !== null) {
+                throw $refuzModul;
+            }
             throw new RuntimeException($this->errorMessage($status, $decoded, (string) $raw));
         }
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Refuzul venit din garda de modul a ERP-ului: 403 cu `module` și `reason`
+     * în corp. Doar cel al modulului „Magazin online” are aici un înțeles al
+     * lui — comanda se ține pe site, fără să-și ardă încercările —; orice alt
+     * 403 rămâne o eroare obișnuită.
+     */
+    private function refuzDeModul(int $status, mixed $decoded): ?ErpModulOpritException
+    {
+        if ($status !== 403 || !is_array($decoded)) {
+            return null;
+        }
+        if ((string) ($decoded['module'] ?? '') !== ErpModul::CHEIE) {
+            return null;
+        }
+        $motiv = (string) ($decoded['reason'] ?? '');
+        return new ErpModulOpritException($motiv === 'se_opreste' ? ErpModul::SE_OPRESTE : ErpModul::OPRIT);
     }
 
     /** Traduce răspunsurile de eroare ale ERP-ului în mesaje pentru operator. */

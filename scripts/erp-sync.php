@@ -9,7 +9,8 @@ declare(strict_types=1);
  *   *\/5 * * * * php /cale/catre/site/scripts/erp-sync.php >/dev/null 2>&1
  *
  * Trimite doar comenzile al căror termen de reîncercare a venit, deci poate fi
- * rulat oricât de des fără să bombardeze ERP-ul.
+ * rulat oricât de des fără să bombardeze ERP-ul. Ține la zi și starea
+ * modulului „Magazin online” din ERP (bannerul din admin).
  */
 
 require_once __DIR__ . '/../bootstrap.php';
@@ -17,6 +18,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use App\Http\Controllers\AdminController;
 use App\Support\Database;
 use App\Support\ErpClient;
+use App\Support\ErpModul;
 use App\Support\ErpSync;
 use App\Support\Settings;
 
@@ -35,24 +37,42 @@ if ((string) ($settings['erp_enabled'] ?? '0') !== '1') {
 }
 
 $limit = isset($argv[1]) ? max(1, min(200, (int) $argv[1])) : 25;
+$client = ErpClient::fromSettings($settings);
+
+// 0) Starea modulului „Magazin online” din ERP. Ține la zi bannerul din admin
+//    și, când modulul a fost pornit din nou, scoate din pauză comenzile ținute
+//    aici cât a fost oprit, ca să plece chiar la pasul următor.
+$stareModul = null;
+if ($client !== null) {
+    try {
+        $stareModul = ErpModul::dinPing($client->ping());
+        if ($stareModul !== null) {
+            ErpModul::noteaza($db, $stareModul);
+        }
+    } catch (Throwable $exception) {
+        fwrite(STDERR, 'Nu am putut întreba ERP-ul de starea modulului: ' . $exception->getMessage() . "\n");
+    }
+}
 
 // 1) Comenzile care n-au ajuns încă în ERP.
 $rezultat = ErpSync::retryPending($db, $limit);
 
 printf(
-    "[%s] Comenzi încercate: %d — trimise: %d, eșuate: %d\n",
+    "[%s] Comenzi încercate: %d — trimise: %d, eșuate: %d, ținute (modulul oprit în ERP): %d\n",
     date('Y-m-d H:i:s'),
     $rezultat['incercate'],
     $rezultat['reusite'],
-    $rezultat['esuate']
+    $rezultat['esuate'],
+    $rezultat['tinute']
 );
 
-// 2) Anulările care n-au apucat să ajungă în ERP (ERP oprit în acel moment).
+// 2) Anulările și retururile care n-au apucat să ajungă în ERP (ERP oprit în
+//    acel moment). Fiecare pe ruta ei.
 $anulari = ErpSync::retryCancels($db, $limit);
 
 if ($anulari['incercate'] > 0) {
     printf(
-        "[%s] Anulări reluate: %d — duse la capăt: %d, eșuate: %d\n",
+        "[%s] Anulări și retururi reluate: %d — duse la capăt: %d, eșuate: %d\n",
         date('Y-m-d H:i:s'),
         $anulari['incercate'],
         $anulari['reusite'],
@@ -63,7 +83,6 @@ if ($anulari['incercate'] > 0) {
 // 3) Notificările pe care ERP-ul n-a reușit să ni le livreze (site jos în
 //    momentul aprobării). Le luăm noi și le confirmăm după ce le aplicăm.
 $notificari = ['preluate' => 0, 'aplicate' => 0, 'esuate' => 0];
-$client = ErpClient::fromSettings($settings);
 
 if ($client !== null) {
     try {
@@ -139,7 +158,8 @@ printf(
 //    cântărește lucrează acolo). Fără ele, AWB-ul pleacă cu greutatea implicită
 //    din setări și FAN taxează diferența după recântărire.
 $greutati = ['primite' => 0, 'actualizate' => 0, 'negasite' => 0];
-if ($client !== null) {
+// Cu modulul oprit, ERP-ul nu mai dă greutățile (403); rămân cele de pe site.
+if ($client !== null && $stareModul !== ErpModul::OPRIT) {
     try {
         $dinErp = $client->productWeights();
         $greutati['primite'] = count($dinErp);

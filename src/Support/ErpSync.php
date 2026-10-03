@@ -30,6 +30,8 @@ final class ErpSync
     public const STATUS_CANCEL_PENDING = 'cancel_pending';
     /** Trimisă în ERP și anulată și acolo. */
     public const STATUS_CANCELLED = 'cancelled';
+    /** Trimisă în ERP, apoi returnată pe site; returul n-a ajuns încă acolo. */
+    public const STATUS_RETUR_PENDING = 'retur_pending';
 
     /** Pauzele dintre reîncercări, în secunde. Ultima se repetă. */
     private const BACKOFF = [60, 300, 900, 3600, 21600, 43200];
@@ -37,10 +39,17 @@ final class ErpSync
     private const MAX_ATTEMPTS = 12;
 
     /**
+     * Cât stă deoparte o comandă refuzată fiindcă modulul „Magazin online” e
+     * oprit în ERP. Pauza nu consumă din încercări: oprirea poate ține oricât,
+     * iar comanda trebuie să plece singură la repornire.
+     */
+    private const PAUZA_MODUL_OPRIT = 3600;
+
+    /**
      * Trimite comanda dacă e cazul.
      *
      * @param bool $force Ignoră fereastra de retry (folosit de butonul manual).
-     * @return array{ok: bool, message: string}
+     * @return array{ok: bool, message: string, tinuta?: bool}
      */
     public static function push(PDO $db, int $orderId, bool $force = false): array
     {
@@ -71,7 +80,15 @@ final class ErpSync
 
         $blocker = self::blockingReason($order);
         if ($blocker !== null) {
-            self::mark($db, $orderId, self::STATUS_PENDING, ['error' => $blocker]);
+            // „În așteptare” e doar pentru comenzile care n-au plecat. Pe una
+            // trimisă, sau cu anularea ori returul pe drum, marcajul ar șterge
+            // ce mai are sincronizarea de făcut: 🔄 apăsat pe o comandă anulată
+            // transforma „anulare în curs” în „în așteptare”, iar anularea nu
+            // mai ajungea niciodată în ERP.
+            $erpStatus = strtolower(trim((string) ($order['erp_status'] ?? '')));
+            if (in_array($erpStatus, ['', self::STATUS_PENDING, self::STATUS_FAILED, self::STATUS_SKIPPED], true)) {
+                self::mark($db, $orderId, self::STATUS_PENDING, ['error' => $blocker]);
+            }
             return ['ok' => false, 'message' => $blocker];
         }
 
@@ -89,6 +106,20 @@ final class ErpSync
         try {
             $payload = self::buildPayload($db, $order);
             $response = $client->pushOrder($payload);
+        } catch (ErpModulOpritException $exception) {
+            // ERP-ul nu mai primește comenzi noi de pe site: modulul „Magazin
+            // online” e oprit sau se oprește. Nu e o pană de reîncercat des și
+            // nici una care să ardă din cele 12 încercări — comanda stă aici,
+            // „în așteptare”, și se mai întreabă o dată pe oră. La repornire,
+            // cron-ul o scoate din pauză (ErpModul::noteaza). O comandă ajunsă
+            // deja acolo își primește refuzul la modificare, nu la intrare.
+            ErpModul::noteaza($db, $exception->stare);
+            $message = ErpModul::mesaj($exception->stare, self::aAjunsInErp($order));
+            self::mark($db, $orderId, self::STATUS_PENDING, [
+                'error' => $message,
+                'retry_in' => self::PAUZA_MODUL_OPRIT,
+            ]);
+            return ['ok' => false, 'message' => $message, 'tinuta' => true];
         } catch (Throwable $exception) {
             $message = $exception->getMessage();
             self::mark($db, $orderId, self::STATUS_FAILED, ['error' => $message, 'attempt' => true]);
@@ -107,8 +138,35 @@ final class ErpSync
         // reținem motivul ca problemă vizibilă, nu ca eroare de reîncercat
         // (un retry ar primi exact același refuz).
         $motivRespins = trim((string) ($response['motivRespins'] ?? ''));
+        // Comanda e vie aici, dar în ERP e anulată: fie readusă în lucru pe
+        // site după ce anularea ajunsese acolo, fie anulată în ERP chiar acum,
+        // cu vestea încă pe drum. ERP-ul n-o reînvie singur, iar când datele
+        // n-au apucat să se schimbe nici nu spune că a refuzat ceva: comanda
+        // trecea drept „trimisă”.
+        if ((string) ($response['status'] ?? '') === 'anulata') {
+            $motivRespins = 'Comanda e anulată în ERP, deși aici e în lucru. '
+                . 'Dacă a fost anulată acolo intenționat, anularea ajunge și aici la următoarea sincronizare. '
+                . 'Dacă ai readus-o tu în lucru pe site, restaureaz-o în ERP (Comenzi site → comanda → „Restaurează comanda”; '
+                . 'merge doar cât modulul „Magazin online” e pornit), apoi retrimite-o de aici cu 🔄.';
+        }
         if ($motivRespins !== '') {
             $probleme[] = $motivRespins;
+        }
+
+        // Aprobarea venită cât comanda era închisă aici e înghițită: comanda nu
+        // trece în procesare și nu primește AWB (AdminController::applyErpApproval).
+        // Readusă în lucru înainte ca anularea să plece, comanda se retrimite și
+        // primește „aprobata”, fără nicio problemă — iar ERP-ul nu mai trimite
+        // aprobarea a doua oară. Nota de pe comandă se ștergea la „trimisă”, deci
+        // nu mai rămânea nimic care să spună că lipsește AWB-ul.
+        $facturaErp = trim((string) ($order['erp_factura_numar'] ?? ''));
+        if ((string) ($response['status'] ?? '') === 'aprobata'
+            && $facturaErp !== ''
+            && trim((string) ($order['fan_awb'] ?? '')) === ''
+        ) {
+            $probleme[] = 'Comanda e aprobată în ERP (factura ' . $facturaErp . '), dar aici n-are încă AWB. '
+                . 'Dacă aprobarea a sosit cât comanda era închisă pe site, n-a trecut-o în procesare și n-a generat AWB-ul: '
+                . 'fă-le din comandă.';
         }
 
         self::mark($db, $orderId, self::STATUS_SENT, [
@@ -116,6 +174,14 @@ final class ErpSync
             'erp_order_id' => (string) ($response['comandaId'] ?? ''),
             'problems' => $probleme,
         ]);
+
+        // ERP-ul a primit o comandă nouă: modulul „Magazin online” e deschis.
+        // Bannerul nu mai așteaptă ping-ul cron-ului, iar comenzile ținute
+        // pleacă la rularea următoare.
+        $stareModul = ErpModul::stare($settings);
+        if (!(bool) ($response['duplicat'] ?? false) && $stareModul !== '' && $stareModul !== ErpModul::PORNIT) {
+            ErpModul::noteaza($db, ErpModul::PORNIT);
+        }
 
         if ($motivRespins !== '') {
             return ['ok' => false, 'message' => $motivRespins];
@@ -136,7 +202,10 @@ final class ErpSync
     /**
      * Reîncearcă comenzile eșuate al căror termen a venit. Rulează din cron.
      *
-     * @return array{incercate: int, reusite: int, esuate: int}
+     * `tinute` sunt comenzile refuzate fiindcă modulul „Magazin online” e
+     * oprit în ERP: nu sunt eșecuri, așteaptă repornirea.
+     *
+     * @return array{incercate: int, reusite: int, esuate: int, tinute: int}
      */
     public static function retryPending(PDO $db, int $limit = 25): array
     {
@@ -161,11 +230,11 @@ final class ErpSync
         );
         $stmt->execute(['max_attempts' => self::MAX_ATTEMPTS]);
 
-        $rezultat = ['incercate' => 0, 'reusite' => 0, 'esuate' => 0];
+        $rezultat = ['incercate' => 0, 'reusite' => 0, 'esuate' => 0, 'tinute' => 0];
         foreach (($stmt->fetchAll() ?: []) as $row) {
             $rezultat['incercate']++;
             $push = self::push($db, (int) $row['id']);
-            $rezultat[$push['ok'] ? 'reusite' : 'esuate']++;
+            $rezultat[$push['ok'] ? 'reusite' : (($push['tinuta'] ?? false) === true ? 'tinute' : 'esuate')]++;
         }
         return $rezultat;
     }
@@ -220,7 +289,7 @@ final class ErpSync
         try {
             self::ensureSchema($db);
             $stmt = $db->prepare(
-                'SELECT id, order_number, erp_status FROM orders WHERE id = :id LIMIT 1'
+                'SELECT id, order_number, erp_status, erp_order_id FROM orders WHERE id = :id LIMIT 1'
             );
             $stmt->execute(['id' => $orderId]);
             $order = $stmt->fetch();
@@ -236,7 +305,7 @@ final class ErpSync
         if ($status === self::STATUS_CANCELLED) {
             return ['ok' => true, 'message' => 'Comanda era deja anulată în ERP.'];
         }
-        if ($status !== self::STATUS_SENT && $status !== self::STATUS_CANCEL_PENDING) {
+        if (!self::aAjunsInErp($order)) {
             // N-a plecat niciodată: nu are ce anula acolo.
             self::skipDacaNetrimisa($db, $orderId, $motiv);
             return ['ok' => true, 'message' => 'Comanda nu ajunsese în ERP; am oprit trimiterea.'];
@@ -264,7 +333,7 @@ final class ErpSync
         try {
             self::ensureSchema($db);
             $stmt = $db->prepare(
-                'SELECT id, order_number, erp_status FROM orders WHERE id = :id LIMIT 1'
+                'SELECT id, order_number, erp_status, erp_order_id FROM orders WHERE id = :id LIMIT 1'
             );
             $stmt->execute(['id' => $orderId]);
             $order = $stmt->fetch();
@@ -276,7 +345,6 @@ final class ErpSync
             return ['ok' => false, 'message' => 'Comanda nu a fost găsită.'];
         }
 
-        $status = strtolower(trim((string) ($order['erp_status'] ?? '')));
         // Comanda închisă deja în ERP trebuie totuși marcată ca retur acolo.
         // Se opreau aici două cazuri reale: comenzile anulate întâi din ERP și
         // apoi marcate retur în magazin, și cele marcate retur înainte ca
@@ -284,16 +352,30 @@ final class ErpSync
         // ERP dar fără marcaj de retur, deci nenumărată la clientul respectiv.
         // Ruta de retur din ERP e idempotentă: pe o comandă deja marcată nu
         // face nimic.
-        if ($status !== self::STATUS_SENT
-            && $status !== self::STATUS_CANCEL_PENDING
-            && $status !== self::STATUS_CANCELLED) {
+        if (!self::aAjunsInErp($order)) {
             // N-a ajuns niciodată în ERP: nu are ce marca acolo. O scoatem din
             // coada de trimitere, ca la anulare.
             self::skipDacaNetrimisa($db, $orderId, $motiv);
             return ['ok' => true, 'message' => 'Comanda nu ajunsese în ERP; am oprit trimiterea.'];
         }
 
-        $numar = trim((string) ($order['order_number'] ?? ''));
+        return self::trimiteReturul($db, $orderId, (string) ($order['order_number'] ?? ''), $motiv);
+    }
+
+    /**
+     * Cererea propriu-zisă de retur către ERP, cu marcarea rezultatului.
+     *
+     * Când nu ajunge, returul așteaptă pe starea lui, nu pe „anulare în curs”.
+     * Reluat ca anulare, pleca pe ruta greșită: în ERP comanda se închidea
+     * fără marcajul de retur, deci nenumărată la client, iar vestea „anulată”
+     * întoarsă spre site rescria aici statusul „Returnată” și îi trimitea
+     * clientului emailul de anulare.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    private static function trimiteReturul(PDO $db, int $orderId, string $numarSite, string $motiv): array
+    {
+        $numar = trim($numarSite);
         if ($numar === '') {
             return ['ok' => false, 'message' => 'Comanda nu are număr; nu o pot marca în ERP.'];
         }
@@ -301,7 +383,7 @@ final class ErpSync
         $client = ErpClient::fromDb($db);
         if ($client === null) {
             $message = 'Integrarea cu ERP-ul e oprită sau neconfigurată; returul nu a fost trimis.';
-            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            self::mark($db, $orderId, self::STATUS_RETUR_PENDING, ['error' => $message]);
             return ['ok' => false, 'message' => $message];
         }
 
@@ -309,7 +391,7 @@ final class ErpSync
             $raspuns = $client->returnOrder($numar, $motiv);
         } catch (Throwable $exception) {
             $message = 'Returul nu a ajuns în ERP: ' . $exception->getMessage();
-            self::mark($db, $orderId, self::STATUS_CANCEL_PENDING, ['error' => $message]);
+            self::mark($db, $orderId, self::STATUS_RETUR_PENDING, ['error' => $message]);
             return ['ok' => false, 'message' => $message];
         }
 
@@ -324,8 +406,12 @@ final class ErpSync
     }
 
     /**
-     * Reia anulările care n-au ajuns în ERP (ERP oprit în momentul anulării).
-     * Rulează din cron, imediat după `retryPending()`.
+     * Reia anulările și retururile care n-au ajuns în ERP (ERP oprit în
+     * momentul lor). Rulează din cron, imediat după `retryPending()`.
+     *
+     * Fiecare pleacă pe ruta ei: returul pe cea de retur, ca în ERP comanda să
+     * se numere la retururile clientului. Comenzile „Returnată” rămase pe
+     * „anulare în curs” de dinaintea stării de retur iau tot ruta de retur.
      *
      * @return array{incercate: int, reusite: int, esuate: int}
      */
@@ -334,25 +420,58 @@ final class ErpSync
         self::ensureSchema($db);
 
         $stmt = $db->prepare(
-            "SELECT id, order_number FROM orders
-             WHERE erp_status = :status
+            "SELECT id, order_number, status, erp_status FROM orders
+             WHERE erp_status IN (:anulare, :retur)
              ORDER BY id ASC
              LIMIT " . max(1, min(200, $limit))
         );
-        $stmt->execute(['status' => self::STATUS_CANCEL_PENDING]);
+        $stmt->execute([
+            'anulare' => self::STATUS_CANCEL_PENDING,
+            'retur' => self::STATUS_RETUR_PENDING,
+        ]);
 
         $rezultat = ['incercate' => 0, 'reusite' => 0, 'esuate' => 0];
         foreach (($stmt->fetchAll() ?: []) as $row) {
             $rezultat['incercate']++;
-            $anulare = self::trimiteAnularea(
-                $db,
-                (int) $row['id'],
-                (string) ($row['order_number'] ?? ''),
-                'Comandă anulată pe site.'
-            );
-            $rezultat[$anulare['ok'] ? 'reusite' : 'esuate']++;
+            $esteRetur = (string) ($row['erp_status'] ?? '') === self::STATUS_RETUR_PENDING
+                || (string) ($row['status'] ?? '') === 'returned';
+            $trimis = $esteRetur
+                ? self::trimiteReturul($db, (int) $row['id'], (string) ($row['order_number'] ?? ''), 'Comandă returnată pe site.')
+                : self::trimiteAnularea($db, (int) $row['id'], (string) ($row['order_number'] ?? ''), 'Comandă anulată pe site.');
+            $rezultat[$trimis['ok'] ? 'reusite' : 'esuate']++;
         }
         return $rezultat;
+    }
+
+    /**
+     * Comanda a fost readusă în lucru pe site: anularea sau returul care
+     * așteptau să plece spre ERP nu mai au de ce să plece. Altfel cron-ul ar
+     * fi anulat în ERP, la prima rulare, tocmai comanda readusă — chiar și
+     * peste zile, dacă integrarea era oprită în acel moment.
+     *
+     * Comanda trece înapoi pe „trimisă”: anularea n-a ajuns, deci de regulă
+     * ERP-ul o are tot vie. Retrimiterea care urmează îi duce modificările, iar
+     * dacă totuși ERP-ul apucase s-o anuleze, `push` o spune pe comandă.
+     */
+    public static function renuntaLaAnulare(PDO $db, int $orderId): void
+    {
+        if ($orderId <= 0) {
+            return;
+        }
+        try {
+            self::ensureSchema($db);
+            $db->prepare(
+                'UPDATE orders SET erp_status = :trimisa
+                  WHERE id = :id AND erp_status IN (:anulare, :retur)'
+            )->execute([
+                'trimisa' => self::STATUS_SENT,
+                'id' => $orderId,
+                'anulare' => self::STATUS_CANCEL_PENDING,
+                'retur' => self::STATUS_RETUR_PENDING,
+            ]);
+        } catch (Throwable) {
+            // Marcajul e auxiliar; retrimiterea de după îl rescrie oricum.
+        }
     }
 
     /** Cererea propriu-zisă de anulare către ERP, cu marcarea rezultatului. */
@@ -630,6 +749,29 @@ final class ErpSync
         return null;
     }
 
+    /**
+     * A plecat comanda vreodată în ERP?
+     *
+     * Nu ajunge `erp_status`: o comandă trimisă căreia i-a eșuat apoi o
+     * modificare (ERP căzut, modulul oprit) trece pe „eșuată” sau „în
+     * așteptare”, deși ERP-ul o are. Anularea ei era sărită ca la o comandă
+     * care n-a plecat niciodată și rămânea vie în ERP. Referința din ERP se
+     * scrie la prima trimitere reușită și nu se mai șterge.
+     */
+    private static function aAjunsInErp(array $order): bool
+    {
+        $status = strtolower(trim((string) ($order['erp_status'] ?? '')));
+        if (in_array($status, [
+            self::STATUS_SENT,
+            self::STATUS_CANCEL_PENDING,
+            self::STATUS_RETUR_PENDING,
+            self::STATUS_CANCELLED,
+        ], true)) {
+            return true;
+        }
+        return trim((string) ($order['erp_order_id'] ?? '')) !== '';
+    }
+
     /** A venit momentul reîncercării? */
     private static function isDue(array $order): bool
     {
@@ -644,7 +786,7 @@ final class ErpSync
     }
 
     /**
-     * @param array{error?: string, attempt?: bool, erp_order_id?: string, problems?: string[]} $extra
+     * @param array{error?: string, attempt?: bool, erp_order_id?: string, problems?: string[], retry_in?: int} $extra
      */
     private static function mark(PDO $db, int $orderId, string $status, array $extra = []): void
     {
@@ -673,6 +815,12 @@ final class ErpSync
             if ($status === self::STATUS_FAILED) {
                 $sets[] = 'erp_next_retry_at = :next_retry';
                 $params['next_retry'] = self::nextRetryAt($db, $orderId);
+            } elseif (isset($extra['retry_in'])) {
+                // Pauză fixă, fără încercare consumată (modulul oprit în ERP).
+                $sets[] = 'erp_next_retry_at = :next_retry';
+                $params['next_retry'] = (new DateTimeImmutable('now'))
+                    ->modify('+' . max(60, (int) $extra['retry_in']) . ' seconds')
+                    ->format('Y-m-d H:i:s');
             }
         }
 

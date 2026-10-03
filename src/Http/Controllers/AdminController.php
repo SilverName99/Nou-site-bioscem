@@ -4974,6 +4974,7 @@ final class AdminController
             }
         }
 
+        $setariComenzi = Settings::all($db);
         View::render('admin/orders', [
             'title' => 'Comenzi',
             'arePrecomanda' => $arePrecomanda,
@@ -4991,7 +4992,8 @@ final class AdminController
             'orderStatusLabels' => $orderStatusLabels,
             'orderPaymentStatusLabels' => $orderPaymentStatusLabels,
             'orderPaymentMethodLabels' => $orderPaymentMethodLabels,
-            'settings' => Settings::all($db),
+            'settings' => $setariComenzi,
+            'erpModulBanner' => \App\Support\ErpModul::banner($db, $setariComenzi),
         ], 'admin/layout');
     }
 
@@ -7429,6 +7431,9 @@ final class AdminController
             $inactive = ['cancelled', 'refunded', 'failed', 'returned'];
             $erpMesaj = '';
             if (in_array($previousStatus, $inactive, true) && !in_array($status, $inactive, true)) {
+                // Anularea sau returul încă nesosite în ERP nu mai pleacă:
+                // altfel cron-ul anula acolo tocmai comanda readusă aici.
+                \App\Support\ErpSync::renuntaLaAnulare($db, $orderId);
                 $settings = Settings::all($db);
                 if ((string) ($settings['erp_enabled'] ?? '0') === '1') {
                     try {
@@ -8312,7 +8317,9 @@ final class AdminController
             return ['ok' => false, 'message' => 'Evenimentul nu are „eveniment" sau „numarSite".'];
         }
 
-        $stmt = $db->prepare('SELECT id, status, fan_awb, fan_tracking_url FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1');
+        // `order_number` trebuie citit: fără el, aprobarea venită pe webhook nu
+        // raporta AWB-ul înapoi în ERP (îl raporta doar drumul cron-ului).
+        $stmt = $db->prepare('SELECT id, order_number, status, erp_status, fan_awb, fan_tracking_url FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1');
         $stmt->execute(['nr' => $numarSite]);
         $order = $stmt->fetch() ?: null;
         if (!is_array($order)) {
@@ -8470,6 +8477,55 @@ final class AdminController
     {
         $facturaNumar = trim((string) ($event['facturaNumar'] ?? ''));
 
+        // Comanda e închisă aici (anulată, returnată, rambursată, eșuată) sau
+        // are anularea ori returul încă pe drum spre ERP: aprobarea e mai veche
+        // decât ele — ERP-ul o reia din coada lui după o pană — sau s-a
+        // încrucișat cu ele. Nu trecem comanda în procesare și nu generăm AWB
+        // (curierul ar veni după un colet care nu mai pleacă). Aprobarea
+        // dovedește însă că în ERP comanda e vie și facturată: dacă anularea
+        // nu e deja pe drum sau dusă la capăt, o punem acum pe drum. Răspunsul
+        // de aici nu-l citește nimeni în ERP, deci urma rămâne pe comandă.
+        $previousStatus = trim((string) ($order['status'] ?? ''));
+        $erpStatus = strtolower(trim((string) ($order['erp_status'] ?? '')));
+        $anularePeDrum = in_array($erpStatus, [
+            \App\Support\ErpSync::STATUS_CANCEL_PENDING,
+            \App\Support\ErpSync::STATUS_RETUR_PENDING,
+        ], true);
+        if ($anularePeDrum || in_array($previousStatus, ['cancelled', 'refunded', 'failed', 'returned'], true)) {
+            $sets = ['erp_factura_numar = :factura'];
+            $params = ['factura' => $facturaNumar !== '' ? $facturaNumar : null, 'id' => $orderId];
+            $punemPeDrum = !$anularePeDrum && $erpStatus !== \App\Support\ErpSync::STATUS_CANCELLED;
+            if ($punemPeDrum) {
+                $esteRetur = $previousStatus === 'returned';
+                $sets[] = 'erp_status = :erp_status';
+                $sets[] = 'erp_last_error = :nota';
+                $params['erp_status'] = $esteRetur
+                    ? \App\Support\ErpSync::STATUS_RETUR_PENDING
+                    : \App\Support\ErpSync::STATUS_CANCEL_PENDING;
+                $params['nota'] = 'Aprobată în ERP'
+                    . ($facturaNumar !== '' ? ' (factura ' . $facturaNumar . ')' : '')
+                    . ' după ce comanda fusese închisă aici. '
+                    . ($esteRetur ? 'Returul' : 'Anularea')
+                    . ' pleacă spre ERP la următoarea sincronizare și anulează acolo și factura.';
+            }
+            try {
+                $db->prepare('UPDATE orders SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($params);
+            } catch (Throwable) {
+                // Coloana lipsă nu schimbă răspunsul.
+            }
+            // `ok` adevărat: altfel notificarea rămâne în coada ERP-ului și o
+            // blochează (scripts/erp-sync.php, pasul 3).
+            return [
+                'ok' => true,
+                'message' => 'Comanda e închisă pe site; n-am trecut-o în procesare și n-am generat AWB.'
+                    . ($anularePeDrum || $punemPeDrum
+                        ? ' Anularea ei pleacă spre ERP la următoarea sincronizare.'
+                        : ''),
+                'awb' => '',
+                'trackingUrl' => '',
+            ];
+        }
+
         try {
             $db->prepare(
                 'UPDATE orders
@@ -8486,8 +8542,7 @@ final class AdminController
 
         // Statusul se schimbă direct, fără emailul de „în procesare": clientul
         // primește un singur mesaj, cel cu AWB-ul, imediat după generare.
-        $previousStatus = trim((string) ($order['status'] ?? ''));
-        if (!in_array($previousStatus, ['completed', 'cancelled', 'refunded'], true)) {
+        if ($previousStatus !== 'completed') {
             try {
                 $db->prepare('UPDATE orders SET status = :status WHERE id = :id')
                     ->execute(['status' => 'processing', 'id' => $orderId]);
@@ -8615,8 +8670,15 @@ final class AdminController
     /** Comandă anulată în ERP: o anulăm și pe site (punctele se întorc). */
     private function applyErpCancellation(PDO $db, int $orderId, array $order): array
     {
-        if (trim((string) ($order['status'] ?? '')) === 'cancelled') {
+        $status = trim((string) ($order['status'] ?? ''));
+        if ($status === 'cancelled') {
             return ['ok' => true, 'message' => 'Comanda era deja anulată pe site.'];
+        }
+        // Returnată, rambursată sau eșuată: comanda e deja închisă aici, cu un
+        // status mai precis decât „Anulată”. Rescrisă, clientul primea emailul
+        // de anulare pentru un colet pe care tocmai l-a refuzat.
+        if (in_array($status, ['refunded', 'failed', 'returned'], true)) {
+            return ['ok' => true, 'message' => 'Comanda era deja închisă pe site (' . $status . '); am lăsat-o așa.'];
         }
 
         $rezultat = $this->updateOrderStatusInternal($db, $orderId, 'cancelled');
@@ -10467,7 +10529,7 @@ final class AdminController
 
         $db = $this->db();
         $settings = Settings::all($db);
-        $queue = ['pending' => 0, 'failed' => 0, 'sent' => 0];
+        $queue = ['pending' => 0, 'failed' => 0, 'sent' => 0, 'cancel_pending' => 0, 'retur_pending' => 0];
 
         if ($db instanceof PDO) {
             \App\Support\ErpSync::ensureSchema($db);
@@ -10492,6 +10554,7 @@ final class AdminController
             'title' => 'ERP ANDAXI',
             'settings' => $settings,
             'queue' => $queue,
+            'erpModulBanner' => \App\Support\ErpModul::banner($db, $settings),
         ], 'admin/layout');
     }
 
@@ -10545,7 +10608,16 @@ final class AdminController
                 try {
                     $ping = $client->ping();
                     $gestiune = (bool) ($ping['gestiuneConfigurata'] ?? false);
-                    if ($gestiune) {
+                    $stareModul = \App\Support\ErpModul::dinPing($ping);
+                    if ($stareModul !== null) {
+                        \App\Support\ErpModul::noteaza($db, $stareModul);
+                    }
+                    $faraGestiune = $gestiune ? '' : ' În plus, în ERP nu e aleasă gestiunea implicită (Setări → Setări site).';
+                    if ($stareModul === \App\Support\ErpModul::OPRIT) {
+                        Flash::set('error', 'Conexiune reușită, dar modulul „Magazin online” e oprit în ERP: comenzile noi rămân aici până e pornit din nou. Pornirea se cere furnizorului programului ERP.' . $faraGestiune);
+                    } elseif ($stareModul === \App\Support\ErpModul::SE_OPRESTE) {
+                        Flash::set('error', 'Conexiune reușită, dar modulul „Magazin online” se oprește în ERP: comenzile noi rămân aici, cele trimise deja se lucrează normal.' . $faraGestiune);
+                    } elseif ($gestiune) {
                         Flash::set('success', 'Conexiune reușită. ERP-ul răspunde și are gestiunea configurată.');
                     } else {
                         Flash::set('error', 'Conexiune reușită, dar în ERP nu e aleasă gestiunea implicită (Setări → Setări site).');
@@ -10604,17 +10676,27 @@ final class AdminController
 
         if ($action === 'retry') {
             $rezultat = \App\Support\ErpSync::retryPending($db, 50);
+            // Comenzile ținute de modul nu sunt scadente (stau o oră deoparte),
+            // deci „nimic de retrimis” poate apărea cât bannerul arată comenzi
+            // care așteaptă: nota spune de ce.
+            $stareModul = \App\Support\ErpModul::stare(Settings::all($db));
+            $modulInchis = $stareModul === \App\Support\ErpModul::OPRIT || $stareModul === \App\Support\ErpModul::SE_OPRESTE;
+            $notaModul = $modulInchis
+                ? ' Comenzile noi ținute de modulul „Magazin online” (oprit sau în curs de oprire în ERP) pleacă singure după ce e pornit din nou.'
+                : '';
             if ($rezultat['incercate'] === 0) {
-                Flash::set('success', 'Nu există comenzi de retrimis.');
+                Flash::set($modulInchis ? 'error' : 'success', 'Nu există comenzi de retrimis acum.' . $notaModul);
             } else {
                 Flash::set(
-                    $rezultat['esuate'] > 0 ? 'error' : 'success',
+                    ($rezultat['esuate'] > 0 || $rezultat['tinute'] > 0) ? 'error' : 'success',
                     sprintf(
                         'Reîncercate %d comenzi: %d trimise, %d încă eșuate.',
                         $rezultat['incercate'],
                         $rezultat['reusite'],
                         $rezultat['esuate']
-                    )
+                    ) . ($rezultat['tinute'] > 0
+                        ? sprintf(' %d rămân aici: modulul „Magazin online” e oprit sau se oprește în ERP.', $rezultat['tinute'])
+                        : '')
                 );
             }
             header('Location: /admin/settings/erp');

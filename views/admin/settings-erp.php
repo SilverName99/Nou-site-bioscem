@@ -3,7 +3,14 @@ $erpEnabled = (string) ($settings['erp_enabled'] ?? '0') === '1';
 $stockEnabled = (string) ($settings['erp_stock_enabled'] ?? '0') === '1';
 $apiKey = (string) ($settings['erp_api_key'] ?? '');
 $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'sent' => 0];
+$inCurs = (int) ($queue['cancel_pending'] ?? 0) + (int) ($queue['retur_pending'] ?? 0);
 ?>
+
+<?php if (!empty($erpModulBanner)): ?>
+    <section class="panel" style="border-color:#fcd34d;background:#fffbeb;color:#92400e;">
+        <?= htmlspecialchars((string) $erpModulBanner, ENT_QUOTES) ?>
+    </section>
+<?php endif; ?>
 
 <section class="panel">
     <h1>ERP ANDAXI</h1>
@@ -21,6 +28,11 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
         <div class="panel" style="flex:1;min-width:150px;margin:0;padding:12px;">
             <div style="font-size:12px;text-transform:uppercase;color:#64748b;">Eșuate</div>
             <div style="font-size:22px;font-weight:700;color:#991b1b;"><?= (int) $queue['failed'] ?></div>
+        </div>
+        <div class="panel" style="flex:1;min-width:150px;margin:0;padding:12px;"
+             title="Comenzi anulate sau returnate aici, a căror anulare ori retur n-a ajuns încă în ERP. Cron-ul le reia la fiecare rulare.">
+            <div style="font-size:12px;text-transform:uppercase;color:#64748b;">Anulări și retururi în curs</div>
+            <div style="font-size:22px;font-weight:700;color:#92400e;"><?= $inCurs ?></div>
         </div>
     </div>
 
@@ -100,6 +112,17 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
         Comenzile plătite cu cardul pleacă spre ERP abia după confirmarea plății;
         cele cu ramburs pleacă imediat ce sunt plasate.
     </p>
+    <p>
+        Anulările și retururile care nu ajung în ERP se reiau la fiecare rulare a cron-ului,
+        fiecare pe drumul ei: un retur rămâne retur și în ERP, unde se numără la client.
+    </p>
+    <p>
+        Dacă în ERP modulul „Magazin online” e oprit sau se oprește, ERP-ul nu mai primește
+        comenzi noi de pe site. Ele rămân aici „în așteptare”, fără să-și consume încercările,
+        se mai întreabă o dată pe oră și pleacă singure după ce modulul e pornit din nou
+        (de regulă la următoarea rulare a cron-ului, cel târziu într-o oră). Anulările și retururile merg mai departe. Starea modulului
+        o vezi în bannerul de sus, aici și în lista de comenzi.
+    </p>
 </section>
 
 <section class="panel">
@@ -114,6 +137,9 @@ $queue = is_array($queue ?? null) ? $queue : ['pending' => 0, 'failed' => 0, 'se
         Dacă site-ul e indisponibil în momentul aprobării, ERP-ul păstrează
         notificarea, iar cron-ul de mai sus o preia la următoarea rulare — deci nu se
         pierde nicio aprobare. Anularea din ERP anulează comanda și pe site și
-        returnează punctele de fidelitate.
+        returnează punctele de fidelitate; o comandă deja returnată sau rambursată
+        aici rămâne așa. O aprobare care sosește pentru o comandă anulată sau
+        returnată aici nu mai generează AWB: site-ul trimite anularea ori returul
+        înapoi în ERP, unde se anulează și factura.
     </p>
 </section>

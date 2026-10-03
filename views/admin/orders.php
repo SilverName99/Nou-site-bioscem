@@ -92,6 +92,12 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
     : 'Sortare curentă: descrescător. Click pentru crescător.';
 ?>
 
+<?php if (!empty($erpModulBanner)): ?>
+    <section class="panel" style="border-color:#fcd34d;background:#fffbeb;color:#92400e;">
+        <?= htmlspecialchars((string) $erpModulBanner, ENT_QUOTES) ?>
+    </section>
+<?php endif; ?>
+
 <section class="panel">
     <div class="section-head">
         <div>
@@ -363,6 +369,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'skipped' => 'ERP: netrimisă',
                             'cancelled' => 'ERP: anulată',
                             'cancel_pending' => 'ERP: anulare în curs',
+                            'retur_pending' => 'ERP: retur în curs',
                         ];
                         // O comandă anulată/eșuată nu mai pleacă în ERP, chiar dacă a
                         // rămas marcată „în așteptare" dinainte de anulare.
@@ -378,6 +385,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             'skipped' => 'muted',
                             'cancelled' => 'muted',
                             'cancel_pending' => 'warn',
+                            'retur_pending' => 'warn',
                         ][$erpStatus] ?? 'warn';
                         $erpFactura = trim((string) ($order['erp_factura_numar'] ?? ''));
                         $precomandaStare = strtolower(trim((string) ($order['preorder_status'] ?? '')));
