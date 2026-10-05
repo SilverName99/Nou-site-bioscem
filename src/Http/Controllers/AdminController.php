@@ -16871,16 +16871,41 @@ HTML;
         ];
     }
 
+    /**
+     * Comenzile unui cont: cele legate de el plus cele date fără cont, cu
+     * emailul lui. Se numără o singură dată, pe grupuri, și abia apoi se
+     * lipesc de conturi.
+     *
+     * Înainte, legătura era un `ON (o.user_id = u.id OR o.billing_email =
+     * u.email)`. Cu OR, MySQL nu poate folosi niciun index, deci parcurgea
+     * toate comenzile pentru fiecare cont. La Bioscem, cu istoricul adus din
+     * WooCommerce, pagina „Puncte fidelitate” nu mai apuca să se încarce
+     * înainte de limita găzduirii. Rezultatul e același: fiecare comandă
+     * intră o dată, fie pe cont, fie pe emailul contului.
+     */
+    private const JOIN_STATISTICI_COMENZI = 'LEFT JOIN (
+                    SELECT user_id AS uid, COUNT(*) AS cate, SUM(total) AS suma, MAX(created_at) AS ultima
+                    FROM orders
+                    WHERE deleted_at IS NULL AND user_id IS NOT NULL
+                    GROUP BY user_id
+                ) oc ON oc.uid = u.id
+                LEFT JOIN (
+                    SELECT billing_email AS email, COUNT(*) AS cate, SUM(total) AS suma, MAX(created_at) AS ultima
+                    FROM orders
+                    WHERE deleted_at IS NULL AND user_id IS NULL
+                    GROUP BY billing_email
+                ) og ON og.email = u.email';
+
+    private const COLOANE_STATISTICI_COMENZI = 'COALESCE(oc.cate, 0) + COALESCE(og.cate, 0) AS orders_count,
+                       COALESCE(oc.suma, 0) + COALESCE(og.suma, 0) AS total_spent,
+                       GREATEST(COALESCE(oc.ultima, og.ultima), COALESCE(og.ultima, oc.ultima)) AS last_order_at';
+
     private function loadUsersWithStats(PDO $db, string $search = '', string $sort = 'id', string $dir = 'desc'): array
     {
         $sql = 'SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.birth_date, u.gender, u.loyalty_points, u.created_at,
-                       COUNT(o.id) AS orders_count,
-                       COALESCE(SUM(o.total), 0) AS total_spent,
-                       MAX(o.created_at) AS last_order_at
+                       ' . self::COLOANE_STATISTICI_COMENZI . '
                 FROM users u
-                LEFT JOIN orders o
-                    ON (o.user_id = u.id OR (o.user_id IS NULL AND o.billing_email = u.email))
-                   AND o.deleted_at IS NULL';
+                ' . self::JOIN_STATISTICI_COMENZI;
 
         $params = [];
         $search = trim($search);
@@ -16901,7 +16926,7 @@ HTML;
             default => 'u.id',
         };
         $direction = strtoupper($this->usersListSortDir($dir)) === 'ASC' ? 'ASC' : 'DESC';
-        $sql .= ' GROUP BY u.id ORDER BY ' . $sortColumn . ' ' . $direction . ', u.id DESC';
+        $sql .= ' ORDER BY ' . $sortColumn . ' ' . $direction . ', u.id DESC';
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -17013,15 +17038,10 @@ HTML;
 
         $stmt = $db->prepare(
             'SELECT u.id, u.first_name, u.last_name, u.email, u.loyalty_points,
-                    COUNT(o.id) AS orders_count,
-                    COALESCE(SUM(o.total), 0) AS total_spent,
-                    MAX(o.created_at) AS last_order_at
+                    ' . self::COLOANE_STATISTICI_COMENZI . '
              FROM users u
-             LEFT JOIN orders o
-                ON (o.user_id = u.id OR (o.user_id IS NULL AND o.billing_email = u.email))
-               AND o.deleted_at IS NULL
+             ' . self::JOIN_STATISTICI_COMENZI . '
              WHERE ' . $where . '
-             GROUP BY u.id
              ORDER BY u.loyalty_points DESC, u.id DESC
              LIMIT 1000'
         );
