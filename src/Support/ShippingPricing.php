@@ -100,7 +100,10 @@ final class ShippingPricing
         $judetNorm = self::normalizeazaJudet($judet);
 
         try {
-            // Județul poate lipsi din adresă; atunci ne bazăm doar pe localitate.
+            // Cu județul știut, se caută doar în județul lui. Înainte, dacă nu
+            // se găsea acolo, se căuta și numai după nume, în toată țara: orașul
+            // Galați lua taxa unui sat cu același nume din alt județ. Fiecare
+            // rând din listă are județ (importul le sare pe cele fără).
             if ($judetNorm !== '') {
                 $stmt = $db->prepare(
                     'SELECT 1 FROM fan_localities_extra_km
@@ -108,10 +111,9 @@ final class ShippingPricing
                      LIMIT 1'
                 );
                 $stmt->execute(['county' => $judetNorm, 'locality' => $localitateNorm]);
-                if ($stmt->fetchColumn() !== false) {
-                    return true;
-                }
+                return $stmt->fetchColumn() !== false;
             }
+            // Județul lipsește din adresă: ne bazăm doar pe localitate.
             $stmt = $db->prepare(
                 'SELECT 1 FROM fan_localities_extra_km WHERE locality_norm = :locality LIMIT 1'
             );
