@@ -21,7 +21,9 @@ Migrare `bioscem.ro` către un magazin custom PHP (backend preluat din proiectul
   - formular produs nou;
   - listă comenzi;
   - setări livrare FAN (skeleton configurabil);
-  - setări plăți: EuPlătesc (merchant ID + cheie secretă, URL de notificare) și, opțional, Stripe;
+  - setări plăți: EuPlătesc (merchant ID + cheie secretă, URL de notificare), opțional Stripe și
+    Banca Transilvania iPay (rate și puncte STAR) — fiecare procesator cu bifa lui; cheile secrete
+    nu se mai afișează în pagină (vezi secțiunea „Plata cu cardul prin Banca Transilvania");
   - secțiune Pagini (editor HTML cu preview live + mod desktop/tabletă/telefon);
   - secțiune Galerie (gestionare imagini);
   - secțiune Design Site (editare Header/Footer/Meniu cu preview);
@@ -162,6 +164,117 @@ php /home/USER/domains/bioscem.ro/public_html/scripts/test-precomanda.php
 ```
 
 Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
+
+### Plata cu cardul prin Banca Transilvania (BT iPay)
+
+Integrarea urmeaza modulul oficial BT pentru Magento (`btrl/ipay` 100.0.2): aceleasi
+adrese (`/payment/rest/*.do`), sume in bani, moneda RON = 946, plata in doua faze
+(`registerPreAuth.do`). Clientul plateste pe pagina bancii; acolo, cei cu **STAR Card**
+pot alege **3 rate fara dobanda** sau plata (si) cu **puncte STAR** — site-ul nu are
+nimic de setat pentru asta, doar anunta optiunea in checkout.
+
+**Pana nu e pornit din admin, site-ul se poarta exact ca inainte.** BT e oprit implicit;
+EuPlatesc si Stripe raman cum erau.
+
+Ce se intampla cu banii:
+
+- la comanda, banca doar **blocheaza** suma (autorizare). Comanda devine „platita" pe
+  site (ca la EuPlatesc): pleaca emailul de comanda noua si comanda intra in ERP;
+- suma se **incaseaza** (deposit) automat cand comanda e **aprobata (facturata) in ERP**
+  — inainte de AWB —, din butonul **„Incaseaza"** din fereastra comenzii sau, daca nu s-a
+  intamplat pana atunci, **automat in ziua 4** (96 de ore; banca cere incasarea in cel
+  mult 5 zile). Suma = cea mai mica dintre cea blocata si totalul de acum al comenzii;
+- comanda **anulata / returnata inainte de incasare** isi elibereaza automat suma
+  blocata (reverse). **Dupa incasare nu se ramburseaza nimic automat**: in comanda apare
+  „Plata incasata – necesita rambursare" si butonul **„Rambursează"** (suma completata,
+  se poate micsora, cu confirmare). Partea platita in puncte STAR se intoarce prima;
+- plata cu puncte STAR vine de la banca in doua comenzi (puncte + card); orice operatie
+  atinge intai partea in puncte, apoi cardul, ca in modulul BT.
+
+Fiecare procesator are bifa lui in `Admin -> Setari plati`. Bifa ascunde doar optiunea
+din checkout: platile deja incepute (intoarcerea clientului, notificarile, cronul,
+butoanele din comanda) merg mai departe si cu procesatorul oprit. Linkurile de plata
+pentru diferenta raman pe EuPlatesc (BT pentru ele e o etapa ulterioara); daca EuPlatesc
+e oprit, adminul primeste un mesaj clar si poate consemna incasarea altfel.
+
+#### 1. Datele de acces (doar in `.env`, niciodata in admin sau in git)
+
+In fisierul `.env` din radacina site-ului (pe Hostinger: hPanel -> File Manager,
+`public_html/.env`; calea exacta e afisata in admin, la „?" de langa „configurat"):
+
+```
+BT_IPAY_MODE=test
+BT_IPAY_TEST_USER=utilizatorul-de-test
+BT_IPAY_TEST_PASS=parola-de-test
+BT_IPAY_TEST_CALLBACK_KEY=cheia-callback-de-test
+BT_IPAY_LIVE_USER=utilizatorul-de-productie
+BT_IPAY_LIVE_PASS=parola-de-productie
+BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie
+```
+
+`BT_IPAY_MODE=test` foloseste platforma de test a bancii (nu se iau bani), `live` pe cea
+reala. Modificarea se aplica imediat. Adminul arata doar „configurat / lipseste" pentru
+fiecare valoare, niciodata valoarea. In modul test, optiunea din checkout o vad doar
+administratorii logati. `BT_IPAY_BASE_URL_OVERRIDE` exista doar pentru teste locale (un
+server care imita banca) si ramane gol pe site-ul live; daca e completat, adminul arata un
+avertisment rosu. Cheia de callback e optionala: fara ea, confirmarea vine la
+intoarcerea clientului si prin cron.
+
+#### 2. Tab-ul `Admin -> Setari plati -> Banca Transilvania`
+
+- starea datelor din `.env` (+ „?" cu explicatia pas cu pas) si „Testeaza conexiunea"
+  (intreaba banca de o comanda inexistenta: „comanda inexistenta" = datele sunt bune);
+- bifa „Accepta plata ... in checkout", bifa „Doar pentru administratori", incasarea la
+  aprobarea din ERP, pragurile (72 h reamintire, 96 h incasare automata, 60 min
+  expirare) si adresele de email pentru avertismente;
+- adresa de **callback** de dat bancii: `https://bioscem.ro/webhook/bt-ipay` (adresa de
+  intoarcere `https://bioscem.ro/checkout/bt/retur` pleaca automat cu fiecare plata);
+- linia de cron, cu calea reala, si ora ultimei rulari;
+- **plata de test de 1 leu** si jurnalul ultimelor apeluri catre banca (fara parole si
+  fara date de card).
+
+#### 3. Cron (obligatoriu), la 15 minute
+
+```
+*/15 * * * * php /home/USER/domains/bioscem.ro/public_html/scripts/bt-ipay-sync.php >/dev/null 2>&1
+```
+
+Linia exacta, cu calea reala, e afisata pe tab-ul BT. La fiecare trecere: verifica la
+banca platile neterminate si le expira dupa 60 de minute (comanda devine esuata),
+elibereaza suma blocata pentru comenzile anulate / returnate / sterse (si platile de test
+uitate, dupa 30 de minute), reincearca incasarile esuate, trimite email la 72 de ore cu
+platile inca neincasate si le incaseaza singur la 96 de ore (inclusiv precomenzile), cu
+email. Rularile nu se suprapun (lacat MySQL).
+
+#### 4. Testul de 1 leu (in productie)
+
+1. completeaza in `.env` datele de productie si `BT_IPAY_MODE=live`, apoi
+   „Testeaza conexiunea";
+2. adauga linia de cron;
+3. pe tab-ul BT apasa **„Plata de test 1 leu"**: esti dus pe pagina bancii, platesti cu
+   un card real, revii in admin si alegi **„Anuleaza (reverse)"** sau **„Incaseaza, apoi
+   ramburseaza"**. Plata de test nu tine de nicio comanda, nu trimite emailuri si nu
+   ajunge in ERP; neatinsa, cronul o anuleaza in 30 de minute;
+4. pentru o comanda reala de proba, fara ca clientii sa vada optiunea: bifeaza „Doar
+   pentru administratori" + „Accepta plata", plaseaza comanda din acelasi browser in care
+   esti logat in admin, apoi anuleaz-o din admin (suma se elibereaza automat). Comanda
+   ajunge in ERP ca orice comanda platita, iar anularea pleaca si acolo. Un produs de 1 leu
+   are si transport, deci comanda reala nu iese la 1 leu; autorizarea anulata nu costa
+   nimic;
+5. abia apoi debifeaza „Doar pentru administratori".
+
+#### 5. Tabele noi (create singure, `CREATE TABLE IF NOT EXISTS`)
+
+- `bt_ipay_transactions`: o plata (incercare) la banca, cu numarul trimis (`{comanda}`,
+  la reincercari `{comanda}-R2`...; platile de test `TEST-...`), starea, sumele (card si
+  puncte, autorizat / incasat / rambursat) si modul (test / live) in care a fost facuta —
+  operatiile ulterioare folosesc datele de acces ale aceluiasi mod;
+- `bt_ipay_log`: jurnalul apelurilor catre banca, fara parole si fara date de card, sters
+  dupa 180 de zile.
+
+Teste: `php scripts/bt-ipay-sync.php` ruleaza o trecere de cron manual. Pentru teste
+locale fara banca, `BT_IPAY_BASE_URL_OVERRIDE=http://127.0.0.1:PORT` trimite toate
+apelurile la un server care imita API-ul BT.
 
 ### Sesiunea si cosul
 

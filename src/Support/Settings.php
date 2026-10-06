@@ -123,6 +123,15 @@ final class Settings
         'euplatesc_currency' => 'RON',
         // Stripe rămâne disponibil ca alternativă, dar ascuns implicit.
         'stripe_enabled' => '0',
+        // Banca Transilvania iPay: oprit până îl pornește proprietarul. Datele de
+        // acces stau în .env (BT_IPAY_*), nu aici.
+        'bt_ipay_enabled' => '0',
+        'bt_ipay_admin_only' => '0',
+        'bt_ipay_deposit_on_erp' => '1',
+        'bt_ipay_reminder_hours' => '72',
+        'bt_ipay_autodeposit_hours' => '96',
+        'bt_ipay_expire_minutes' => '60',
+        'bt_ipay_notify_emails' => '',
         // Mod mentenanță: vizitatorii văd „Revenim în curând", testerii văd site-ul.
         'maintenance_enabled' => '0',
         'maintenance_title' => 'Revenim în curând',

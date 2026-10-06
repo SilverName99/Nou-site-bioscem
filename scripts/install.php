@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
 
+use App\Support\BtIpayPayments;
 use App\Support\Database;
 use App\Support\LoyaltyService;
 use App\Support\NewsletterService;
@@ -245,6 +246,8 @@ try {
 }
 NewsletterService::ensureSchema($db);
 LoyaltyService::ensureSchema($db);
+// Plățile Banca Transilvania iPay și jurnalul apelurilor către bancă.
+BtIpayPayments::ensureSchema($db);
 
 try {
     $db->exec('ALTER TABLE products ADD COLUMN sku VARCHAR(80) DEFAULT NULL AFTER name');

@@ -19,6 +19,19 @@ $actionLabels = [
     'fan_nomenclator_sync' => 'Localități / străzi FAN sincronizate',
     'order_incasare_manuala' => 'Încasare înregistrată manual',
     'precomanda_eliberata' => 'Precomandă trimisă în ERP',
+    'setari_plati_chei' => 'Chei secrete de plată schimbate',
+    'bt_ipay_setari' => 'BT: setări salvate',
+    'bt_ipay_test_conexiune' => 'BT: test conexiune',
+    'bt_ipay_test_plata' => 'BT: plată de test pornită',
+    'bt_ipay_status' => 'BT: stare verificată la bancă',
+    'bt_ipay_deposit' => 'BT: încasare (deposit)',
+    'bt_ipay_reverse' => 'BT: autorizare anulată (reverse)',
+    'bt_ipay_refund' => 'BT: rambursare (refund)',
+    'bt_ipay_test_status' => 'BT test: stare verificată',
+    'bt_ipay_test_reverse' => 'BT test: anulare',
+    'bt_ipay_test_deposit' => 'BT test: încasare',
+    'bt_ipay_test_refund' => 'BT test: rambursare',
+    'bt_ipay_test_deposit_refund' => 'BT test: încasare + rambursare',
 ];
 $label = static fn(string $a): string => $actionLabels[$a] ?? $a;
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Support\Auth;
+use App\Support\BtIpayGateway;
+use App\Support\BtIpayPayments;
 use App\Support\Cart;
 use App\Support\CheckoutCalculator;
 use App\Support\CustomerAuth;
@@ -15,6 +18,7 @@ use App\Support\LoyaltyService;
 use App\Support\NewsletterService;
 use App\Support\OrderMailer;
 use App\Support\OrderNumber;
+use App\Support\PaymentMethods;
 use App\Support\Settings;
 use App\Support\EuPlatescGateway;
 use App\Support\StripeGateway;
@@ -1146,7 +1150,7 @@ final class SiteController
         $orderNumber = $this->generateOrderNumber($db, $settings);
         // Cardul și OP-ul așteaptă banii înainte de procesare; doar rambursul
         // intră direct în lucru.
-        $status = in_array($billing['payment_method'], self::METODE_CARD, true)
+        $status = PaymentMethods::esteCard((string) $billing['payment_method'])
             || $billing['payment_method'] === 'bank_transfer'
             ? 'pending_payment'
             : 'pending';
@@ -1362,6 +1366,27 @@ final class SiteController
             }
         }
 
+        if ($billing['payment_method'] === PaymentMethods::BT_IPAY) {
+            // Banca doar blochează suma acum (autorizare); încasarea vine la
+            // aprobarea comenzii în ERP. Coșul rămâne plin până la întoarcere,
+            // ca un client care renunță să-și găsească produsele la loc.
+            $start = BtIpayPayments::pornestePlata(
+                $db,
+                $orderId,
+                $this->appUrl() . '/checkout/bt/retur',
+                (string) ($_SERVER['HTTP_USER_AGENT'] ?? '')
+            );
+            if ($start['ok']) {
+                unset($_SESSION['checkout_form']);
+                header('Location: ' . $start['url']);
+                return;
+            }
+            $this->markOrderPaymentFailed($db, $orderId, 'Banca Transilvania: ' . $start['eroare']);
+            Flash::set('error', 'Nu am putut porni plata cu cardul. Încearcă din nou sau alege altă metodă de plată.');
+            header('Location: /checkout');
+            return;
+        }
+
         EmailAutomation::sendOrderTemplateById($db, $settings, $orderId, 'new_order');
         // Comanda pleacă spre ERP; dacă ERP-ul nu răspunde, rămâne marcată
         // pentru reîncercare și clientul nu vede nicio eroare. Precomenzile se
@@ -1383,6 +1408,9 @@ final class SiteController
         // Confirmarea „oficială" vine pe silent URL; aici doar ne asigurăm că
         // pagina arată starea corectă chiar dacă notificarea a întârziat.
         $euplatescReturn = isset($_GET['euplatesc']) && (string) $_GET['euplatesc'] === '1';
+        // Întoarcerea de la Banca Transilvania trece întâi prin /checkout/bt/retur,
+        // care verifică plata la bancă; aici ajunge doar ca să golească coșul.
+        $btReturn = isset($_GET['bt']) && (string) $_GET['bt'] === '1';
         if ($db instanceof PDO && $euplatescReturn && $_POST !== []) {
             try {
                 $this->applyEuPlatescResult($db, $_POST);
@@ -1401,7 +1429,7 @@ final class SiteController
         // plată, nu doar la Stripe. Altfel, clienții care plătesc prin
         // EuPlătesc — procesatorul implicit — rămâneau cu coșul „abandonat" și
         // primeau ulterior emailul „ați uitat produse în coș", deși plătiseră.
-        if ($db instanceof PDO && ($stripeReturn || $euplatescReturn)) {
+        if ($db instanceof PDO && ($stripeReturn || $euplatescReturn || $btReturn)) {
             EmailAutomation::markCartConverted($db, session_id());
         }
 
@@ -1459,7 +1487,7 @@ final class SiteController
             }
         }
 
-        if ($stripeReturn || $euplatescReturn) {
+        if ($stripeReturn || $euplatescReturn || $btReturn) {
             Cart::clear();
             unset($_SESSION['checkout_form']);
         }
@@ -1529,7 +1557,137 @@ final class SiteController
             'orderEmail' => $orderEmail,
             'stripeReturn' => $stripeReturn,
             'euplatescReturn' => $euplatescReturn,
+            'btReturn' => $btReturn,
         ]);
+    }
+
+    /**
+     * Întoarcerea clientului de pe pagina de plată BT (returnUrl). Banca adaugă
+     * `orderId`; noi ne luăm după referința noastră și citim starea DIRECT de
+     * la bancă — parametrii din adresă nu dovedesc nimic.
+     */
+    public function btIpayReturn(): void
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Nu am putut verifica plata. Te rugăm să ne contactezi.');
+            header('Location: /checkout');
+            return;
+        }
+        $this->ensureStripeSchema($db);
+        BtIpayPayments::ensureSchema($db);
+
+        $tx = BtIpayPayments::dupaNumar($db, (string) ($_GET['ref'] ?? ''));
+        if ($tx === null || (string) $tx['kind'] !== BtIpayPayments::TIP_COMANDA || (int) ($tx['order_id'] ?? 0) <= 0) {
+            Flash::set('error', 'Nu am găsit plata. Dacă ai plătit, comanda se confirmă automat în câteva minute.');
+            header('Location: /checkout');
+            return;
+        }
+
+        // Banca e întrebată cât timp plata se mai poate schimba din partea
+        // clientului (încă neplătită, în 3-D Secure, expirată de curând). O plată
+        // deja autorizată, încasată, refuzată sau eliberată are starea salvată tot
+        // de la bancă: adresa de retur e publică, așa că un refresh (sau oricine
+        // o apelează) nu mai declanșează apeluri către bancă.
+        $stareSalvata = (string) $tx['state'];
+        $creata = strtotime((string) ($tx['created_at'] ?? '')) ?: 0;
+        $deVerificat = in_array($stareSalvata, [BtIpayPayments::STARE_INREGISTRATA, BtIpayPayments::STARE_3DS, BtIpayPayments::STARE_EROARE], true)
+            || ($stareSalvata === BtIpayPayments::STARE_EXPIRATA && $creata >= time() - 86400);
+        $sincronizare = $deVerificat
+            ? BtIpayPayments::sincronizeaza($db, (int) $tx['id'], 'retur')
+            : ['ok' => true, 'mesaj' => ''];
+        $tx = BtIpayPayments::tx($db, (int) $tx['id']) ?? $tx;
+
+        $stmt = $db->prepare('SELECT order_number, payment_status FROM orders WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => (int) $tx['order_id']]);
+        $comanda = $stmt->fetch();
+        $numar = is_array($comanda) ? (string) $comanda['order_number'] : '';
+        $platita = is_array($comanda) && strtolower((string) $comanda['payment_status']) === 'paid';
+        $stare = (string) $tx['state'];
+        $succes = '/checkout/succes/' . rawurlencode($numar) . '?bt=1';
+
+        if ($numar !== '' && ($platita || in_array($stare, [BtIpayPayments::STARE_AUTORIZATA, BtIpayPayments::STARE_INCASATA], true))) {
+            header('Location: ' . $succes);
+            return;
+        }
+        if (!$sincronizare['ok'] && $numar !== '') {
+            // Banca nu a răspuns acum: confirmarea vine prin callback sau cron.
+            // Pagina de succes spune „plata se confirmă în câteva momente".
+            header('Location: ' . $succes);
+            return;
+        }
+        if ($stare === BtIpayPayments::STARE_REFUZATA) {
+            Flash::set('error', 'Plata cu cardul nu a fost aprobată: '
+                . BtIpayGateway::mesajRefuz((int) ($tx['action_code'] ?? 0))
+                . ' Poți reîncerca sau alege altă metodă de plată.');
+        } else {
+            Flash::set('error', 'Plata cu cardul nu a fost finalizată. Poți reîncerca sau alege altă metodă de plată.');
+        }
+        header('Location: /checkout');
+    }
+
+    /**
+     * Notificarea server-la-server de la BT: corpul cererii e un JWT semnat
+     * HS256 cu cheia primită de la bancă. Din el folosim doar numărul comenzii;
+     * starea o citim apoi de la bancă, ca la retur. Răspuns: 200
+     * {"success":true} (ca modulul BT), altfel cod de eroare.
+     */
+    public function btIpayCallback(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(500);
+            echo json_encode(['success' => false]);
+            return;
+        }
+        $this->ensureStripeSchema($db);
+        BtIpayPayments::ensureSchema($db);
+
+        $corp = (string) file_get_contents('php://input', false, null, 0, 16384);
+        $continut = BtIpayGateway::verificaJwt($corp, BtIpayGateway::cheiCallback());
+        if ($continut === null) {
+            // Adresa e publică: jurnalizăm cel mult un refuz pe minut, ca o
+            // avalanșă de cereri false să nu umple tabela. Pentru diagnostic
+            // (cheie greșită în .env) ajunge.
+            $ultimRefuz = false;
+            try {
+                $ultimRefuz = $db->query(
+                    "SELECT created_at FROM bt_ipay_log WHERE action = 'callback' AND http_code = 401 ORDER BY id DESC LIMIT 1"
+                )->fetchColumn();
+            } catch (\Throwable) {
+            }
+            if ($ultimRefuz === false || (strtotime((string) $ultimRefuz) ?: 0) < time() - 60) {
+                BtIpayGateway::jurnal($db, BtIpayGateway::mod(), 'callback', ['lungime' => strlen($corp)], 401, null, '', 0,
+                    BtIpayGateway::cheiCallback() === []
+                        ? 'Callback respins: cheia de callback lipsește din .env.'
+                        : 'Callback respins: semnătura sau valabilitatea JWT nu se verifică.',
+                    ['sursa' => 'callback']);
+            }
+            http_response_code(401);
+            echo json_encode(['success' => false]);
+            return;
+        }
+
+        $numar = BtIpayGateway::numarDinCallback($continut);
+        $tx = $numar !== '' ? BtIpayPayments::dupaNumar($db, $numar) : null;
+        if ($tx === null) {
+            // Nu e o plată de-a noastră: răspundem 200 ca banca să nu insiste la nesfârșit.
+            BtIpayGateway::jurnal($db, BtIpayGateway::mod(), 'callback', ['orderNumber' => $numar], 200, null, '', 0,
+                'Callback pentru o plată necunoscută; ignorat.', ['sursa' => 'callback']);
+            echo json_encode(['success' => true]);
+            return;
+        }
+
+        $rezultat = BtIpayPayments::sincronizeaza($db, (int) $tx['id'], 'callback');
+        BtIpayGateway::jurnal($db, (string) $tx['mode'], 'callback', ['orderNumber' => $numar], $rezultat['ok'] ? 200 : 500, null, '', 0,
+            'Callback verificat; ' . $rezultat['mesaj'], ['tx_id' => (int) $tx['id'], 'order_id' => (int) ($tx['order_id'] ?? 0), 'sursa' => 'callback']);
+        if (!$rezultat['ok']) {
+            http_response_code(500);
+            echo json_encode(['success' => false]);
+            return;
+        }
+        echo json_encode(['success' => true]);
     }
 
     public function stripeWebhook(): void
@@ -5882,15 +6040,6 @@ CSS;
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    /** Metodele de plată online: comanda se confirmă abia după încasare. */
-    private const METODE_CARD = ['stripe', 'euplatesc'];
-
-    /**
-     * Metodele de card oferite în checkout, în ordinea preferinței. EuPlătesc
-     * e procesatorul implicit; Stripe apare doar dacă e bifat explicit.
-     *
-     * @return string[]
-     */
     /** Plata prin ordin de plată (transfer bancar), pornită din Setări plăți. */
     public function opActiv(?array $settings = null): bool
     {
@@ -5901,6 +6050,15 @@ CSS;
         return (string) ($settings['bank_transfer_enabled'] ?? '0') === '1';
     }
 
+    /**
+     * Metodele de card oferite în checkout, în ordinea preferinței. Fiecare
+     * procesator are bifa lui în Setări plăți: Banca Transilvania (când e
+     * pornită, prima), EuPlătesc, apoi Stripe. Bifa ascunde doar opțiunea din
+     * checkout; plățile deja începute (retur, notificări, cron, butoanele din
+     * admin) merg mai departe și cu procesatorul oprit.
+     *
+     * @return string[]
+     */
     public function metodeCardActive(?array $settings = null): array
     {
         if ($settings === null) {
@@ -5909,6 +6067,9 @@ CSS;
         }
 
         $metode = [];
+        if (BtIpayPayments::vizibilInCheckout($settings, Auth::check())) {
+            $metode[] = PaymentMethods::BT_IPAY;
+        }
         if (EuPlatescGateway::isEnabled($settings)) {
             $metode[] = 'euplatesc';
         }

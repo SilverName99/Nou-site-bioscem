@@ -153,6 +153,9 @@ $router->get('/plata/{token}', [SiteController::class, 'paymentLinkPage']);
 $router->post('/plata/{token}', [SiteController::class, 'paymentLinkStart']);
 $router->get('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
 $router->post('/checkout/succes/{orderNumber}', [SiteController::class, 'checkoutSuccess']);
+// Banca Transilvania iPay: întoarcerea clientului și notificarea (JWT) de la bancă.
+$router->get('/checkout/bt/retur', [SiteController::class, 'btIpayReturn']);
+$router->post('/webhook/bt-ipay', [SiteController::class, 'btIpayCallback']);
 $router->post('/webhook/stripe', [SiteController::class, 'stripeWebhook']);
 $router->post('/webhook/euplatesc', [SiteController::class, 'euPlatescIpn']);
 // Notificările venite din ERP (aprobare/anulare comandă), autentificate cu cheia de integrare.
@@ -271,6 +274,7 @@ $router->post('/admin/orders/{id}/note-interne', [AdminController::class, 'order
 $router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);
 $router->post('/admin/orders/{id}/payment-link', [AdminController::class, 'orderPaymentLinkSend']);
 $router->post('/admin/orders/{id}/incasare', [AdminController::class, 'orderIncasareManuala']);
+$router->post('/admin/orders/{id}/bt/{actiune}', [AdminController::class, 'orderBtIpayAction']);
 $router->post('/admin/orders/{id}/precomanda-elibereaza', [AdminController::class, 'precomandaElibereaza']);
 $router->get('/admin/orders/{id}/client-promo', [AdminController::class, 'orderClientPromo']);
 $router->get('/admin/promo-products/search', [AdminController::class, 'promoClientSearchApi']);
@@ -308,6 +312,11 @@ $router->get('/admin/settings/erp', [AdminController::class, 'erpSettingsForm'])
 $router->post('/admin/settings/erp', [AdminController::class, 'erpSettingsSave']);
 $router->get('/admin/settings/payments', [AdminController::class, 'paymentSettingsForm']);
 $router->post('/admin/settings/payments', [AdminController::class, 'paymentSettingsSave']);
+$router->post('/admin/settings/payments/bt', [AdminController::class, 'btIpaySettingsSave']);
+$router->post('/admin/settings/payments/bt/test-connection', [AdminController::class, 'btIpayTestConnection']);
+$router->post('/admin/settings/payments/bt/test-payment', [AdminController::class, 'btIpayTestPaymentStart']);
+$router->get('/admin/settings/payments/bt/test-return', [AdminController::class, 'btIpayTestPaymentReturn']);
+$router->post('/admin/settings/payments/bt/test-action', [AdminController::class, 'btIpayTestPaymentAction']);
 $router->get('/admin/emails', [AdminController::class, 'emails']);
 $router->get('/admin/emails/builder', [AdminController::class, 'emailsBuilder']);
 $router->post('/admin/emails/builder', [AdminController::class, 'emailsBuilderSave']);

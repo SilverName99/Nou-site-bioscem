@@ -39,15 +39,21 @@ $pointsSliderMin = $pointsCanMeetMin ? ($pointsMinRedeem > 0 ? $pointsMinRedeem 
 $pointsSliderValue = max($pointsSliderMin, min($pointsSliderMax, $pointsRequested > 0 ? $pointsRequested : $pointsSliderMin));
 $isLoggedIn = (bool) ($isLoggedIn ?? false);
 $loginUrl = '/login';
-// Metodele de card active vin din setări (EuPlătesc implicit, Stripe opțional).
+// Metodele de card active vin din setări (fiecare procesator are bifa lui:
+// Banca Transilvania, EuPlătesc, Stripe).
 $cardMethods = array_values(array_filter(
     (array) ($cardMethods ?? []),
-    static fn ($m): bool => in_array($m, ['euplatesc', 'stripe'], true)
+    static fn ($m): bool => in_array($m, \App\Support\PaymentMethods::CARD, true)
 ));
 $cardLabels = [
+    'btipay' => ['Card bancar', 'Plată integrală, în 3 rate fără dobândă cu STAR Card sau cu puncte STAR — alegi pe pagina securizată a Băncii Transilvania.'],
     'euplatesc' => ['Card bancar', 'Plată online securizată prin EuPlătesc'],
     'stripe' => ['Card (Stripe)', 'Plată online securizată'],
 ];
+// Banca Transilvania are opțiunea ei, cu siglele STAR; restul paginii rămâne
+// neschimbat când BT nu e oferit.
+$btInCheckout = in_array(\App\Support\PaymentMethods::BT_IPAY, $cardMethods, true);
+$numeProcesatori = ['btipay' => 'Banca Transilvania', 'euplatesc' => 'EuPlătesc', 'stripe' => 'Stripe'];
 $paymentMethods = array_merge($cardMethods, ['cod']);
 $paymentMethod = (string) ($values['payment_method'] ?? '');
 if (!in_array($paymentMethod, $paymentMethods, true)) {
@@ -165,6 +171,20 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
             .bv-checkout-v3__payment{grid-template-columns:1fr;}
         }
     </style>
+<?php if ($btInCheckout): ?>
+    <style>
+        .bv-checkout-v3__method--bt{grid-column:1/-1;}
+        .bv-checkout-v3__method--bt .bv-checkout-v3__method-label{align-items:flex-start;}
+        .bv-checkout-v3__method--bt .bv-checkout-v3__method-label > svg{margin-top:2px;}
+        .bv-checkout-v3__bt-text{flex:1 1 auto;min-width:0;}
+        .bv-checkout-v3__bt-text > span{display:block;margin-top:3px;line-height:1.4;}
+        .bv-checkout-v3__bt-logos{display:flex !important;align-items:center;gap:8px;margin-top:7px !important;}
+        .bv-checkout-v3__bt-logos img{display:block;height:20px;width:auto;border-radius:4px;}
+        .bv-checkout-v3__bt-carduri{flex:0 0 auto;align-self:center;}
+        .bv-checkout-v3__bt-carduri img{display:block;height:54px;width:auto;}
+        @media (max-width:420px){.bv-checkout-v3__bt-carduri{display:none;}}
+    </style>
+<?php endif; ?>
 
     <?php if ($lines === []): ?>
         <article class="bv-checkout-v3__card bv-checkout-v3__empty">
@@ -360,6 +380,25 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                             <label>Metodă de plată</label>
                             <div class="bv-checkout-v3__payment">
                                 <?php foreach ($cardMethods as $cardMethod): ?>
+<?php if ($cardMethod === \App\Support\PaymentMethods::BT_IPAY): ?>
+                                    <label class="bv-checkout-v3__method bv-checkout-v3__method--bt">
+                                        <input type="radio" name="payment_method" value="<?= htmlspecialchars($cardMethod, ENT_QUOTES) ?>" <?= $paymentMethod === $cardMethod ? 'checked' : '' ?>>
+                                        <span class="bv-checkout-v3__method-label">
+                                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.7"/></svg>
+                                            <span class="bv-checkout-v3__bt-text">
+                                                <strong><?= htmlspecialchars($cardLabels[$cardMethod][0], ENT_QUOTES) ?></strong>
+                                                <span><?= htmlspecialchars($cardLabels[$cardMethod][1], ENT_QUOTES) ?></span>
+                                                <span class="bv-checkout-v3__bt-logos">
+                                                    <img src="/assets/img/plati/star-card.svg" alt="Star Card" width="55" height="20" loading="lazy" decoding="async">
+                                                </span>
+                                            </span>
+                                            <picture class="bv-checkout-v3__bt-carduri">
+                                                <source srcset="/assets/img/plati/carduri-star.webp" type="image/webp">
+                                                <img src="/assets/img/plati/carduri-star.png" alt="" width="47" height="54" loading="lazy" decoding="async">
+                                            </picture>
+                                        </span>
+                                    </label>
+<?php else: ?>
                                     <label class="bv-checkout-v3__method">
                                         <input type="radio" name="payment_method" value="<?= htmlspecialchars($cardMethod, ENT_QUOTES) ?>" <?= $paymentMethod === $cardMethod ? 'checked' : '' ?>>
                                         <span class="bv-checkout-v3__method-label">
@@ -367,6 +406,7 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                                             <span><strong><?= htmlspecialchars($cardLabels[$cardMethod][0], ENT_QUOTES) ?></strong><br><span><?= htmlspecialchars($cardLabels[$cardMethod][1], ENT_QUOTES) ?></span></span>
                                         </span>
                                     </label>
+<?php endif; ?>
                                 <?php endforeach; ?>
                                 <label class="bv-checkout-v3__method">
                                     <input type="radio" name="payment_method" value="cod" <?= $paymentMethod === 'cod' ? 'checked' : '' ?>>
@@ -517,13 +557,19 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
                     </div>
                 <?php endif; ?>
                 <button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
-                    <?= $previewMode ? 'Preview checkout' : (in_array($paymentMethod, ['euplatesc', 'stripe'], true) ? 'Către plată' : 'Plasează comanda') ?>
+                    <?= $previewMode ? 'Preview checkout' : (\App\Support\PaymentMethods::esteCard($paymentMethod) ? 'Către plată' : 'Plasează comanda') ?>
                 </button>
                 <p class="bv-checkout-v3__shipping-error" data-checkout-shipping-error></p>
                 <?php if ($cardMethods !== []): ?>
+<?php if ($btInCheckout): ?>
+                    <p class="bv-checkout-v3__note" data-card-note>
+                        Plată securizată prin <?= htmlspecialchars($numeProcesatori[in_array($paymentMethod, $cardMethods, true) ? $paymentMethod : $cardMethods[0]] ?? 'Banca Transilvania', ENT_QUOTES) ?>.
+                    </p>
+<?php else: ?>
                     <p class="bv-checkout-v3__note">
                         Plată securizată prin <?= in_array('euplatesc', $cardMethods, true) ? 'EuPlătesc' : 'Stripe' ?>.
                     </p>
+<?php endif; ?>
                 <?php endif; ?>
             </aside>
         </div>
@@ -634,13 +680,26 @@ $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
             if (!(submitButton instanceof HTMLButtonElement)) return;
             const selected = paymentInputs.find((input) => input instanceof HTMLInputElement && input.checked);
             const method = selected instanceof HTMLInputElement ? String(selected.value || '') : '';
-            submitButton.textContent = (method === 'stripe' || method === 'euplatesc') ? 'Către plată' : 'Plasează comanda';
+            submitButton.textContent = (method === 'stripe' || method === 'euplatesc'<?= $btInCheckout ? " || method === 'btipay'" : '' ?>) ? 'Către plată' : 'Plasează comanda';
         };
         paymentInputs.forEach((input) => {
             if (!(input instanceof HTMLInputElement)) return;
             input.addEventListener('change', updateSubmitLabel);
         });
         updateSubmitLabel();
+<?php if ($btInCheckout): ?>
+        // Nota de sub buton spune prin cine se plătește, după cardul ales.
+        const cardNote = container.querySelector('[data-card-note]');
+        const numeProcesatori = <?= json_encode($numeProcesatori, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        paymentInputs.forEach((input) => {
+            if (!(input instanceof HTMLInputElement)) return;
+            input.addEventListener('change', () => {
+                if (input.checked && cardNote instanceof HTMLElement && numeProcesatori[input.value]) {
+                    cardNote.textContent = 'Plată securizată prin ' + numeProcesatori[input.value] + '.';
+                }
+            });
+        });
+<?php endif; ?>
         const syncCompanyFields = () => {
             const enabled = companyToggle instanceof HTMLInputElement && companyToggle.checked;
             if (companyFieldsWrap instanceof HTMLElement) {

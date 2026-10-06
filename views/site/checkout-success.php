@@ -2,7 +2,7 @@
 $numar = trim((string) ($orderNumber ?? ''));
 $email = trim((string) ($orderEmail ?? ''));
 $instructiuni = trim((string) ($opInstructiuni ?? ''));
-$returCard = ($stripeReturn ?? false) === true || ($euplatescReturn ?? false) === true;
+$returCard = ($stripeReturn ?? false) === true || ($euplatescReturn ?? false) === true || ($btReturn ?? false) === true;
 $platit = ($paymentStatus ?? '') === 'paid';
 
 // Trei situații, trei mesaje: card confirmat, card în curs, restul.
