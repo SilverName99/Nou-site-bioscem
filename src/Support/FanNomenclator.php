@@ -32,7 +32,7 @@ final class FanNomenclator
     public const LOCALITATI = 'localitati';
     public const STRAZI = 'strazi';
 
-    /** Peste atâtea rânduri, o listă „de km suplimentari" e de fapt lista completă. */
+    /** Sub atâtea rânduri, o listă „de km suplimentari" nu poate fi lista completă FAN. */
     public const PRAG_LISTA_COMPLETA = 5000;
 
     /** Maximul acceptat de FAN pe o pagină de străzi. */
@@ -596,34 +596,52 @@ final class FanNomenclator
 
         $acum = date('Y-m-d H:i:s');
         $randuri = [];
+        $incomplete = 0;
         foreach ($raspuns['data'] as $s) {
+            // `details` poate fi un singur tronson (obiect) sau o listă de
+            // tronsoane ale aceleiași străzi. Ca listă, citit ca obiect, dădea
+            // numere goale și toate tronsoanele străzii se contopeau într-unul.
             $detalii = is_array($s['details'] ?? null) ? $s['details'] : [];
-            $r = [
-                'county' => mb_substr(trim((string) ($s['county'] ?? '')), 0, 120),
-                'locality' => mb_substr(trim((string) ($s['locality'] ?? '')), 0, 190),
-                'street' => mb_substr(trim((string) ($s['street'] ?? $s['name'] ?? '')), 0, 255),
-                'street_id' => mb_substr(trim((string) ($s['id'] ?? '')), 0, 64),
-                'range_from' => mb_substr(trim((string) ($detalii['fromNo'] ?? '')), 0, 40),
-                'range_to' => mb_substr(trim((string) ($detalii['toNo'] ?? '')), 0, 40),
-                'parity' => mb_substr(trim((string) ($detalii['parityNo'] ?? '')), 0, 32),
-                'postal_code' => mb_substr(trim((string) ($detalii['zipCode'] ?? '')), 0, 32),
-                'street_type' => mb_substr(trim((string) ($s['type'] ?? '')), 0, 80),
-                'agency' => mb_substr(trim((string) ($s['agency'] ?? $detalii['agency'] ?? '')), 0, 160),
-            ];
-            if ($r['county'] === '' || $r['locality'] === '' || $r['street'] === '') {
-                continue;
+            $tronsoane = isset($detalii[0])
+                ? array_values(array_filter($detalii, 'is_array'))
+                : [$detalii];
+            if ($tronsoane === []) {
+                $tronsoane = [[]];
             }
-            $randuri[] = [
-                $r['county'], $r['locality'], $r['street'], $r['street_id'], $r['range_from'], $r['range_to'],
-                $r['parity'], $r['postal_code'], $r['street_type'], $r['agency'],
-                mb_substr(self::normalizeaza($r['county']), 0, 120),
-                mb_substr(self::normalizeaza($r['locality']), 0, 190),
-                mb_substr(self::normalizeaza($r['street']), 0, 255),
-                self::cheieStrada($r),
-                $acum,
-                $acum,
-            ];
+            foreach ($tronsoane as $t) {
+                $r = [
+                    'county' => mb_substr(trim((string) ($s['county'] ?? '')), 0, 120),
+                    'locality' => mb_substr(trim((string) ($s['locality'] ?? '')), 0, 190),
+                    'street' => mb_substr(trim((string) ($s['street'] ?? $s['name'] ?? '')), 0, 255),
+                    'street_id' => mb_substr(trim((string) ($s['id'] ?? '')), 0, 64),
+                    'range_from' => mb_substr(trim((string) ($t['fromNo'] ?? '')), 0, 40),
+                    'range_to' => mb_substr(trim((string) ($t['toNo'] ?? '')), 0, 40),
+                    'parity' => mb_substr(trim((string) ($t['parityNo'] ?? '')), 0, 32),
+                    'postal_code' => mb_substr(trim((string) ($t['zipCode'] ?? '')), 0, 32),
+                    'street_type' => mb_substr(trim((string) ($s['type'] ?? '')), 0, 80),
+                    'agency' => mb_substr(trim((string) ($s['agency'] ?? $t['agency'] ?? '')), 0, 160),
+                ];
+                if ($r['county'] === '' || $r['locality'] === '' || $r['street'] === '') {
+                    $incomplete++;
+                    continue;
+                }
+                $randuri[] = [
+                    $r['county'], $r['locality'], $r['street'], $r['street_id'], $r['range_from'], $r['range_to'],
+                    $r['parity'], $r['postal_code'], $r['street_type'], $r['agency'],
+                    mb_substr(self::normalizeaza($r['county']), 0, 120),
+                    mb_substr(self::normalizeaza($r['locality']), 0, 190),
+                    mb_substr(self::normalizeaza($r['street']), 0, 255),
+                    self::cheieStrada($r),
+                    $acum,
+                    $acum,
+                ];
+            }
         }
+        // Completitudinea se judecă după rândurile primite de la FAN, nu după
+        // cele rămase în tabel: rândurile identice se contopesc la scriere și
+        // nu înseamnă că s-a pierdut vreo pagină.
+        $cursor['primite'] = (int) ($cursor['primite'] ?? 0) + count($raspuns['data']);
+        $cursor['incomplete'] = (int) ($cursor['incomplete'] ?? 0) + $incomplete;
         self::insereazaInLoturi(
             $db,
             'fan_streets__sync',
@@ -701,18 +719,33 @@ final class FanNomenclator
         } else {
             $n = self::numarRanduri($db, 'fan_streets__sync');
             $total = isset($cursor['total']) ? (int) $cursor['total'] : null;
+            // Un cursor pornit înainte de numărătoare n-o are: atunci rămâne tabelul.
+            $primite = isset($cursor['primite']) ? (int) $cursor['primite'] : $n;
+            $incomplete = (int) ($cursor['incomplete'] ?? 0);
             if ($n === 0) {
                 throw new DateFanSuspecte('FAN nu a întors nicio stradă. Lista existentă a rămas neschimbată.');
             }
-            // Câteva rânduri pot lipsi dacă lista s-a mișcat între pagini sau
-            // dacă FAN are dubluri; mai multe înseamnă o listă ruptă.
-            if ($total !== null && $n < (int) floor($total * 0.98)) {
+            // Câteva rânduri pot lipsi dacă lista s-a mișcat între pagini;
+            // mai multe înseamnă o listă ruptă. Se numără ce a trimis FAN:
+            // dublurile din lista lor se contopesc în tabel și nu sunt pierderi.
+            if ($total !== null && $primite < (int) floor($total * 0.98)) {
                 throw new DateFanSuspecte(
-                    'Au venit doar ' . $n . ' străzi din ' . $total . ' anunțate de FAN. Lista existentă a rămas neschimbată.'
+                    'Au venit doar ' . $primite . ' străzi din ' . $total . ' anunțate de FAN. Lista existentă a rămas neschimbată.'
                 );
             }
             self::inlocuiesteTabele($db, self::TABELE[$lista]);
             $detalii = number_format($n, 0, ',', '.') . ' străzi';
+            $note = [];
+            if ($incomplete > 0) {
+                $note[] = number_format($incomplete, 0, ',', '.') . ' fără județ, localitate sau nume, sărite';
+            }
+            $dubluri = $primite - $incomplete - $n;
+            if ($dubluri > 0) {
+                $note[] = number_format($dubluri, 0, ',', '.') . ' dubluri în lista FAN, păstrate o dată';
+            }
+            if ($note !== []) {
+                $detalii .= ' (' . implode('; ', $note) . ')';
+            }
             $randuri = $n;
             $mesaj = 'Străzi FAN sincronizate: ' . $detalii . '.';
         }

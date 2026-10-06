@@ -264,7 +264,15 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
             Lista se reface la fiecare sincronizare a localităților: intră doar localitățile pe care FAN le are
             cu km suplimentari (<code>exteriorKm</code> &gt; 0).
         </p>
-        <?php if ($totalKm > \App\Support\FanNomenclator::PRAG_LISTA_COMPLETA): ?>
+        <?php
+            // Din FAN, peste jumătate din localități (satele) au km
+            // suplimentari, deci un număr mare nu e în sine o greșeală. Greșeala
+            // e lista care are aproape toate localitățile din nomenclator.
+            $totalLocalitati = (int) ($fanLocalitiesCount ?? 0);
+            $pareListaCompleta = $totalKm > \App\Support\FanNomenclator::PRAG_LISTA_COMPLETA
+                && ($totalLocalitati === 0 || $totalKm >= $totalLocalitati * 0.95);
+        ?>
+        <?php if ($pareListaCompleta): ?>
             <p style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;">
                 Lista are <strong><?= $totalKm ?></strong> de localități — pare lista completă FAN, nu doar cele cu
                 km suplimentari, așa că aproape orice comandă primește taxa. Apasă „Sincronizează din FAN” de mai jos.
