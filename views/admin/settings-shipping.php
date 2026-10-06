@@ -39,6 +39,65 @@ $renderCampJudet = static function (string $name, string $value, string $etichet
     echo '</select>';
 };
 
+/**
+ * Blocul „sincronizare din FAN" de pe tab-urile cu liste: buton, starea
+ * ultimei rulări și, cât timp o sincronizare e la jumătate, pasul următor
+ * trimis automat. Tab-ul de km suplimentari folosește sincronizarea de
+ * localități: ambele liste vin din același răspuns FAN.
+ */
+$fanSyncContinua = trim((string) ($fanSyncContinua ?? ''));
+$fanSyncCron = (string) ($fanSyncCron ?? '');
+$renderSincronizareFan = static function (string $lista, array $stare, string $tab, string $eticheta) use ($fanSyncContinua, $fanSyncCron, $shippingTab): void {
+    $e = static fn (string $t): string => htmlspecialchars($t, ENT_QUOTES);
+    $data = static function ($valoare): string {
+        $ts = $valoare ? strtotime((string) $valoare) : false;
+        return $ts ? date('d.m.Y H:i', $ts) : '';
+    };
+    $sursa = static fn (string $s): string => $s === 'cron' ? 'cron' : ($s === 'admin' ? 'din admin' : $s);
+    $formId = 'fan-sync-' . $lista . '-' . $tab;
+    // Doar pe tab-ul deschis: lista de localități apare pe două tab-uri și
+    // două formulare trimise deodată s-ar călca pe picioare.
+    $continua = $fanSyncContinua === $lista && !empty($stare['in_curs']) && $tab === $shippingTab;
+
+    echo '<div style="margin:0 0 14px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;">';
+    echo '<form method="post" action="/admin/settings/shipping/fan-nomenclator/sync" id="' . $e($formId) . '" style="margin:0 0 8px;">';
+    echo '<input type="hidden" name="lista" value="' . $e($lista) . '">';
+    echo '<input type="hidden" name="tab" value="' . $e($tab) . '">';
+    $textButon = !empty($stare['in_curs']) ? 'Continuă sincronizarea din FAN' : $eticheta;
+    echo '<button class="btn" type="submit">' . $e($textButon) . '</button>';
+    echo '</form>';
+
+    if ($continua) {
+        echo '<p style="margin:0 0 6px;padding:8px 10px;border-radius:6px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:13px;">'
+            . 'Sincronizarea continuă: ' . $e((string) $stare['progres']) . '. Nu închide pagina — se reîncarcă singură până la final.'
+            . ' Lista folosită de site se schimbă abia la ultimul pas.</p>';
+        // Pasul următor pleacă singur; butonul de mai sus rămâne pentru cine
+        // are JavaScript oprit.
+        echo '<script>setTimeout(function () { var f = document.getElementById(' . json_encode($formId) . '); if (f) { f.submit(); } }, 400);</script>';
+    } elseif (!empty($stare['activ_acum'])) {
+        echo '<p style="margin:0 0 6px;color:#065f46;font-size:13px;">Sincronizare în curs (' . $e((string) $stare['progres']) . '), pornită ' . $e($sursa((string) $stare['sursa'])) . '.</p>';
+    } elseif (!empty($stare['in_curs'])) {
+        echo '<p style="margin:0 0 6px;color:#92400e;font-size:13px;">Sincronizare rămasă la jumătate (' . $e((string) $stare['progres']) . '). '
+            . 'Butonul o continuă de unde a rămas; altfel o termină cronul de noapte. Până atunci site-ul folosește lista veche.</p>';
+    }
+
+    if (!empty($stare['reusit_la'])) {
+        echo '<p style="margin:0 0 4px;color:#334155;font-size:13px;">Ultima sincronizare reușită: <strong>' . $e($data($stare['reusit_la'])) . '</strong> ('
+            . $e($sursa((string) $stare['reusit_sursa'])) . ') — ' . $e((string) $stare['reusit_detalii']) . '.</p>';
+    } else {
+        echo '<p style="margin:0 0 4px;color:#64748b;font-size:13px;">Lista nu a fost încă sincronizată din FAN.</p>';
+    }
+    if (!empty($stare['eroare_dupa_reusita'])) {
+        echo '<p style="margin:0 0 4px;padding:8px 10px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;">'
+            . 'Ultima încercare (' . $e($data($stare['eroare_la'])) . ') a eșuat: ' . $e((string) $stare['eroare'])
+            . '<br>Lista folosită de site a rămas cea de dinainte.</p>';
+    }
+    echo '<p style="margin:6px 0 0;color:#64748b;font-size:12px;">Automat, în fiecare noapte: în hPanel → Advanced → Cron Jobs,'
+        . ' comanda <code>' . $e($fanSyncCron) . '</code> cu programarea <code>15 1 * * *</code>'
+        . ' (01:15 ora serverului). Aduce și localitățile, și străzile.</p>';
+    echo '</div>';
+};
+
 $renderCampLocalitate = static function (string $name, string $value, string $numeCampJudet, string $eticheta = 'Localitate'): void {
     $id = 'fanloc-' . substr(md5($name), 0, 8);
     $nameAttr = htmlspecialchars($name, ENT_QUOTES);
@@ -146,55 +205,83 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
     </style>
 
     <div class="shipping-settings-tabs" data-shipping-settings-tabs data-default-tab="<?= htmlspecialchars($shippingTab, ENT_QUOTES) ?>">
-        <button class="btn btn-secondary <?= $shippingTab === 'fan-localities' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-localities">Import localități FAN (Excel/CSV)</button>
-        <button class="btn btn-secondary <?= $shippingTab === 'fan-streets' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-streets">Lista străzi (Excel/CSV)</button>
-        <button class="btn btn-secondary <?= $shippingTab === 'fan-extra-km' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-extra-km">Lista localități cu km suplimentari (Excel/CSV)</button>
+        <button class="btn btn-secondary <?= $shippingTab === 'fan-localities' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-localities">Localități FAN</button>
+        <button class="btn btn-secondary <?= $shippingTab === 'fan-streets' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-streets">Lista străzi</button>
+        <button class="btn btn-secondary <?= $shippingTab === 'fan-extra-km' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-extra-km">Localități cu km suplimentari</button>
         <button class="btn btn-secondary <?= $shippingTab === 'fanbox' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fanbox">Puncte FANbox (Excel/CSV)</button>
         <button class="btn btn-secondary <?= $shippingTab === 'fan-api' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="fan-api">Autentificare FAN API</button>
         <button class="btn btn-secondary <?= $shippingTab === 'delivery-settings' ? 'is-active' : '' ?>" type="button" data-shipping-settings-tab="delivery-settings">Setări de livrare</button>
     </div>
 
     <article class="panel shipping-settings-panel" data-shipping-settings-panel="fan-localities" <?= $shippingTab !== 'fan-localities' ? 'hidden' : '' ?> style="margin:12px 0 16px;background:#f8fafc;border-color:#cbd5e1;">
-        <h3 style="margin:0 0 8px;">Import localități FAN (Excel/CSV)</h3>
+        <h3 style="margin:0 0 8px;">Localități FAN</h3>
+        <?php $stareLocalitati = is_array($fanSyncLocalitati ?? null) ? $fanSyncLocalitati : []; ?>
         <p style="margin:0 0 10px;color:#64748b;">
-            Încarcă fișierul descărcat din selfAWB cu coloanele <strong>Localitate</strong> și <strong>Judet</strong>.
-            Aceste date vor fi folosite în checkout pentru dropdown cu search.
+            Nomenclatorul de localități folosit în checkout (dropdown cu căutare). Se ia direct de la FAN,
+            o dată cu lista de localități cu km suplimentari.
+        </p>
+        <?php $renderSincronizareFan('localitati', $stareLocalitati, 'fan-localities', 'Sincronizează localitățile din FAN'); ?>
+        <p style="margin:8px 0 6px;color:#64748b;font-size:13px;">
+            Rezervă: import din fișierul descărcat din selfAWB, cu coloanele <strong>Localitate</strong> și <strong>Judet</strong>.
+            Se adaugă la lista existentă; următoarea sincronizare din FAN o înlocuiește.
         </p>
         <form method="post" action="/admin/settings/shipping/localities/import" enctype="multipart/form-data" style="display:grid;gap:8px;max-width:520px;">
             <input type="file" name="fan_localities_file" accept=".csv,.xlsx" required>
-            <button class="btn" type="submit">Importă localități FAN</button>
+            <button class="btn btn-secondary" type="submit">Importă localități FAN din fișier</button>
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-            Total localități importate: <strong><?= (int) ($fanLocalitiesCount ?? 0) ?></strong>
+            Total localități: <strong><?= (int) ($fanLocalitiesCount ?? 0) ?></strong>
         </p>
     </article>
 
     <article class="panel shipping-settings-panel" data-shipping-settings-panel="fan-streets" <?= $shippingTab !== 'fan-streets' ? 'hidden' : '' ?> style="margin:12px 0 16px;background:#f8fafc;border-color:#cbd5e1;">
-        <h3 style="margin:0 0 8px;">Lista străzi (Excel/CSV)</h3>
+        <h3 style="margin:0 0 8px;">Lista străzi</h3>
+        <?php $stareStrazi = is_array($fanSyncStrazi ?? null) ? $fanSyncStrazi : []; ?>
         <p style="margin:0 0 10px;color:#64748b;">
-            Încarcă fișierul de străzi FAN (ex: tab-ul „Streets Bucuresti”).
-            Este folosit pentru validări suplimentare FAN.
+            Străzile din nomenclatorul FAN, folosite pentru validări suplimentare. Lista are peste o sută de
+            pagini la FAN: din buton se aduce pe bucăți (pagina se reîncarcă singură până la final), iar
+            cronul de noapte o aduce toată.
+        </p>
+        <?php $renderSincronizareFan('strazi', $stareStrazi, 'fan-streets', 'Sincronizează străzile din FAN'); ?>
+        <p style="margin:8px 0 6px;color:#64748b;font-size:13px;">
+            Rezervă: import din fișierul de străzi FAN (ex: tab-ul „Streets Bucuresti”).
+            Se adaugă la lista existentă; următoarea sincronizare din FAN o înlocuiește.
         </p>
         <form method="post" action="/admin/settings/shipping/streets/import" enctype="multipart/form-data" style="display:grid;gap:8px;max-width:520px;">
             <input type="file" name="fan_streets_file" accept=".csv,.xlsx" required>
-            <button class="btn" type="submit">Importă lista străzi</button>
+            <button class="btn btn-secondary" type="submit">Importă lista străzi din fișier</button>
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-            Total străzi importate: <strong><?= (int) ($fanStreetsCount ?? 0) ?></strong>
+            Total străzi: <strong><?= (int) ($fanStreetsCount ?? 0) ?></strong>
         </p>
     </article>
 
     <article class="panel shipping-settings-panel" data-shipping-settings-panel="fan-extra-km" <?= $shippingTab !== 'fan-extra-km' ? 'hidden' : '' ?> style="margin:12px 0 16px;background:#f8fafc;border-color:#cbd5e1;">
-        <h3 style="margin:0 0 8px;">Lista localități cu km suplimentari (Excel/CSV)</h3>
+        <h3 style="margin:0 0 8px;">Localități cu km suplimentari</h3>
+        <?php $totalKm = (int) ($fanExtraKmCount ?? 0); ?>
         <p style="margin:0 0 10px;color:#64748b;">
-            Încarcă fișierul cu localități care au kilometri suplimentari.
+            Comenzile către aceste localități primesc taxa de km suplimentari (Setări de livrare → prețuri fixe).
+            Lista se reface la fiecare sincronizare a localităților: intră doar localitățile pe care FAN le are
+            cu km suplimentari (<code>exteriorKm</code> &gt; 0).
+        </p>
+        <?php if ($totalKm > \App\Support\FanNomenclator::PRAG_LISTA_COMPLETA): ?>
+            <p style="margin:0 0 12px;padding:10px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;">
+                Lista are <strong><?= $totalKm ?></strong> de localități — pare lista completă FAN, nu doar cele cu
+                km suplimentari, așa că aproape orice comandă primește taxa. Apasă „Sincronizează din FAN” de mai jos.
+            </p>
+        <?php endif; ?>
+        <?php $renderSincronizareFan('localitati', $stareLocalitati, 'fan-extra-km', 'Sincronizează din FAN (localități + km suplimentari)'); ?>
+        <p style="margin:8px 0 6px;color:#64748b;font-size:13px;">
+            Rezervă: import din fișier. Fișierul <strong>înlocuiește</strong> lista. Dacă are o coloană de km
+            (ex. „exteriorKm”, „Km exteriori”), intră doar localitățile cu km &gt; 0; fără ea intră toate rândurile,
+            deci fișierul trebuie să conțină doar localitățile cu taxă. Următoarea sincronizare din FAN înlocuiește importul.
         </p>
         <form method="post" action="/admin/settings/shipping/extra-km/import" enctype="multipart/form-data" style="display:grid;gap:8px;max-width:520px;">
             <input type="file" name="fan_localities_km_file" accept=".csv,.xlsx" required>
-            <button class="btn" type="submit">Importă localități cu km suplimentari</button>
+            <button class="btn btn-secondary" type="submit">Importă localități cu km suplimentari din fișier</button>
         </form>
         <p style="margin:8px 0 0;color:#64748b;font-size:13px;">
-            Total localități km suplimentari: <strong><?= (int) ($fanExtraKmCount ?? 0) ?></strong>
+            Total localități cu km suplimentari: <strong><?= $totalKm ?></strong>
         </p>
     </article>
 

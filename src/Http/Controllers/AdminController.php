@@ -9755,6 +9755,11 @@ final class AdminController
             'fanLockersCuIdFan' => \App\Support\FanLockers::numarCuIdFan($db),
             'fanLockersJudete' => \App\Support\FanLockers::peJudete($db),
             'fanJudete' => $this->fanCountyList($db),
+            'fanSyncLocalitati' => \App\Support\FanNomenclator::stare($db, \App\Support\FanNomenclator::LOCALITATI),
+            'fanSyncStrazi' => \App\Support\FanNomenclator::stare($db, \App\Support\FanNomenclator::STRAZI),
+            'fanSyncContinua' => (string) ($_GET['continua'] ?? ''),
+            // Calea reală de pe server, ca linia de cron să se poată copia așa cum e.
+            'fanSyncCron' => 'php ' . dirname(__DIR__, 3) . '/scripts/fan-nomenclator-sync.php',
             'erpDepozite' => $erpDepozite,
             'erpGestiuniPeJudete' => $erpGestiuniPeJudete,
             'shippingTab' => $this->normalizeShippingSettingsTab((string) ($_GET['tab'] ?? 'fan-localities')),
@@ -10296,6 +10301,14 @@ final class AdminController
             ($result['ok'] ?? false) ? 'success' : 'error',
             (string) ($result['message'] ?? 'Import listă localități km suplimentari finalizat.')
         );
+        // Avertismentul merge pe canalul de eroare (roșu) ca să nu treacă
+        // neobservat sub mesajul verde de import reușit.
+        if (($result['warning'] ?? '') !== '') {
+            Flash::set('error', (string) $result['warning']);
+        }
+        if ($result['ok'] ?? false) {
+            ResponseCache::purgePageCache();
+        }
         header('Location: /admin/settings/shipping?tab=fan-extra-km');
     }
 
@@ -10422,6 +10435,71 @@ final class AdminController
         Flash::set('success', $mesaj);
         ResponseCache::purgePageCache();
         header('Location: /admin/settings/shipping?tab=fanbox');
+    }
+
+    /**
+     * Sincronizează din API-ul FAN lista de localități (cu tot cu lista de km
+     * suplimentari) sau pe cea de străzi.
+     *
+     * Străzile sunt peste o sută de pagini, iar pe găzduirea comună o cerere
+     * web lungă e tăiată de server. De aceea fiecare apăsare lucrează cel mult
+     * ~15 secunde și, dacă n-a terminat, pagina se retrimite singură și
+     * continuă de unde a rămas. Lista folosită de site se schimbă abia la
+     * ultimul pas. Dacă omul închide pagina, cronul de noapte o duce la capăt.
+     */
+    public function fanNomenclatorSync(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+
+        $lista = (string) ($_POST['lista'] ?? '');
+        if (!in_array($lista, [\App\Support\FanNomenclator::LOCALITATI, \App\Support\FanNomenclator::STRAZI], true)) {
+            $lista = \App\Support\FanNomenclator::LOCALITATI;
+        }
+        $tab = $this->normalizeShippingSettingsTab((string) ($_POST['tab'] ?? ''));
+        if (!in_array($tab, ['fan-localities', 'fan-streets', 'fan-extra-km'], true)) {
+            $tab = $lista === \App\Support\FanNomenclator::STRAZI ? 'fan-streets' : 'fan-localities';
+        }
+        $inapoi = '/admin/settings/shipping?tab=' . $tab;
+
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            Flash::set('error', 'Conexiunea DB nu este disponibilă.');
+            header('Location: ' . $inapoi);
+            return;
+        }
+        $credentials = \App\Support\FanNomenclator::credentialeDinSetari(Settings::all($db));
+        if ($credentials === null) {
+            Flash::set('error', 'Completează întâi datele de acces FAN (client ID, utilizator, parolă) în Setări livrare.');
+            header('Location: ' . $inapoi);
+            return;
+        }
+
+        // Plasă pentru cererea FAN prinsă la limita bugetului; unde serverul
+        // nu dă voie, rămâne limita lui, iar bugetul de 15 s încape în ea.
+        @set_time_limit(90);
+        $rezultat = \App\Support\FanNomenclator::ruleaza($db, $credentials, $lista, 'admin', 15.0);
+
+        switch ($rezultat['stare']) {
+            case 'gata':
+                AdminActivityLog::log($db, 'fan_nomenclator_sync', [
+                    'lista' => $lista,
+                    'randuri' => $rezultat['randuri'],
+                    'mesaj' => $rezultat['mesaj'],
+                ]);
+                Flash::set('success', $rezultat['mesaj']);
+                ResponseCache::purgePageCache();
+                header('Location: ' . $inapoi);
+                return;
+            case 'in_curs':
+                // Fără mesaj: pagina arată progresul și trimite singură pasul următor.
+                header('Location: ' . $inapoi . '&continua=' . $lista);
+                return;
+            default:
+                Flash::set('error', 'Sincronizarea din FAN nu s-a terminat: ' . $rezultat['mesaj']);
+                header('Location: ' . $inapoi);
+        }
     }
 
     public function shippingExtraKmImport(): void
@@ -17001,7 +17079,7 @@ HTML;
             $value = 'delivery-settings';
         }
 
-        return in_array($value, ['fan-localities', 'fan-streets', 'fan-extra-km', 'fan-api', 'delivery-settings'], true)
+        return in_array($value, ['fan-localities', 'fan-streets', 'fan-extra-km', 'fanbox', 'fan-api', 'delivery-settings'], true)
             ? $value
             : 'fan-localities';
     }
@@ -23117,10 +23195,24 @@ HTML;
             $countyKey = 'B';
         }
 
+        // Coloana de km („Km exteriori", „exteriorKm", „Km suplimentari"). Fără
+        // ea, din lista completă FAN nu se poate afla care localități au taxă.
+        $kmKey = null;
+        foreach ($columns as $column => $name) {
+            if ($column === $localityKey || $column === $countyKey) {
+                continue;
+            }
+            if (str_contains($name, 'km') || str_contains($name, 'kilometr')) {
+                $kmKey = $column;
+                break;
+            }
+        }
+
         return [
             'columns' => $columns,
             'locality_col' => $localityKey,
             'county_col' => $countyKey,
+            'km_col' => $kmKey,
         ];
     }
 
@@ -23140,153 +23232,30 @@ HTML;
         if ($locality === '' || $county === '') {
             return null;
         }
+        $kmCol = $header['km_col'] ?? null;
         return [
             'locality' => $locality,
             'county' => $county,
+            // null = fișierul n-are coloană de km (nu „0 km").
+            'km' => $kmCol !== null ? trim((string) ($lineMap[$kmCol] ?? '')) : null,
         ];
     }
 
+    // Schema celor trei liste stă în FanNomenclator: sincronizarea din FAN
+    // le copiază structura în tabelele-ciornă, deci trebuie să fie una singură.
     private function ensureFanLocalitiesSchema(PDO $db): void
     {
-        try {
-            $db->exec(
-                'CREATE TABLE IF NOT EXISTS fan_localities (
-                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    county VARCHAR(120) NOT NULL,
-                    locality VARCHAR(190) NOT NULL,
-                    county_norm VARCHAR(120) NOT NULL,
-                    locality_norm VARCHAR(190) NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_fan_localities (county_norm, locality_norm),
-                    KEY idx_fan_localities_county (county_norm),
-                    KEY idx_fan_localities_locality (locality_norm)
-                )'
-            );
-        } catch (Throwable) {
-        }
+        \App\Support\FanNomenclator::asiguraSchemaLocalitati($db);
     }
 
     private function ensureFanStreetsSchema(PDO $db): void
     {
-        try {
-            $db->exec(
-                'CREATE TABLE IF NOT EXISTS fan_streets (
-                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    county VARCHAR(120) NOT NULL,
-                    locality VARCHAR(190) NOT NULL,
-                    street VARCHAR(255) NOT NULL,
-                    street_id VARCHAR(64) NOT NULL DEFAULT "",
-                    range_from VARCHAR(40) NOT NULL DEFAULT "",
-                    range_to VARCHAR(40) NOT NULL DEFAULT "",
-                    parity VARCHAR(32) NOT NULL DEFAULT "",
-                    postal_code VARCHAR(32) NOT NULL DEFAULT "",
-                    street_type VARCHAR(80) NOT NULL DEFAULT "",
-                    agency VARCHAR(160) NOT NULL DEFAULT "",
-                    county_norm VARCHAR(120) NOT NULL,
-                    locality_norm VARCHAR(190) NOT NULL,
-                    street_norm VARCHAR(255) NOT NULL,
-                    row_key CHAR(40) NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_fan_streets_row (row_key),
-                    KEY idx_fan_streets_county (county_norm),
-                    KEY idx_fan_streets_locality (locality_norm),
-                    KEY idx_fan_streets_street (street_norm)
-                )'
-            );
-        } catch (Throwable) {
-        }
-
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN street VARCHAR(255) NOT NULL AFTER locality');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN street_norm VARCHAR(255) NOT NULL AFTER locality_norm');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN street_id VARCHAR(64) NOT NULL DEFAULT "" AFTER street');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN range_from VARCHAR(40) NOT NULL DEFAULT "" AFTER street_id');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN range_to VARCHAR(40) NOT NULL DEFAULT "" AFTER range_from');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN parity VARCHAR(32) NOT NULL DEFAULT "" AFTER range_to');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN postal_code VARCHAR(32) NOT NULL DEFAULT "" AFTER parity');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN street_type VARCHAR(80) NOT NULL DEFAULT "" AFTER postal_code');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN agency VARCHAR(160) NOT NULL DEFAULT "" AFTER street_type');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD COLUMN row_key CHAR(40) NOT NULL DEFAULT "" AFTER street_norm');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets DROP INDEX uniq_fan_streets');
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec(
-                'UPDATE fan_streets
-                 SET row_key = SHA1(CONCAT_WS("|",
-                    county_norm,
-                    locality_norm,
-                    street_norm,
-                    COALESCE(street_id, ""),
-                    COALESCE(range_from, ""),
-                    COALESCE(range_to, ""),
-                    COALESCE(parity, ""),
-                    COALESCE(postal_code, ""),
-                    COALESCE(street_type, ""),
-                    COALESCE(agency, ""),
-                    CAST(id AS CHAR)
-                 ))
-                 WHERE row_key = ""'
-            );
-        } catch (Throwable) {
-        }
-        try {
-            $db->exec('ALTER TABLE fan_streets ADD UNIQUE KEY uniq_fan_streets_row (row_key)');
-        } catch (Throwable) {
-        }
+        \App\Support\FanNomenclator::asiguraSchemaStrazi($db);
     }
 
     private function ensureFanLocalitiesExtraKmSchema(PDO $db): void
     {
-        try {
-            $db->exec(
-                'CREATE TABLE IF NOT EXISTS fan_localities_extra_km (
-                    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    county VARCHAR(120) NOT NULL,
-                    locality VARCHAR(190) NOT NULL,
-                    county_norm VARCHAR(120) NOT NULL,
-                    locality_norm VARCHAR(190) NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    updated_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_fan_localities_extra_km (county_norm, locality_norm),
-                    KEY idx_fan_localities_extra_km_county (county_norm),
-                    KEY idx_fan_localities_extra_km_locality (locality_norm)
-                )'
-            );
-        } catch (Throwable) {
-        }
+        \App\Support\FanNomenclator::asiguraSchemaKm($db);
     }
 
     private function importFanStreetsFromUploadedFile(PDO $db, mixed $file): array
@@ -23433,28 +23402,19 @@ HTML;
         ];
     }
 
+    /**
+     * Importul de rezervă al listei de km suplimentari (sursa obișnuită e
+     * sincronizarea din FAN).
+     *
+     * Fișierul ÎNLOCUIEȘTE lista, nu se adaugă la ea: lista spune cine plătește
+     * taxa, iar o localitate rămasă din importul trecut ar plăti-o pe nedrept.
+     * Dacă fișierul are o coloană de km, intră doar localitățile cu km > 0 —
+     * exportul complet FAN are toate localitățile țării, cele mai multe cu 0.
+     */
     private function importFanLocalitiesExtraKmFromUploadedFile(PDO $db, mixed $file): array
     {
-        return $this->importFanSimpleListFromUploadedFile(
-            $db,
-            $file,
-            'fan_localities_extra_km',
-            'Selectează fișierul CSV/XLSX cu localități FAN (km suplimentari).',
-            'Nu am găsit rânduri valide în fișier (coloane localitate + județ).',
-            'Localități km suplimentari importate: '
-        );
-    }
-
-    private function importFanSimpleListFromUploadedFile(
-        PDO $db,
-        mixed $file,
-        string $table,
-        string $missingFileMessage,
-        string $emptyRowsMessage,
-        string $successPrefix
-    ): array {
         if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            return ['ok' => false, 'message' => $missingFileMessage];
+            return ['ok' => false, 'message' => 'Selectează fișierul CSV/XLSX cu localități FAN (km suplimentari).'];
         }
         if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
             return ['ok' => false, 'message' => 'Upload eșuat. Încearcă din nou.'];
@@ -23475,74 +23435,113 @@ HTML;
         $rows = $ext === 'csv'
             ? $this->fanSimpleListRowsFromCsv($tmpPath)
             : $this->fanSimpleListRowsFromXlsx($tmpPath);
+
+        return $this->replaceFanExtraKmList($db, $rows);
+    }
+
+    /**
+     * @param list<array{county:string,locality:string,km:?string}> $rows
+     * @return array{ok:bool,message:string,warning?:string}
+     */
+    private function replaceFanExtraKmList(PDO $db, array $rows): array
+    {
         if ($rows === []) {
-            return ['ok' => false, 'message' => $emptyRowsMessage];
+            return ['ok' => false, 'message' => 'Nu am găsit rânduri valide în fișier (coloane localitate + județ).'];
         }
 
-        if ($table === 'fan_streets') {
-            $this->ensureFanStreetsSchema($db);
-        } else {
-            $this->ensureFanLocalitiesExtraKmSchema($db);
+        $cuColoanaKm = false;
+        foreach ($rows as $row) {
+            if (($row['km'] ?? null) !== null) {
+                $cuColoanaKm = true;
+                break;
+            }
         }
 
-        $now = date('Y-m-d H:i:s');
-        $inserted = 0;
-        $updated = 0;
-        $seen = [];
-        $stmt = $db->prepare(
-            "INSERT INTO {$table} (county, locality, county_norm, locality_norm, created_at, updated_at)
-             VALUES (:county, :locality, :county_norm, :locality_norm, :created_at, :updated_at)
-             ON DUPLICATE KEY UPDATE county = VALUES(county), locality = VALUES(locality), updated_at = VALUES(updated_at)"
-        );
-        $existsStmt = $db->prepare(
-            "SELECT id FROM {$table} WHERE county_norm = :county_norm AND locality_norm = :locality_norm LIMIT 1"
-        );
-
+        $deScris = [];
+        $sarite = 0;
         foreach ($rows as $row) {
             $county = trim((string) ($row['county'] ?? ''));
             $locality = trim((string) ($row['locality'] ?? ''));
-            if ($county === '' || $locality === '') {
-                continue;
-            }
-            $countyNorm = $this->normalizeFanLocalityToken($county);
-            $localityNorm = $this->normalizeFanLocalityToken($locality);
+            $countyNorm = \App\Support\FanNomenclator::normalizeazaJudet($county);
+            $localityNorm = \App\Support\FanNomenclator::normalizeaza($locality);
             if ($countyNorm === '' || $localityNorm === '') {
                 continue;
             }
+            $km = null;
+            if ($cuColoanaKm) {
+                $text = str_replace(',', '.', trim((string) ($row['km'] ?? '')));
+                $km = is_numeric($text) ? (float) $text : 0.0;
+                if ($km <= 0) {
+                    $sarite++;
+                    continue;
+                }
+            }
             $pair = $countyNorm . '|' . $localityNorm;
-            if (isset($seen[$pair])) {
+            // Același nume de două ori în județ: rămâne cel cu mai mulți km.
+            if (isset($deScris[$pair]) && ($deScris[$pair]['km'] ?? 0) >= ($km ?? 0)) {
                 continue;
             }
-            $seen[$pair] = true;
+            $deScris[$pair] = [
+                'county' => mb_substr($county, 0, 120),
+                'locality' => mb_substr($locality, 0, 190),
+                'county_norm' => mb_substr($countyNorm, 0, 120),
+                'locality_norm' => mb_substr($localityNorm, 0, 190),
+                'km' => $km,
+            ];
+        }
 
-            $existsStmt->execute([
-                'county_norm' => $countyNorm,
-                'locality_norm' => $localityNorm,
-            ]);
-            $exists = (bool) $existsStmt->fetchColumn();
-            $stmt->execute([
-                'county' => $county,
-                'locality' => $locality,
-                'county_norm' => $countyNorm,
-                'locality_norm' => $localityNorm,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-            if ($exists) {
-                $updated++;
-            } else {
-                $inserted++;
+        if ($deScris === []) {
+            return [
+                'ok' => false,
+                'message' => $cuColoanaKm
+                    ? 'Fișierul are coloana de km, dar nicio localitate nu are km > 0. Lista existentă a rămas neschimbată.'
+                    : 'Import fără rezultate. Verifică antetul și conținutul fișierului.',
+            ];
+        }
+
+        $this->ensureFanLocalitiesExtraKmSchema($db);
+        $now = date('Y-m-d H:i:s');
+        try {
+            $db->beginTransaction();
+            $db->exec('DELETE FROM fan_localities_extra_km');
+            $stmt = $db->prepare(
+                'INSERT INTO fan_localities_extra_km
+                    (county, locality, county_norm, locality_norm, exterior_km, created_at, updated_at)
+                 VALUES (:county, :locality, :county_norm, :locality_norm, :exterior_km, :created_at, :updated_at)'
+            );
+            foreach ($deScris as $r) {
+                $stmt->execute([
+                    'county' => $r['county'],
+                    'locality' => $r['locality'],
+                    'county_norm' => $r['county_norm'],
+                    'locality_norm' => $r['locality_norm'],
+                    'exterior_km' => $r['km'],
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
             }
+            $db->commit();
+        } catch (Throwable $exception) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            return ['ok' => false, 'message' => 'Importul a eșuat, lista existentă a rămas neschimbată: ' . $exception->getMessage()];
         }
 
-        if (($inserted + $updated) <= 0) {
-            return ['ok' => false, 'message' => 'Import fără rezultate. Verifică antetul și conținutul fișierului.'];
+        $total = count($deScris);
+        $mesaj = 'Lista de localități cu km suplimentari a fost înlocuită: ' . $total . ' localități.';
+        if ($cuColoanaKm) {
+            $mesaj .= ' Din fișier s-au luat doar cele cu km > 0 (' . $sarite . ' rânduri cu 0 km au fost sărite).';
+        }
+        $rezultat = ['ok' => true, 'message' => $mesaj];
+        if (!$cuColoanaKm && $total > \App\Support\FanNomenclator::PRAG_LISTA_COMPLETA) {
+            $rezultat['warning'] = 'Atenție: lista importată are ' . $total . ' de localități — pare lista completă FAN,'
+                . ' nu doar cele cu km suplimentari. Așa, aproape orice comandă primește taxa de km suplimentari.'
+                . ' Fișierul nu are o coloană de km după care să le filtrăm: folosește „Sincronizează din FAN"'
+                . ' sau un fișier care are coloana de km (exteriorKm).';
         }
 
-        return [
-            'ok' => true,
-            'message' => $successPrefix . ($inserted + $updated) . ' (noi: ' . $inserted . ', actualizate: ' . $updated . ').',
-        ];
+        return $rezultat;
     }
 
     private function fanStreetsRowsFromCsv(string $path): array
@@ -23866,7 +23865,8 @@ HTML;
 
         $first = array_shift($rowsByIndex);
         $headerCells = [];
-        foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $col) {
+        // Până la L, nu doar F: coloana de km a exportului FAN poate sta mai la dreapta.
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] as $col) {
             if (array_key_exists($col, $first)) {
                 $headerCells[] = $first[$col];
             }

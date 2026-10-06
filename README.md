@@ -104,6 +104,31 @@ Recomandare cron: o data pe zi (lista se schimba rar). Daca FAN raspunde cu o
 lista goala, scriptul se opreste fara sa modifice nimic — altfel ar dezactiva
 tot nomenclatorul.
 
+- localitatile FAN (dropdown-ul din checkout), lista de localitati cu km
+  suplimentari si lista de strazi vin din API-ul FAN (`/reports/localities`,
+  `/reports/streets`). Lista de km suplimentari e exact ce are FAN cu
+  `exteriorKm > 0` — inainte se incarca din fisier si ajunsese sa contina toata
+  tara, deci aproape orice comanda primea taxa. Fiecare tab din
+  `Admin -> Setari livrare` are butonul lui de sincronizare si arata data
+  ultimei sincronizari si eroarea ultimei incercari. Cron zilnic, noaptea
+  (comanda exacta, cu calea reala de pe server, e afisata si pe tab-uri):
+
+```
+15 1 * * * php /home/USER/public_html/scripts/fan-nomenclator-sync.php
+```
+
+  Optional `--lista=localitati` sau `--lista=strazi`. Listele se aduna intai
+  in tabele-ciorna (`fan_localities__sync`, `fan_localities_extra_km__sync`,
+  `fan_streets__sync`) si iau locul celor folosite de site printr-un singur
+  `RENAME TABLE`, abia dupa ce a venit tot: daca FAN pica la jumatate, intoarce
+  gol, fara `exteriorKm` sau mult mai putine randuri decat anunta, site-ul
+  ramane pe listele vechi. Rularile nu se suprapun (lacat MySQL `GET_LOCK`).
+  Strazile sunt peste o suta de pagini, asa ca butonul din admin lucreaza cate
+  ~15 secunde pe cerere si pagina se retrimite singura pana la final; o
+  sincronizare lasata la jumatate o termina cronul. Importul din fisier ramane
+  ca rezerva (cel de km suplimentari inlocuieste lista si, daca fisierul are o
+  coloana de km, ia doar randurile cu km > 0).
+
 ### Precomanda
 
 - pe fisa produsului, in `Admin -> Produse`, exista bifa **„Valabil pentru

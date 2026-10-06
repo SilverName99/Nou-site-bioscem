@@ -10,6 +10,17 @@ final class FanCourierGateway
 {
     private const API_BASE = 'https://api.fancourier.ro';
 
+    /**
+     * Adresa API-ului. `FAN_API_BASE` din .env o poate înlocui doar ca să
+     * putem rula sincronizările împotriva unui server de probă; pe site
+     * rămâne necompletată.
+     */
+    private static function apiBase(): string
+    {
+        $alta = trim((string) Env::get('FAN_API_BASE', ''));
+        return $alta !== '' ? rtrim($alta, '/') : self::API_BASE;
+    }
+
     private static ?string $cachedToken = null;
     private static int $cachedTokenAt = 0;
 
@@ -59,6 +70,84 @@ final class FanCourierGateway
         }
 
         return $out;
+    }
+
+    /**
+     * Județele din nomenclatorul FAN, ca nume (așa le cere `/reports/localities`).
+     *
+     * @return list<string>
+     */
+    public static function counties(array $credentials): array
+    {
+        $response = self::request('GET', '/reports/counties', $credentials);
+        $out = [];
+        foreach (self::extractData($response) as $rand) {
+            // Documentația nu arată forma unui rând: acceptăm și text simplu,
+            // și obiect cu `name`, ca o schimbare la ei să nu ne lase fără județe.
+            $nume = is_array($rand)
+                ? trim((string) ($rand['name'] ?? $rand['county'] ?? $rand['denumire'] ?? ''))
+                : trim((string) $rand);
+            if ($nume !== '' && !in_array($nume, $out, true)) {
+                $out[] = $nume;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * O pagină din `/reports/localities` (documentat fără paginare, dar dacă
+     * FAN o întoarce cu `total`/`perPage`, apelantul o parcurge).
+     *
+     * @return array{data:list<array<string,mixed>>,total:?int,perPage:?int,currentPage:?int}
+     */
+    public static function localitiesPage(array $credentials, string $county, int $page = 0, int $perPage = 0): array
+    {
+        $query = [];
+        if ($county !== '') {
+            $query['county'] = $county;
+        }
+        if ($page > 0) {
+            $query['page'] = $page;
+        }
+        if ($perPage > 0) {
+            $query['perPage'] = $perPage;
+        }
+
+        return self::reportPage('/reports/localities', $query, $credentials);
+    }
+
+    /**
+     * O pagină din `/reports/streets` (FAN acceptă cel mult 1000 pe pagină).
+     *
+     * @return array{data:list<array<string,mixed>>,total:?int,perPage:?int,currentPage:?int}
+     */
+    public static function streetsPage(array $credentials, int $page, int $perPage = 1000): array
+    {
+        return self::reportPage('/reports/streets', [
+            'page' => max(1, $page),
+            'perPage' => max(1, min(1000, $perPage)),
+        ], $credentials);
+    }
+
+    /** @return array{data:list<array<string,mixed>>,total:?int,perPage:?int,currentPage:?int} */
+    private static function reportPage(string $path, array $query, array $credentials): array
+    {
+        $response = self::request('GET', $path . ($query !== [] ? '?' . http_build_query($query) : ''), $credentials);
+        $randuri = [];
+        foreach (self::extractData($response) as $rand) {
+            if (is_array($rand)) {
+                $randuri[] = $rand;
+            }
+        }
+        $intreg = static fn (mixed $v): ?int => is_numeric($v) ? (int) $v : null;
+
+        return [
+            'data' => $randuri,
+            'total' => $intreg($response['total'] ?? null),
+            'perPage' => $intreg($response['perPage'] ?? null),
+            'currentPage' => $intreg($response['currentPage'] ?? null),
+        ];
     }
 
     public static function createInternalAwb(array $credentials, array $payload): array
@@ -419,7 +508,7 @@ final class FanCourierGateway
     private static function request(string $method, string $path, array $credentials, array $payload = []): array
     {
         $token = self::token($credentials);
-        $url = self::API_BASE . $path;
+        $url = self::apiBase() . $path;
         $headers = [
             'Authorization: Bearer ' . $token,
             'Accept: application/json',
@@ -461,7 +550,7 @@ final class FanCourierGateway
             throw new RuntimeException('Datele FAN API (username/parola) nu sunt configurate.');
         }
 
-        $url = self::API_BASE . '/login?' . http_build_query([
+        $url = self::apiBase() . '/login?' . http_build_query([
             'username' => $username,
             'password' => $password,
         ]);

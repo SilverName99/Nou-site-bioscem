@@ -84,7 +84,7 @@ final class ShippingPricing
         return round(max(0.0, (float) ($settings['shipping_fixed_base'] ?? 0)), 2);
     }
 
-    /** Localitatea e în lista importată de localități cu km suplimentari? */
+    /** Localitatea e în lista FAN de localități cu km suplimentari? */
     public static function areKmSuplimentari(
         ?PDO $db,
         string $judet,
@@ -125,31 +125,18 @@ final class ShippingPricing
         }
     }
 
-    /** Aceeași normalizare ca la importul listei FAN (fără diacritice, litere mici). */
+    /**
+     * Aceeași normalizare ca la scrierea listei (import din fișier și
+     * sincronizarea din FAN). Înainte, punctuația se ștergea aici, dar devenea
+     * spațiu la import: „Sat.Deleni" dădea două chei diferite și nu se potrivea.
+     */
     private static function normalizeaza(string $value): string
     {
-        $value = mb_strtolower(trim($value));
-        $value = strtr($value, [
-            'ă' => 'a',
-            'â' => 'a',
-            'î' => 'i',
-            'ș' => 's',
-            'ş' => 's',
-            'ț' => 't',
-            'ţ' => 't',
-        ]);
-        $value = preg_replace('/[^a-z0-9\s\-]/', '', $value) ?? '';
-        $value = preg_replace('/\s+/', ' ', $value) ?? '';
-        return trim($value);
+        return FanNomenclator::normalizeaza($value);
     }
 
     private static function normalizeazaJudet(string $judet): string
     {
-        $norm = self::normalizeaza($judet);
-        $norm = (string) preg_replace('/^(judetul|judet|municipiul)\s+/', '', $norm);
-        if (str_contains($norm, 'bucuresti') || $norm === 'b') {
-            return 'bucuresti';
-        }
-        return trim($norm);
+        return FanNomenclator::normalizeazaJudet($judet);
     }
 }
