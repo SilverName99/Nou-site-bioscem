@@ -13,16 +13,26 @@ declare(strict_types=1);
  *  - verifică la bancă plățile începute și neterminate; după 60 de minute
  *    (setabil) cele neplătite expiră, iar comanda devine eșuată;
  *  - eliberează suma blocată pentru comenzile anulate, returnate, eșuate sau
- *    șterse, plus plățile de test uitate (după 30 de minute);
- *  - reîncearcă încasările cerute (aprobare în ERP, buton) care au eșuat;
+ *    șterse, plățile în plus, cele din modul test ajunse pe comenzi reale,
+ *    diferențele cu link nevalabil și plățile de test uitate (după 30 de minute);
+ *  - reîncearcă încasările cerute (aprobare în ERP, buton, diferențe prin
+ *    link) care au eșuat, cu suma cerută atunci;
  *  - la 72 de ore trimite magazinului lista plăților încă neîncasate;
  *  - la 96 de ore (ziua 4) le încasează singur, inclusiv precomenzile, și
- *    trimite email — banca cere încasarea în cel mult 5 zile;
- *  - lasă o „bătaie de inimă" vizibilă în admin și curăță jurnalul vechi.
+ *    trimite email (o dată pe plată) — banca cere încasarea în cel mult 5 zile;
+ *  - la SFÂRȘIT lasă „bătaia de inimă" și rezultatul rulării (vizibile în
+ *    admin) și curăță jurnalul vechi.
  *
- * Rulările nu se suprapun (lacăt MySQL). Cu BT neconfigurat și fără plăți,
- * nu face nimic.
+ * Rulările nu se suprapun (lacăt MySQL), fiecare plată e atinsă cel mult o
+ * dată pe rulare, iar o rulare face cel mult 600 de apeluri către bancă. Cu BT
+ * neconfigurat și fără plăți, nu face nimic.
  */
+
+// Doar din linia de comandă (cron). Pe web, scriptul nu există.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 
 require_once __DIR__ . '/../bootstrap.php';
 
@@ -49,7 +59,7 @@ if (($rezultat['ocupat'] ?? false) === true) {
 }
 
 printf(
-    "[%s] BT iPay: verificate %d, expirate %d, eliberate %d, reîncercări încasare %d, reamintiri %d, încasate automat %d, erori %d\n",
+    "[%s] BT iPay: verificate %d, expirate %d, eliberate %d, reîncercări încasare %d, reamintiri %d, încasate automat %d, erori %d%s\n",
     date('Y-m-d H:i:s'),
     (int) ($rezultat['verificate'] ?? 0),
     (int) ($rezultat['expirate'] ?? 0),
@@ -57,7 +67,8 @@ printf(
     (int) ($rezultat['reincercate'] ?? 0),
     (int) ($rezultat['reamintiri'] ?? 0),
     (int) ($rezultat['incasate_automat'] ?? 0),
-    (int) ($rezultat['erori'] ?? 0)
+    (int) ($rezultat['erori'] ?? 0),
+    ($rezultat['limita_atinsa'] ?? false) === true ? ' (plafonul de apeluri atins; restul la rularea următoare)' : ''
 );
 
 exit(((int) ($rezultat['erori'] ?? 0)) > 0 ? 1 : 0);

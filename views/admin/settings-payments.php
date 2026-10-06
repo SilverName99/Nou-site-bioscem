@@ -119,7 +119,9 @@ $campSecret = static function (string $nume, string $eticheta, bool $configurat)
                     <?php if (!empty($bt['vizibil_clienti'])): ?>
                         <?= $insigna(true, 'apare') ?>
                     <?php elseif (!empty($bt['vizibil_admin'])): ?>
-                        <span class="pay-badge pay-badge--warn">doar pentru administratori</span>
+                        <span class="pay-badge pay-badge--warn">doar pentru administratorii generali</span>
+                    <?php elseif ($btActiv && !$btModLive): ?>
+                        <?= $insigna(false, '', 'nu apare (mod test)') ?>
                     <?php else: ?>
                         <?= $insigna(false, '', $btActiv ? 'nu apare (date incomplete)' : 'oprit') ?>
                     <?php endif; ?>
@@ -286,11 +288,22 @@ $campSecret = static function (string $nume, string $eticheta, bool $configurat)
             <?php if (!empty($bt['vizibil_clienti'])): ?>
                 <span class="pay-badge pay-badge--ok">În checkout: pentru toți clienții</span>
             <?php elseif (!empty($bt['vizibil_admin'])): ?>
-                <span class="pay-badge pay-badge--warn">În checkout: doar pentru administratorii logați</span>
+                <span class="pay-badge pay-badge--warn">În checkout: doar pentru administratorii generali logați</span>
+            <?php elseif ($btActiv && !$btModLive): ?>
+                <span class="pay-badge pay-badge--off">În checkout: nu apare (modul test nu e oferit niciodată clienților)</span>
             <?php else: ?>
                 <span class="pay-badge pay-badge--off">În checkout: nu apare</span>
             <?php endif; ?>
+            <?php if (!empty($bt['linkuri_bt'])): ?>
+                <span class="pay-badge pay-badge--ok">Linkuri noi pentru diferență: prin BT</span>
+            <?php else: ?>
+                <span class="pay-badge pay-badge--off">Linkuri noi pentru diferență: prin EuPlătesc</span>
+            <?php endif; ?>
         </div>
+        <?php if ($btActiv && !$btModLive): ?>
+            <div class="bt-warn">Modul e <strong>TEST</strong>: Banca Transilvania <strong>nu apare în checkout</strong>, nici pentru administratori,
+                ca nicio comandă reală să nu fie „plătită" pe platforma de test. Testele se fac cu „Plată de test 1 leu" de mai jos.</div>
+        <?php endif; ?>
 
         <?php if (trim((string) ($bt['override'] ?? '')) !== ''): ?>
             <div class="bt-warn">
@@ -394,9 +407,9 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
             <div class="field" style="grid-column:1/-1;">
                 <label style="display:flex;align-items:center;gap:8px;">
                     <input type="checkbox" name="bt_ipay_admin_only" value="1" <?= !empty($btSetari['doar_admin']) ? 'checked' : '' ?>>
-                    Doar pentru administratorii logați (clienții nu văd opțiunea)
+                    Doar pentru administratorii generali logați (clienții nu văd opțiunea)
                 </label>
-                <small style="color:#64748b;">Pentru o comandă de test reală, plasată din același browser în care ești logat în admin. În modul test (sandbox) e așa oricum.</small>
+                <small style="color:#64748b;">Doar în modul producție: pentru o comandă reală de probă, plasată din același browser în care ești logat ca administrator general. Cât e bifată, linkurile pentru diferență rămân pe EuPlătesc. În modul test, BT nu apare deloc în checkout.</small>
             </div>
             <div class="field" style="grid-column:1/-1;">
                 <label style="display:flex;align-items:center;gap:8px;">
@@ -451,9 +464,23 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
             <code class="bt-code"><?= $e($bt['cron'] ?? '') ?></code>
             <p style="margin-top:8px;">(Programarea <code>*/15 * * * *</code>, comanda <code><?= $e($bt['cron_comanda'] ?? '') ?></code>.)</p>
             <?php if ($tsHeartbeat !== false): ?>
-                <div class="<?= $cronViu ? 'bt-ok' : 'bt-warn' ?>">
-                    Ultima rulare a cronului: <?= $e(date('d.m.Y H:i', $tsHeartbeat)) ?>.
-                    <?= $cronViu ? '' : 'Nu a mai rulat de peste 40 de minute — verifică linia din hPanel.' ?>
+                <?php
+                $ultimaRulare = is_array($bt['ultima_rulare'] ?? null) ? $bt['ultima_rulare'] : [];
+                $rezRulare = is_array($ultimaRulare['rezultat'] ?? null) ? $ultimaRulare['rezultat'] : [];
+                $eroriRulare = (int) ($rezRulare['erori'] ?? 0);
+                $mesajeRulare = is_array($ultimaRulare['mesaje'] ?? null) ? $ultimaRulare['mesaje'] : [];
+                ?>
+                <div class="<?= $cronViu && $eroriRulare === 0 ? 'bt-ok' : 'bt-warn' ?>">
+                    Ultima rulare încheiată a cronului: <?= $e(date('d.m.Y H:i', $tsHeartbeat)) ?>.
+                    <?= $cronViu ? '' : 'Nu a mai rulat (sau nu a mai ajuns la capăt) de peste 40 de minute — verifică linia din hPanel.' ?>
+                    <?php if ($rezRulare !== []): ?>
+                        <br><small>Verificate <?= (int) ($rezRulare['verificate'] ?? 0) ?>, eliberate <?= (int) ($rezRulare['eliberate'] ?? 0) ?>,
+                            reîncercări încasare <?= (int) ($rezRulare['reincercate'] ?? 0) ?>, încasate automat <?= (int) ($rezRulare['incasate_automat'] ?? 0) ?>,
+                            erori <?= $eroriRulare ?><?= isset($ultimaRulare['apeluri']) ? ', apeluri la bancă ' . (int) $ultimaRulare['apeluri'] : '' ?>.</small>
+                    <?php endif; ?>
+                    <?php foreach ($mesajeRulare as $mesajRulare): ?>
+                        <br><small><?= $e($mesajRulare) ?></small>
+                    <?php endforeach; ?>
                 </div>
             <?php else: ?>
                 <div class="bt-warn">Cronul nu a rulat niciodată. Fără el, plățile autorizate nu se încasează singure la termen.</div>

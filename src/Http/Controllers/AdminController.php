@@ -4959,24 +4959,27 @@ final class AdminController
             unset($order);
 
             // Plățile Banca Transilvania: stare, sume și butoanele care au sens.
-            // Doar comenzile plătite prin BT primesc cheia `bt`.
-            $comenziBt = [];
+            // Primesc cheia `bt` comenzile plătite prin BT, iar `bt_linkuri`
+            // cele cu o diferență plătită (sau începută) prin BT — oricare ar fi
+            // metoda comenzii. Pe un site care n-a pornit niciodată BT, nimic.
+            $comenziLista = [];
             foreach ($orders as $o) {
-                if (strtolower((string) ($o['payment_method'] ?? '')) === \App\Support\PaymentMethods::BT_IPAY) {
-                    $comenziBt[(int) ($o['id'] ?? 0)] = $o;
-                }
+                $comenziLista[(int) ($o['id'] ?? 0)] = $o;
             }
-            if ($comenziBt !== []) {
-                $btRezumat = \App\Support\BtIpayPayments::rezumatPentruAdmin(
-                    $db,
-                    array_keys($comenziBt),
-                    $comenziBt,
-                    Settings::all($db)
-                );
+            $btRezumat = $comenziLista !== []
+                ? \App\Support\BtIpayPayments::rezumatPentruAdmin($db, array_keys($comenziLista), $comenziLista, Settings::all($db))
+                : [];
+            if ($btRezumat !== []) {
                 foreach ($orders as &$order) {
                     $btComanda = $btRezumat[(int) ($order['id'] ?? 0)] ?? null;
-                    if ($btComanda !== null) {
-                        $order['bt'] = $btComanda;
+                    if ($btComanda === null) {
+                        continue;
+                    }
+                    if ($btComanda['bt'] !== null) {
+                        $order['bt'] = $btComanda['bt'];
+                    }
+                    if ($btComanda['linkuri'] !== []) {
+                        $order['bt_linkuri'] = $btComanda['linkuri'];
                     }
                 }
                 unset($order);
@@ -6407,15 +6410,17 @@ final class AdminController
         }
 
         $settings = Settings::all($db);
-        // Linkurile pentru diferență se plătesc doar prin EuPlătesc (singurul
-        // procesator care le are azi). Cu EuPlătesc oprit sau fără date, nu
-        // trimitem clientului un link care l-ar duce într-o fundătură.
-        if (!\App\Support\EuPlatescGateway::isEnabled($settings)) {
+        // Un link NOU se plătește prin Banca Transilvania când BT e pornit în
+        // producție (și deschis clienților), altfel prin EuPlătesc, ca până
+        // acum. Fără niciunul, nu trimitem clientului un link care l-ar duce
+        // într-o fundătură.
+        $procesator = \App\Support\PaymentLink::procesorPentruLinkNou($settings);
+        if ($procesator === '') {
             echo json_encode([
                 'ok' => false,
-                'error' => 'Linkurile de plată pentru diferență merg doar prin EuPlătesc, care e oprit sau neconfigurat în Setări plăți. '
-                    . 'Pornește-l acolo, sau, dacă banii vin pe altă cale (OP, ramburs, numerar), consemnează-i cu „Înregistrează încasarea". '
-                    . '(Banca Transilvania nu e folosită încă pentru aceste linkuri.)',
+                'error' => 'Linkurile de plată pentru diferență merg prin Banca Transilvania (pornită în producție) sau prin EuPlătesc, '
+                    . 'dar niciunul nu e pornit și configurat în Setări plăți. Pornește unul acolo, sau, dacă banii vin pe altă cale '
+                    . '(OP, ramburs, numerar), consemnează-i cu „Înregistrează încasarea".',
             ]);
             return;
         }
@@ -6430,7 +6435,9 @@ final class AdminController
             $db,
             $orderId,
             (string) ($order['order_number'] ?? ''),
-            $rest
+            $rest,
+            $procesator,
+            $settings
         );
         if ($link === null) {
             echo json_encode(['ok' => false, 'error' => 'Nu am putut genera linkul de plată.']);
@@ -6478,12 +6485,16 @@ final class AdminController
             return;
         }
 
-        echo json_encode([
+        $raspuns = [
             'ok' => true,
             'url' => $url,
             'suma' => $rest,
             'email' => $email,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ];
+        if (\App\Support\PaymentLink::procesator($link) === \App\Support\PaymentLink::PROCESATOR_BT) {
+            $raspuns['procesator'] = 'Banca Transilvania';
+        }
+        echo json_encode($raspuns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     /** Cum se poate încasa restul, pe lângă site. */
@@ -6786,7 +6797,13 @@ final class AdminController
         if (!$this->guard()) {
             return;
         }
-        if (!$this->guard()) {
+
+        $backUrl = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), array_merge($_GET, $_POST));
+        // Acțiunile în masă schimbă statusuri (deci eliberează sume blocate la
+        // bancă), șterg și retrimit comenzi: cer jetonul formularului.
+        if (!\App\Support\AdminCsrf::valid()) {
+            Flash::set('error', 'Formularul a expirat (sesiune nouă). Reîncarcă pagina și încearcă din nou.');
+            header('Location: ' . $backUrl);
             return;
         }
 
@@ -6797,8 +6814,6 @@ final class AdminController
             return;
         }
         $this->ensureOptionalSchema($db);
-
-        $backUrl = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), array_merge($_GET, $_POST));
         $action = trim((string) ($_POST['bulk_action'] ?? ''));
 
         $rawIds = $_POST['order_ids'] ?? [];
@@ -7487,11 +7502,12 @@ final class AdminController
             $this->applyOrderLoyaltyTransitions($db, $orderId, $previousStatus, $status);
 
             // Banca Transilvania: suma doar blocată pe card se eliberează automat
-            // când comanda se închide; una deja încasată NU se rambursează
+            // când comanda se închide (și cea a unei diferențe plătite prin BT,
+            // oricare ar fi metoda comenzii); una deja încasată NU se rambursează
             // singură — rămâne butonul „Rambursează" din comandă.
             $btMesaj = '';
             if (in_array($status, ['cancelled', 'refunded', 'failed', 'returned'], true)
-                && $this->comandaPlatitaCuBt($db, $orderId)) {
+                && ($this->comandaPlatitaCuBt($db, $orderId) || \App\Support\BtIpayPayments::areTabele($db))) {
                 try {
                     $mesajeBt = \App\Support\BtIpayPayments::laInchidereComanda($db, $orderId, $sursa);
                     if ($mesajeBt !== []) {
@@ -8074,10 +8090,22 @@ final class AdminController
             $rezumat = $this->rezumatComandaPentruJurnal($db, $id);
             $stmt = $db->prepare('UPDATE orders SET deleted_at = NULL WHERE id = :id AND deleted_at IS NOT NULL');
             $stmt->execute(['id' => $id]);
+            $avertismentBt = '';
             if ($stmt->rowCount() > 0) {
                 AdminActivityLog::log($db, 'comanda_restaurata', $rezumat);
+                // Cât a stat în coș, cronul BT i-a putut elibera suma blocată:
+                // comanda revine neplătită (email + marcaj în listă).
+                try {
+                    $avertismentBt = \App\Support\BtIpayPayments::laRestaurareComanda($db, $id);
+                } catch (Throwable) {
+                    $avertismentBt = '';
+                }
             }
-            Flash::set('success', 'Comanda a fost restaurată.');
+            if ($avertismentBt !== '') {
+                Flash::set('error', 'Comanda a fost restaurată. ' . $avertismentBt);
+            } else {
+                Flash::set('success', 'Comanda a fost restaurată.');
+            }
         }
 
         header('Location: /admin/orders/trash');
@@ -8117,6 +8145,14 @@ final class AdminController
         // The "status" field from this form is the target order status, not an orders-list filter.
         unset($backParams['status']);
         $backUrl = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), $backParams);
+
+        // Schimbarea statusului poate elibera sume blocate la bancă (BT) și
+        // anunță ERP-ul: cere jetonul formularului.
+        if (!\App\Support\AdminCsrf::valid()) {
+            Flash::set('error', 'Formularul a expirat (sesiune nouă). Reîncarcă pagina și încearcă din nou.');
+            header('Location: ' . $backUrl);
+            return;
+        }
 
         $db = $this->db();
         if (!$db instanceof PDO) {
@@ -8594,18 +8630,40 @@ final class AdminController
         // Banca Transilvania: comanda e facturată, deci încasăm acum suma doar
         // blocată pe card — înainte de AWB, ca timpul de așteptare al ERP-ului
         // să nu se ducă pe FAN. Idempotent: o aprobare repetată (după
-        // „Reintroducere" în ERP) nu încasează a doua oară. Un eșec nu oprește
-        // AWB-ul: cronul reîncearcă, iar magazinul primește email.
+        // „Reintroducere" în ERP) nu încasează a doua oară. Un eșec de încasare
+        // nu oprește AWB-ul (autorizarea e valabilă; cronul reîncearcă).
+        //
+        // Dar dacă plata nu mai acoperă comanda — suma blocată a fost eliberată
+        // (din admin, din portalul BT, la expirare, cât comanda a stat în coș) —
+        // NU trecem comanda în procesare și NU generăm AWB: marfa ar pleca
+        // neplătită și fără ramburs. Răspundem ERP-ului cu eroare (apare în
+        // jurnalul lui; notificarea rămâne la coadă și se reia singură după ce
+        // plata e rezolvată) și anunțăm magazinul pe email.
         $btMesaj = '';
         if ($this->comandaPlatitaCuBt($db, $orderId)) {
             try {
                 $totalEveniment = isset($event['total']) && is_numeric($event['total']) ? (float) $event['total'] : null;
-                $btRezultat = \App\Support\BtIpayPayments::incaseazaLaAprobare($db, $orderId, $totalEveniment, Settings::all($db));
-                if ($btRezultat['facut']) {
-                    $btMesaj = ' ' . $btRezultat['mesaj'];
-                }
+                $btRezultat = \App\Support\BtIpayPayments::laAprobareErp($db, $orderId, $totalEveniment, Settings::all($db));
             } catch (Throwable $e) {
-                $btMesaj = ' BT: încasarea nu a putut porni (' . $e->getMessage() . '); cronul reîncearcă.';
+                $btRezultat = ['blocata' => false, 'mesaj' => 'BT: încasarea nu a putut porni (' . $e->getMessage() . '); cronul reîncearcă.'];
+            }
+            if ($btRezultat['blocata']) {
+                $refuz = 'BT: ' . $btRezultat['mesaj'] . ' Comanda NU a fost trecută în procesare și NU s-a generat AWB. '
+                    . \App\Support\BtIpayPayments::CUM_SE_REZOLVA . ' Aprobarea se reia singură după aceea.';
+                try {
+                    $db->prepare('UPDATE orders SET erp_last_error = :nota WHERE id = :id')
+                        ->execute(['nota' => mb_substr($refuz, 0, 1000), 'id' => $orderId]);
+                } catch (Throwable) {
+                }
+                return [
+                    'ok' => false,
+                    'message' => $refuz,
+                    'awb' => '',
+                    'trackingUrl' => '',
+                ];
+            }
+            if ($btRezultat['mesaj'] !== '') {
+                $btMesaj = ' ' . $btRezultat['mesaj'];
             }
         }
 
@@ -10741,6 +10799,8 @@ final class AdminController
             'cron_comanda' => 'php ' . $script,
             'heartbeat' => trim((string) ($settings['bt_ipay_cron_heartbeat'] ?? '')),
             'ultimul_test' => is_array($ultimulTest) ? $ultimulTest : null,
+            'ultima_rulare' => \App\Support\BtIpayPayments::ultimaRulareCron($settings),
+            'linkuri_bt' => \App\Support\BtIpayPayments::poatePlatiLinkuri($settings),
             'url_callback' => $this->appUrl() . '/webhook/bt-ipay',
             'url_retur' => $this->appUrl() . '/checkout/bt/retur',
             'teste' => $detaliat && $db instanceof PDO ? \App\Support\BtIpayPayments::platiTestRecente($db) : [],
@@ -10800,9 +10860,11 @@ final class AdminController
             $mesaj .= ' Atenție: lipsesc datele de acces în .env pentru modul '
                 . ($mod === 'live' ? 'producție' : 'test') . ', așa că opțiunea nu apare în checkout.';
         } elseif ($valori['bt_ipay_enabled'] === '1' && $mod !== 'live') {
-            $mesaj .= ' Modul e TEST (sandbox): opțiunea o văd doar administratorii logați.';
+            $mesaj .= ' Modul e TEST (sandbox): opțiunea NU apare în checkout (nicio comandă reală nu se plătește pe platforma de test). '
+                . 'Testează cu „Plată de test 1 leu".';
         } elseif ($valori['bt_ipay_enabled'] === '1' && $valori['bt_ipay_admin_only'] === '1') {
-            $mesaj .= ' Opțiunea o văd doar administratorii logați (pentru test).';
+            $mesaj .= ' Opțiunea o văd doar administratorii generali logați (pentru o comandă reală de probă); '
+                . 'linkurile pentru diferență rămân pe EuPlătesc până o deschizi tuturor.';
         }
         Flash::set($tip, $mesaj);
         header('Location: /admin/settings/payments?tab=bt');
@@ -10980,6 +11042,8 @@ final class AdminController
             return (int) ($acum['deposited_minor'] ?? 0) + (int) ($acum['loy_deposited_minor'] ?? 0)
                 - (int) ($acum['refunded_minor'] ?? 0) - (int) ($acum['loy_refunded_minor'] ?? 0);
         };
+        // Suma rambursării, pentru emailul către magazin.
+        $sumaRambursare = $actiune === 'refund' ? $deRambursat() : (int) ($tx['amount_minor'] ?? 0);
         $rez = match ($actiune) {
             'status' => \App\Support\BtIpayPayments::sincronizeaza($db, $txId, 'admin'),
             'reverse' => \App\Support\BtIpayPayments::anuleaza($db, $txId, 'admin'),
@@ -10988,7 +11052,7 @@ final class AdminController
             'deposit_refund' => (static function () use ($db, $txId, $deRambursat): array {
                 $incasare = \App\Support\BtIpayPayments::incaseaza($db, $txId, null, 'admin');
                 if (!$incasare['ok']) {
-                    return $incasare;
+                    return $incasare + ['fara_rambursare' => true];
                 }
                 $rambursare = \App\Support\BtIpayPayments::ramburseaza($db, $txId, $deRambursat(), 'admin');
                 return [
@@ -11002,6 +11066,13 @@ final class AdminController
             'numar' => (string) $tx['bt_order_number'],
             'ok' => !empty($rez['ok']) ? 'da' : 'nu',
         ]);
+        // Și rambursarea / eliberarea unei plăți de test ajung în căsuța
+        // magazinului: orice mișcare de bani făcută din admin se vede acolo.
+        if (in_array($actiune, ['refund', 'deposit_refund'], true) && empty($rez['fara_rambursare'])) {
+            \App\Support\BtIpayPayments::emailOperatieManuala($db, $txId, 'refund', $sumaRambursare, $rez, $this->emailAdminCurent($db));
+        } elseif ($actiune === 'reverse') {
+            \App\Support\BtIpayPayments::emailOperatieManuala($db, $txId, 'reverse', null, $rez, $this->emailAdminCurent($db));
+        }
         Flash::set(!empty($rez['ok']) ? 'success' : 'error', 'Plata de test ' . $tx['bt_order_number'] . ': ' . (string) ($rez['mesaj'] ?? ''));
         header('Location: ' . $inapoi);
     }
@@ -11024,14 +11095,17 @@ final class AdminController
         $orderId = max(0, (int) ($params['id'] ?? 0));
         $actiune = (string) ($params['actiune'] ?? '');
         $db = $this->db();
-        if (!$db instanceof PDO || $orderId <= 0 || !in_array($actiune, ['status', 'deposit', 'reverse', 'refund'], true)) {
+        if (!$db instanceof PDO || $orderId <= 0 || !in_array($actiune, ['status', 'deposit', 'reverse', 'refund', 'anuleaza_comanda'], true)) {
             echo json_encode(['ok' => false, 'error' => 'Cerere invalidă.'], JSON_UNESCAPED_UNICODE);
             return;
         }
         \App\Support\BtIpayPayments::ensureSchema($db);
 
+        // Plata comenzii sau plata unei diferențe (link) a aceleiași comenzi.
         $tx = \App\Support\BtIpayPayments::tx($db, (int) ($_POST['tx_id'] ?? 0));
-        if ($tx === null || (string) $tx['kind'] !== \App\Support\BtIpayPayments::TIP_COMANDA || (int) $tx['order_id'] !== $orderId) {
+        if ($tx === null
+            || !in_array((string) $tx['kind'], [\App\Support\BtIpayPayments::TIP_COMANDA, \App\Support\BtIpayPayments::TIP_LINK], true)
+            || (int) $tx['order_id'] !== $orderId) {
             echo json_encode(['ok' => false, 'error' => 'Plata BT nu aparține acestei comenzi.'], JSON_UNESCAPED_UNICODE);
             return;
         }
@@ -11045,31 +11119,82 @@ final class AdminController
             }
         }
 
-        $rez = match ($actiune) {
-            'status' => \App\Support\BtIpayPayments::sincronizeaza($db, $txId, 'admin'),
-            'deposit' => \App\Support\BtIpayPayments::incaseaza($db, $txId, $suma, 'admin'),
-            'reverse' => \App\Support\BtIpayPayments::anuleaza($db, $txId, 'admin'),
-            'refund' => \App\Support\BtIpayPayments::ramburseaza($db, $txId, (int) $suma, 'admin'),
-        };
-
-        $stmt = $db->prepare('SELECT id, order_number, status, total, payment_method FROM orders WHERE id = :id LIMIT 1');
+        $stmt = $db->prepare('SELECT id, order_number, status, total, payment_method, payment_status, paid_amount, deleted_at FROM orders WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $orderId]);
         $comanda = $stmt->fetch() ?: [];
+        $comandaActiva = $comanda !== [] && ($comanda['deleted_at'] ?? null) === null
+            && !in_array((string) ($comanda['status'] ?? ''), ['cancelled', 'refunded', 'returned', 'failed'], true);
+
+        // „Anulează autorizarea" pe plata unei comenzi încă vii: comanda ar
+        // rămâne neplătită, iar ERP-ul ar ține-o plătită. Fără alegerea
+        // explicită din fereastră („Doar eliberează suma"), nu facem nimic.
+        if ($actiune === 'reverse' && $comandaActiva && (string) $tx['kind'] === \App\Support\BtIpayPayments::TIP_COMANDA
+            && (int) ($tx['in_comanda'] ?? 0) === 1 && (string) ($_POST['confirm_activa'] ?? '') !== '1') {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Comanda e încă activă. Alege „Anulează comanda" (recomandat: suma se eliberează și ERP-ul e anunțat) '
+                    . 'sau confirmă explicit „Doar eliberează suma".',
+                'cere_confirmare' => true,
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        if ($actiune === 'anuleaza_comanda') {
+            // Drumul obișnuit al anulării: emailul clientului, ERP-ul anunțat,
+            // punctele întoarse și suma blocată eliberată.
+            $rezultat = $comandaActiva
+                ? $this->updateOrderStatusInternal($db, $orderId, 'cancelled', 'admin')
+                : ['ok' => false, 'message' => 'Comanda nu mai e activă.'];
+            $rez = ['ok' => (bool) ($rezultat['ok'] ?? false), 'mesaj' => (string) ($rezultat['message'] ?? '')];
+        } else {
+            $rez = match ($actiune) {
+                'status' => \App\Support\BtIpayPayments::sincronizeaza($db, $txId, 'admin'),
+                'deposit' => \App\Support\BtIpayPayments::incaseaza($db, $txId, $suma, 'admin'),
+                'reverse' => \App\Support\BtIpayPayments::anuleaza($db, $txId, 'admin'),
+                'refund' => \App\Support\BtIpayPayments::ramburseaza($db, $txId, (int) $suma, 'admin'),
+            };
+        }
+
+        $cine = $this->emailAdminCurent($db);
         AdminActivityLog::log($db, 'bt_ipay_' . $actiune, [
             'order_id' => $orderId,
             'order_number' => (string) ($comanda['order_number'] ?? ''),
+            'plata_bt' => (string) $tx['bt_order_number'],
+            'tip' => (string) $tx['kind'],
             'suma' => $suma !== null ? number_format($suma / 100, 2, '.', '') : '',
+            'comanda_activa' => $comandaActiva ? 'da' : 'nu',
             'ok' => !empty($rez['ok']) ? 'da' : 'nu',
             'mesaj' => mb_substr((string) ($rez['mesaj'] ?? ''), 0, 300),
         ]);
+        // Orice rambursare și orice eliberare manuală (inclusiv „Anulează comanda"
+        // din panoul plății, care eliberează suma): email către magazin.
+        if (in_array($actiune, ['refund', 'reverse', 'anuleaza_comanda'], true)) {
+            \App\Support\BtIpayPayments::emailOperatieManuala($db, $txId, $actiune === 'refund' ? 'refund' : 'reverse', $suma, $rez, $cine);
+        }
+
+        $stmt->execute(['id' => $orderId]);
+        $comanda = $stmt->fetch() ?: [];
         $rezumat = \App\Support\BtIpayPayments::rezumatPentruAdmin($db, [$orderId], [$orderId => $comanda], Settings::all($db));
 
         echo json_encode([
             'ok' => !empty($rez['ok']),
             'mesaj' => (string) ($rez['mesaj'] ?? ''),
             'error' => empty($rez['ok']) ? (string) ($rez['mesaj'] ?? 'Eroare') : null,
-            'bt' => $rezumat[$orderId] ?? null,
+            'bt' => $rezumat[$orderId]['bt'] ?? null,
+            'bt_linkuri' => $rezumat[$orderId]['linkuri'] ?? [],
         ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /** Emailul administratorului logat (pentru emailurile despre bani și jurnal). */
+    private function emailAdminCurent(PDO $db): string
+    {
+        try {
+            $stmt = $db->prepare('SELECT email FROM admins WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => (int) Auth::id()]);
+            return (string) ($stmt->fetchColumn() ?: '');
+        } catch (Throwable) {
+            return '';
+        }
     }
 
     public function erpSettingsForm(): void
@@ -19317,8 +19442,8 @@ HTML;
         return $this->renderPartialPhpView('site/components/checkout-form', [
             'summary' => $summary,
             'values' => $values,
-            // În preview arătăm ambele metode de card, ca designul să fie vizibil.
-            'cardMethods' => ['euplatesc', 'stripe'],
+            // În preview arătăm toate metodele de card, ca designul să fie vizibil.
+            'cardMethods' => ['btipay', 'euplatesc', 'stripe'],
             'isLoggedIn' => true,
             'antiBot' => ['token' => '', 'rendered_at' => 0],
             'previewMode' => true,

@@ -50,6 +50,13 @@ $cardLabels = [
     'euplatesc' => ['Card bancar', 'Plată online securizată prin EuPlătesc'],
     'stripe' => ['Card (Stripe)', 'Plată online securizată'],
 ];
+// Cu două sau mai multe procesatoare de card în checkout, fiecare opțiune spune
+// prin cine se plătește; cu unul singur, eticheta rămâne cea de până acum.
+if (count($cardMethods) > 1) {
+    $cardLabels['btipay'][0] = 'Card bancar — Banca Transilvania';
+    $cardLabels['euplatesc'][0] = 'Card bancar — EuPlătesc';
+    $cardLabels['stripe'][0] = 'Card bancar — Stripe';
+}
 // Banca Transilvania are opțiunea ei, cu siglele STAR; restul paginii rămâne
 // neschimbat când BT nu e oferit.
 $btInCheckout = in_array(\App\Support\PaymentMethods::BT_IPAY, $cardMethods, true);

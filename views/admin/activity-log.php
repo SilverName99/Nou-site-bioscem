@@ -27,6 +27,7 @@ $actionLabels = [
     'bt_ipay_deposit' => 'BT: încasare (deposit)',
     'bt_ipay_reverse' => 'BT: autorizare anulată (reverse)',
     'bt_ipay_refund' => 'BT: rambursare (refund)',
+    'bt_ipay_anuleaza_comanda' => 'BT: comandă anulată din panoul plății (suma eliberată)',
     'bt_ipay_test_status' => 'BT test: stare verificată',
     'bt_ipay_test_reverse' => 'BT test: anulare',
     'bt_ipay_test_deposit' => 'BT test: încasare',

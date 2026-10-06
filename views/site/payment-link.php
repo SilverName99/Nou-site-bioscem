@@ -5,12 +5,18 @@
  * @var array<string, mixed> $link
  * @var array<string, mixed> $order
  * @var bool $esteplatit
+ * @var string $procesator euplatesc | btipay
+ * @var bool $inCurs plata BT e autorizată, încasarea încă nu s-a confirmat
+ * @var string $urlReverificare adresa care reverifică plata la bancă (doar browserul care a plătit)
  */
 $suma = round((float) ($link['amount'] ?? 0), 2);
 $numarComanda = (string) ($order['order_number'] ?? '');
 $token = (string) ($link['token'] ?? '');
 $platitAcum = $esteplatit || isset($_GET['platit']);
 $esuat = isset($_GET['esuat']);
+$procesatorBt = ($procesator ?? 'euplatesc') === 'btipay';
+$inCurs = (bool) ($inCurs ?? false) && !$platitAcum;
+$urlReverificare = (string) ($urlReverificare ?? '');
 ?>
 <section class="panel" style="max-width:560px;margin-left:auto;margin-right:auto;padding:32px 26px;text-align:center;">
     <?php if ($platitAcum): ?>
@@ -23,6 +29,19 @@ $esuat = isset($_GET['esuat']);
         <p style="margin:24px 0 0;">
             <a href="/magazin" style="display:inline-block;padding:12px 22px;border-radius:10px;background:#2f8d5b;color:#fff;text-decoration:none;font-weight:700;">Continuă cumpărăturile</a>
         </p>
+    <?php elseif ($inCurs): ?>
+        <h1 style="margin:0 0 12px;font-size:24px;color:#0f172a;">Verificăm plata</h1>
+        <p style="margin:0 auto;max-width:440px;color:#475569;font-size:15px;line-height:1.6;">
+            Plata diferenței pentru comanda <strong><?= htmlspecialchars($numarComanda, ENT_QUOTES) ?></strong>
+            a fost trimisă la bancă și se confirmă în câteva momente. Nu e nevoie să plătești din nou.
+        </p>
+        <?php if ($urlReverificare !== ''): ?>
+            <p style="margin:22px 0 0;">
+                <a href="<?= htmlspecialchars($urlReverificare, ENT_QUOTES) ?>" data-reverificare
+                   style="display:inline-block;padding:12px 22px;border-radius:10px;background:#2f8d5b;color:#fff;text-decoration:none;font-weight:700;">Verifică din nou</a>
+            </p>
+            <script>setTimeout(function () { var a = document.querySelector('[data-reverificare]'); if (a) { window.location.href = a.href; } }, 30000);</script>
+        <?php endif; ?>
     <?php else: ?>
         <h1 style="margin:0 0 10px;font-size:24px;color:#0f172a;">Diferență de plată</h1>
         <p style="margin:0 auto 18px;max-width:440px;color:#475569;font-size:15px;line-height:1.6;">
@@ -48,7 +67,7 @@ $esuat = isset($_GET['esuat']);
         </form>
 
         <p style="margin:18px 0 0;color:#94a3b8;font-size:13px;line-height:1.5;">
-            Plata se face securizat, pe pagina procesatorului EuPlătesc.<br>
+            <?= $procesatorBt ? 'Plata se face securizat, pe pagina Băncii Transilvania.' : 'Plata se face securizat, pe pagina procesatorului EuPlătesc.' ?><br>
             Datele cardului nu ajung pe site-ul nostru.
         </p>
     <?php endif; ?>

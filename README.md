@@ -188,14 +188,48 @@ Ce se intampla cu banii:
   blocata (reverse). **Dupa incasare nu se ramburseaza nimic automat**: in comanda apare
   „Plata incasata – necesita rambursare" si butonul **„Rambursează"** (suma completata,
   se poate micsora, cu confirmare). Partea platita in puncte STAR se intoarce prima;
-- plata cu puncte STAR vine de la banca in doua comenzi (puncte + card); orice operatie
-  atinge intai partea in puncte, apoi cardul, ca in modulul BT.
+- plata cu puncte STAR vine de la banca in doua comenzi (puncte + card); starea comenzii
+  de card decide (ca in modulul BT), iar o plata cu puncte e intreaga abia cand AMBELE
+  parti sunt autorizate (cardul trecut si punctele refuzate / inca in 3-D Secure nu
+  inseamna „platita"; ce ramane blocat se elibereaza). Orice operatie atinge intai partea
+  in puncte, apoi cardul, ca in modulul BT;
+- o plata venita pentru o comanda deja anulata (sau stearsa) nu reinvie comanda: suma
+  blocata se elibereaza imediat si magazinul primeste email;
+- daca suma blocata a unei comenzi inca active e eliberata (din admin, din portalul BT,
+  la expirarea autorizarii sau cat comanda a stat in cos), comanda devine NEPLATITA si e
+  marcata cu rosu in lista; **aprobarea ei din ERP e refuzata** (fara „in procesare" si
+  fara AWB, ca marfa sa nu plece neplatita si fara ramburs): ERP-ul primeste un raspuns de
+  eroare (se vede in jurnalul lui), magazinul primeste email, iar aprobarea se reia singura
+  dupa ce comanda e anulata sau — dupa ce clientul a platit pe alt drum (link EuPlatesc
+  trimis separat, OP) — marcata din „Actiuni comanda" -> „Platit prin link extern de
+  plata" (marcajul rosu dispare odata cu plata);
+- „Anuleaza autorizarea" pe o comanda inca activa cere o alegere explicita: **„Anuleaza
+  comanda si elibereaza suma" (recomandat** — trece prin anularea obisnuita: ERP anuntat,
+  email catre client, puncte intoarse) sau „Doar elibereaza suma" (comanda ramane activa
+  si neplatita, marcata in lista);
+- orice rambursare si orice eliberare manuala (din comanda sau din unealta de test) trimite
+  un email magazinului (cine, ce comanda, cat, rezultatul) si apare in jurnalul de
+  activitate. Butoanele le are orice administrator care lucreaza cu comenzile.
 
 Fiecare procesator are bifa lui in `Admin -> Setari plati`. Bifa ascunde doar optiunea
 din checkout: platile deja incepute (intoarcerea clientului, notificarile, cronul,
-butoanele din comanda) merg mai departe si cu procesatorul oprit. Linkurile de plata
-pentru diferenta raman pe EuPlatesc (BT pentru ele e o etapa ulterioara); daca EuPlatesc
-e oprit, adminul primeste un mesaj clar si poate consemna incasarea altfel.
+butoanele din comanda) merg mai departe si cu procesatorul oprit. Cand checkout-ul ofera
+doua sau mai multe procesatoare de card, fiecare are eticheta lui („Card bancar — Banca
+Transilvania", „Card bancar — EuPlatesc", „Card bancar — Stripe"); cu unul singur ramane
+„Card bancar", ca pana acum.
+
+**Linkurile de plata pentru diferenta** (`Trimite link de plata pentru diferenta` din
+comanda) folosesc Banca Transilvania cand BT e pornit **in productie**, cu datele de acces
+si deschis clientilor (fara „Doar pentru administratori"); altfel EuPlatesc, ca pana acum.
+Linkurile deja trimise merg mai departe pe procesatorul lor (un link BT trece pe
+EuPlatesc doar daca BT nu mai e disponibil). Plata unei diferente prin BT e o comanda
+separata la banca, cu numarul linkului (`{comanda}-P{n}`, la reincercari `-R2`...), tot
+in doua faze, dar **incasata imediat dupa autorizare** (nu exista o aprobare ERP pentru
+ea); daca incasarea imediata nu merge, o reia cronul, cu aceeasi plasa de 96 de ore.
+Dupa incasare, suma se adauga la cea incasata pe comanda si comanda se retrimite in ERP —
+exact ca la un link platit prin EuPlatesc. In fereastra comenzii, plata diferentei are
+panoul ei, cu „Incaseaza" / „Anuleaza autorizarea" / „Rambursează". Fara niciun procesator
+pornit, adminul primeste un mesaj clar si poate consemna incasarea altfel.
 
 #### 1. Datele de acces (doar in `.env`, niciodata in admin sau in git)
 
@@ -214,8 +248,10 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie
 
 `BT_IPAY_MODE=test` foloseste platforma de test a bancii (nu se iau bani), `live` pe cea
 reala. Modificarea se aplica imediat. Adminul arata doar „configurat / lipseste" pentru
-fiecare valoare, niciodata valoarea. In modul test, optiunea din checkout o vad doar
-administratorii logati. `BT_IPAY_BASE_URL_OVERRIDE` exista doar pentru teste locale (un
+fiecare valoare, niciodata valoarea. **In modul test, BT nu apare deloc in checkout** (nici
+pentru administratori): testele se fac doar cu „Plata de test 1 leu", iar o plata din
+modul test nu se socoteste niciodata pe o comanda reala (nu o face „platita" si nu ajunge
+in ERP ca platita). `BT_IPAY_BASE_URL_OVERRIDE` exista doar pentru teste locale (un
 server care imita banca) si ramane gol pe site-ul live; daca e completat, adminul arata un
 avertisment rosu. Cheia de callback e optionala: fara ea, confirmarea vine la
 intoarcerea clientului si prin cron.
@@ -224,12 +260,13 @@ intoarcerea clientului si prin cron.
 
 - starea datelor din `.env` (+ „?" cu explicatia pas cu pas) si „Testeaza conexiunea"
   (intreaba banca de o comanda inexistenta: „comanda inexistenta" = datele sunt bune);
-- bifa „Accepta plata ... in checkout", bifa „Doar pentru administratori", incasarea la
-  aprobarea din ERP, pragurile (72 h reamintire, 96 h incasare automata, 60 min
-  expirare) si adresele de email pentru avertismente;
+- bifa „Accepta plata ... in checkout", bifa „Doar pentru administratorii generali"
+  (doar in productie), incasarea la aprobarea din ERP, pragurile (72 h reamintire, 96 h
+  incasare automata, 60 min expirare) si adresele de email pentru avertismente;
 - adresa de **callback** de dat bancii: `https://bioscem.ro/webhook/bt-ipay` (adresa de
   intoarcere `https://bioscem.ro/checkout/bt/retur` pleaca automat cu fiecare plata);
-- linia de cron, cu calea reala, si ora ultimei rulari;
+- linia de cron, cu calea reala, ora ultimei rulari INCHEIATE si rezultatul ei (erori,
+  apeluri la banca);
 - **plata de test de 1 leu** si jurnalul ultimelor apeluri catre banca (fara parole si
   fara date de card).
 
@@ -241,10 +278,16 @@ intoarcerea clientului si prin cron.
 
 Linia exacta, cu calea reala, e afisata pe tab-ul BT. La fiecare trecere: verifica la
 banca platile neterminate si le expira dupa 60 de minute (comanda devine esuata),
-elibereaza suma blocata pentru comenzile anulate / returnate / sterse (si platile de test
-uitate, dupa 30 de minute), reincearca incasarile esuate, trimite email la 72 de ore cu
-platile inca neincasate si le incaseaza singur la 96 de ore (inclusiv precomenzile), cu
-email. Rularile nu se suprapun (lacat MySQL).
+elibereaza suma blocata pentru comenzile anulate / returnate / sterse, platile in plus,
+platile din modul test ajunse pe comenzi reale, diferentele cu link nevalabil (si platile
+de test uitate, dupa 30 de minute), reincearca incasarile esuate cu suma ceruta atunci
+(de admin sau la aprobare), trimite email la 72 de ore cu platile inca neincasate si le
+incaseaza singur la 96 de ore (inclusiv precomenzile si diferentele), cu email — o singura
+data pe plata, nu la fiecare rulare. Rularile nu se suprapun (lacat MySQL), fiecare plata
+e atinsa cel mult o data pe rulare, o rulare face cel mult 600 de apeluri catre banca (o
+cerere web, cel mult 60), iar „bataia de inima" si rezultatul se scriu la SFARSITUL
+rularii: o rulare care moare pe drum se vede in admin ca „nu a mai rulat". Scriptul merge
+doar din linia de comanda.
 
 #### 4. Testul de 1 leu (in productie)
 
@@ -255,19 +298,34 @@ email. Rularile nu se suprapun (lacat MySQL).
    un card real, revii in admin si alegi **„Anuleaza (reverse)"** sau **„Incaseaza, apoi
    ramburseaza"**. Plata de test nu tine de nicio comanda, nu trimite emailuri si nu
    ajunge in ERP; neatinsa, cronul o anuleaza in 30 de minute;
-4. pentru o comanda reala de proba, fara ca clientii sa vada optiunea: bifeaza „Doar
-   pentru administratori" + „Accepta plata", plaseaza comanda din acelasi browser in care
-   esti logat in admin, apoi anuleaz-o din admin (suma se elibereaza automat). Comanda
+4. pentru o comanda reala de proba, fara ca clientii sa vada optiunea (tot in modul
+   productie): bifeaza „Doar pentru administratorii generali" + „Accepta plata", plaseaza
+   comanda din acelasi browser in care esti logat ca administrator general, apoi
+   anuleaz-o din admin (suma se elibereaza automat). Comanda
    ajunge in ERP ca orice comanda platita, iar anularea pleaca si acolo. Un produs de 1 leu
    are si transport, deci comanda reala nu iese la 1 leu; autorizarea anulata nu costa
    nimic;
 5. abia apoi debifeaza „Doar pentru administratori".
 
-#### 5. Tabele noi (create singure, `CREATE TABLE IF NOT EXISTS`)
+#### 5. Intoarcerea clientului si notificarea bancii
+
+Adresa de intoarcere (`/checkout/bt/retur`) e publica, asa ca raspunde doar browserului
+care a pornit plata (numarul platii e tinut in sesiunea lui): oricine altcineva vede o
+pagina generica, fara niciun apel la banca si fara nimic despre plata (nici motivul unui
+refuz). Pentru client, banca e intrebata cel mult o data la 30 de secunde pe plata, doar
+cat plata se mai poate schimba (o plata in eroare sau expirata, doar in primele 2 ore), cu
+lacatul asteptat cel mult 2 secunde. Daca banca nu raspunde sau plata e verificata chiar
+atunci, clientul vede „Verificam plata" (fara conversii, cu cosul intact), iar confirmarea
+vine prin notificare sau cron; daca plata pica pana la urma, comanda devine esuata si
+clientul primeste, ca la orice cos neterminat, emailul de cos abandonat. Notificarea
+bancii (`/webhook/bt-ipay`, JWT) intreaba banca cel mult o data la 2 secunde pe plata.
+
+#### 6. Tabele noi (create singure, o singura data; versiunea sta in `settings`)
 
 - `bt_ipay_transactions`: o plata (incercare) la banca, cu numarul trimis (`{comanda}`,
-  la reincercari `{comanda}-R2`...; platile de test `TEST-...`), starea, sumele (card si
-  puncte, autorizat / incasat / rambursat) si modul (test / live) in care a fost facuta —
+  la reincercari `{comanda}-R2`...; diferentele `{comanda}-P{n}`; platile de test
+  `TEST-...`), starea, sumele (card si puncte, autorizat / incasat / rambursat), suma
+  ceruta la o incasare reincercata si modul (test / live) in care a fost facuta —
   operatiile ulterioare folosesc datele de acces ale aceluiasi mod;
 - `bt_ipay_log`: jurnalul apelurilor catre banca, fara parole si fara date de card, sters
   dupa 180 de zile.

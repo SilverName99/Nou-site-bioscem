@@ -83,10 +83,11 @@ $paymentMethodPillClassMap = [
     'bank_transfer' => 'card',
 ];
 // Plățile Banca Transilvania au butoanele lor (încasează / rambursează), care
-// cer jetonul anti-CSRF al sesiunii. Doar dacă lista are comenzi BT.
+// cer jetonul anti-CSRF al sesiunii. Doar dacă lista are comenzi cu plăți BT
+// (ale comenzii sau ale unei diferențe plătite prin link).
 $areComenziBt = false;
 foreach ($orders as $comandaBtVerificata) {
-    if (is_array($comandaBtVerificata['bt'] ?? null)) {
+    if (is_array($comandaBtVerificata['bt'] ?? null) || !empty($comandaBtVerificata['bt_linkuri'])) {
         $areComenziBt = true;
         break;
     }
@@ -246,6 +247,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
     </form>
 
     <form method="post" action="/admin/orders/bulk" id="orders-bulk-form">
+        <?= \App\Support\AdminCsrf::camp() ?>
         <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
         <div id="orders-bulk-ids"></div>
         <div class="orders-bulk-toolbar">
@@ -451,6 +453,10 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
     $btRand = $order['bt'];
     if (!empty($btRand['necesita_rambursare'])) {
         $btEticheta = 'BT: plată încasată — necesită rambursare';
+    } elseif (!empty($btRand['eliberata_comanda_activa'])) {
+        $btEticheta = 'BT: suma eliberată — comanda NU e plătită';
+    } elseif (!empty($btRand['aprobare_refuzata'])) {
+        $btEticheta = 'BT: aprobarea din ERP refuzată — plata lipsește';
     } elseif (($btRand['stare'] ?? '') === 'authorized') {
         $btEticheta = 'BT: autorizată — de încasat' . (($btRand['termen'] ?? '') !== '' ? ' (automat la ' . $btRand['termen'] . ')' : '');
     } else {
@@ -462,6 +468,14 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                                     <?= htmlspecialchars($btEticheta, ENT_QUOTES) ?>
                                 </span>
 <?php endif; ?>
+<?php foreach ((array) ($order['bt_linkuri'] ?? []) as $btLink): ?>
+<?php if (is_array($btLink) && (!empty($btLink['necesita_rambursare']) || ($btLink['stare'] ?? '') === 'authorized')): ?>
+                                <span class="status-pill status-pill--<?= !empty($btLink['necesita_rambursare']) ? 'off' : 'warn' ?>"
+                                      title="<?= htmlspecialchars('Diferență plătită prin Banca Transilvania ' . (string) ($btLink['numar_bt'] ?? '') . ': ' . (string) ($btLink['eticheta'] ?? '') . (($btLink['eroare'] ?? '') !== '' ? ' — ' . (string) $btLink['eroare'] : ''), ENT_QUOTES) ?>">
+                                    <?= !empty($btLink['necesita_rambursare']) ? 'BT diferență: încasată — necesită rambursare' : 'BT diferență: autorizată — se încasează' ?>
+                                </span>
+<?php endif; ?>
+<?php endforeach; ?>
                                 <?php if ($ePrecomandaInAsteptare): ?>
                                     <span class="status-pill status-pill--warn"
                                           title="Precomandă: nu pleacă în „Comenzi site” din ERP până nu apeși ▶ pe rândul ei.">
@@ -718,6 +732,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
             <button type="button" class="icon-btn" id="close-order-actions-modal">✕</button>
         </div>
         <form method="post" action="/admin/orders/0/status" id="order-actions-status-form" class="form-grid">
+            <?= \App\Support\AdminCsrf::camp() ?>
             <input type="hidden" name="back_url" value="<?= htmlspecialchars($ordersBackUrl, ENT_QUOTES) ?>">
             <div class="field" style="grid-column:1/-1;">
                 <label>Status comandă</label>
@@ -1167,47 +1182,69 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                   + (euplatescId !== ''
                         ? `<div><small>ID tranzacție EuPlătesc</small><p>${esc(euplatescId)}</p></div>`
                         : '');
-            // Plata Banca Transilvania: starea de la bancă și butoanele pentru bani.
+            // Plata Banca Transilvania: starea de la bancă și butoanele pentru bani
+            // (plata comenzii și, separat, plățile diferențelor prin link).
             const bt = order.bt && typeof order.bt === 'object' ? order.bt : null;
-            let btPanelHtml = '';
-            if (bt) {
+            const btLinkuri = Array.isArray(order.bt_linkuri) ? order.bt_linkuri : [];
+            const btPanou = (p, titlu) => {
                 const btRand = (eticheta, valoare) => `<tr><td style="color:#64748b;padding:3px 12px 3px 0;white-space:nowrap;vertical-align:top;">${eticheta}</td><td style="padding:3px 0;">${valoare}</td></tr>`;
-                const btClasa = ['ok', 'warn', 'off', 'muted', 'info'].includes(String(bt.clasa)) ? String(bt.clasa) : 'info';
-                const btTx = Number(bt.tx_id || 0);
-                btPanelHtml = `<div id="order-bt-${order.id}" style="margin:0 0 10px;padding:12px;border:1px solid ${bt.necesita_rambursare ? '#fca5a5' : '#c7d2fe'};border-radius:8px;background:${bt.necesita_rambursare ? '#fef2f2' : '#f5f7ff'};">
+                const btClasa = ['ok', 'warn', 'off', 'muted', 'info'].includes(String(p.clasa)) ? String(p.clasa) : 'info';
+                const btTx = Number(p.tx_id || 0);
+                const alarma = !!(p.necesita_rambursare || p.eliberata_comanda_activa || p.aprobare_refuzata);
+                const banner = (text) => `<p style="margin:0 0 8px;padding:8px 10px;border-radius:6px;background:#dc2626;color:#fff;font-weight:700;">${text}</p>`;
+                return `<div id="order-bt-${btTx}" data-bt-panou style="margin:0 0 10px;padding:12px;border:1px solid ${alarma ? '#fca5a5' : '#c7d2fe'};border-radius:8px;background:${alarma ? '#fef2f2' : '#f5f7ff'};">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                        <strong style="font-size:14px;">Plată Banca Transilvania${String(bt.mod) === 'test' ? ' <span class="status-pill status-pill--off">MOD TEST</span>' : ''}</strong>
-                        <span class="status-pill status-pill--${btClasa}">${esc(bt.eticheta)}</span>
+                        <strong style="font-size:14px;">${titlu}${String(p.mod) === 'test' ? ' <span class="status-pill status-pill--off">MOD TEST</span>' : ''}</strong>
+                        <span class="status-pill status-pill--${btClasa}">${esc(p.eticheta)}</span>
                     </div>
-                    ${bt.necesita_rambursare ? `<p style="margin:0 0 8px;padding:8px 10px;border-radius:6px;background:#dc2626;color:#fff;font-weight:700;">Plată încasată – necesită rambursare. Comanda e închisă, dar banii au fost încasați; rambursarea NU se face automat.</p>` : ''}
+                    ${p.necesita_rambursare ? banner('Plată încasată – necesită rambursare. Comanda e închisă, dar banii au fost încasați; rambursarea NU se face automat.') : ''}
+                    ${p.eliberata_comanda_activa ? banner('Suma blocată a fost eliberată, dar comanda e încă activă: comanda NU mai e plătită. Aprobarea din ERP e refuzată (fără AWB) până o anulezi sau, după ce clientul plătește pe alt drum, o marchezi din „Acțiuni comandă" → „Plătit prin link extern de plată".') : ''}
+                    ${p.aprobare_refuzata && !p.eliberata_comanda_activa ? banner('Aprobarea din ERP a fost refuzată: plata nu acoperă comanda. Comanda NU a trecut în procesare și nu are AWB.') : ''}
+                    ${p.plata_test ? banner('Plată făcută pe platforma de TEST: nu se socotește pe comandă.') : ''}
                     <table style="border-collapse:collapse;font-size:13px;margin:0 0 8px;">
-                        ${btRand('Nr. plată la bancă', `<code>${esc(bt.numar_bt)}</code>${Number(bt.incercari || 1) > 1 ? ` <small style="color:#64748b;">(${Number(bt.incercari)} încercări)</small>` : ''}`)}
-                        ${btRand('Sumă plătită', formatRon(bt.suma))}
-                        ${Number(bt.puncte || 0) > 0 ? btRand('Din care puncte STAR', formatRon(bt.puncte)) : ''}
-                        ${bt.stare === 'authorized' ? btRand('Blocat, încă neîncasat', formatRon(bt.autorizat)) : ''}
-                        ${Number(bt.incasat || 0) > 0 ? btRand('Încasat', formatRon(bt.incasat)) : ''}
-                        ${Number(bt.rambursat || 0) > 0 ? btRand('Rambursat', formatRon(bt.rambursat) + (bt.referinta_rambursare ? ` <small style="color:#64748b;">ref. ${esc(bt.referinta_rambursare)}</small>` : '')) : ''}
-                        ${bt.termen ? btRand('Încasare automată', `${esc(bt.termen)} <small style="color:#64748b;">(dacă nu e aprobată în ERP înainte)</small>`) : ''}
-                        ${bt.cod_aprobare ? btRand('Cod autorizare', esc(bt.cod_aprobare)) : ''}
-                        ${bt.eroare ? btRand('Ultima problemă', `<span style="color:#b91c1c;">${esc(bt.eroare)}</span>`) : ''}
+                        ${btRand('Nr. plată la bancă', `<code>${esc(p.numar_bt)}</code>${Number(p.incercari || 1) > 1 ? ` <small style="color:#64748b;">(${Number(p.incercari)} încercări)</small>` : ''}`)}
+                        ${p.link_referinta ? btRand('Link de plată', `<code>${esc(p.link_referinta)}</code> <small style="color:#64748b;">(${esc(p.link_status === 'paid' ? 'plătit' : (p.link_status === 'cancelled' ? 'anulat' : 'în așteptare'))})</small>`) : ''}
+                        ${btRand('Sumă plătită', formatRon(p.suma))}
+                        ${Number(p.puncte || 0) > 0 ? btRand('Din care puncte STAR', formatRon(p.puncte)) : ''}
+                        ${p.stare === 'authorized' ? btRand('Blocat, încă neîncasat', formatRon(p.autorizat)) : ''}
+                        ${Number(p.incasat || 0) > 0 ? btRand('Încasat', formatRon(p.incasat)) : ''}
+                        ${Number(p.rambursat || 0) > 0 ? btRand('Rambursat', formatRon(p.rambursat) + (p.referinta_rambursare ? ` <small style="color:#64748b;">ref. ${esc(p.referinta_rambursare)}</small>` : '')) : ''}
+                        ${p.termen ? btRand('Încasare automată', `${esc(p.termen)} <small style="color:#64748b;">(${p.tip === 'link' ? 'dacă încasarea imediată n-a mers' : 'dacă nu e aprobată în ERP înainte'})</small>`) : ''}
+                        ${p.cod_aprobare ? btRand('Cod autorizare', esc(p.cod_aprobare)) : ''}
+                        ${p.eroare ? btRand('Ultima problemă', `<span style="color:#b91c1c;">${esc(p.eroare)}</span>`) : ''}
                     </table>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                         <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'status')" style="padding:6px 12px;background:#fff;border:1px solid #6366f1;border-radius:5px;cursor:pointer;font-size:13px;color:#3730a3;">Verifică la bancă</button>
-                        ${bt.poate_incasa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
-                            <input type="number" step="0.01" min="0.01" max="${Number(bt.incasabil || 0).toFixed(2)}" id="bt-suma-incasare-${order.id}" value="${Number(bt.sugestie_incasare || 0).toFixed(2)}" aria-label="Suma de încasat (lei)" style="width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;">
-                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'deposit', ${Number(bt.incasabil || 0)})" style="padding:6px 12px;background:#15803d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Încasează</button>
-                            <small style="color:#64748b;">max ${formatRon(bt.incasabil)}</small>
+                        ${p.poate_incasa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
+                            <input type="number" step="0.01" min="0.01" max="${Number(p.incasabil || 0).toFixed(2)}" id="bt-suma-incasare-${btTx}" value="${Number(p.sugestie_incasare || 0).toFixed(2)}" aria-label="Suma de încasat (lei)" style="width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;">
+                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'deposit', ${Number(p.incasabil || 0)})" style="padding:6px 12px;background:#15803d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Încasează</button>
+                            <small style="color:#64748b;">max ${formatRon(p.incasabil)}</small>
                         </span>` : ''}
-                        ${bt.poate_anula ? `<button type="button" onclick="btActiune(${order.id}, ${btTx}, 'reverse')" style="padding:6px 12px;background:#fff;border:1px solid #b45309;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">Anulează autorizarea</button>` : ''}
-                        ${bt.poate_rambursa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
-                            <input type="number" step="0.01" min="0.01" max="${Number(bt.rambursabil || 0).toFixed(2)}" id="bt-suma-rambursare-${order.id}" value="${Number(bt.rambursabil || 0).toFixed(2)}" aria-label="Suma de rambursat (lei)" style="width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;">
-                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'refund', ${Number(bt.rambursabil || 0)}, ${Number(bt.puncte || 0)})" style="padding:6px 12px;background:#b91c1c;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Rambursează</button>
-                            <small style="color:#64748b;">max ${formatRon(bt.rambursabil)}</small>
+                        ${p.poate_anula ? `<button type="button" onclick="${p.cere_confirmare_eliberare ? `btArataAlegere(${btTx})` : `btActiune(${order.id}, ${btTx}, 'reverse')`}" style="padding:6px 12px;background:#fff;border:1px solid #b45309;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">Anulează autorizarea</button>` : ''}
+                        ${p.poate_rambursa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
+                            <input type="number" step="0.01" min="0.01" max="${Number(p.rambursabil || 0).toFixed(2)}" id="bt-suma-rambursare-${btTx}" value="${Number(p.rambursabil || 0).toFixed(2)}" aria-label="Suma de rambursat (lei)" style="width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;">
+                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'refund', ${Number(p.rambursabil || 0)}, ${Number(p.puncte || 0)})" style="padding:6px 12px;background:#b91c1c;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Rambursează</button>
+                            <small style="color:#64748b;">max ${formatRon(p.rambursabil)}</small>
                         </span>` : ''}
                     </div>
-                    <p id="bt-status-${order.id}" role="status" style="margin:8px 0 0;font-size:13px;"></p>
+                    ${p.cere_confirmare_eliberare ? `<div id="bt-alegere-${btTx}" hidden style="margin:10px 0 0;padding:10px 12px;border:1px solid #f59e0b;border-radius:8px;background:#fffbeb;">
+                        <p style="margin:0 0 8px;color:#78350f;font-size:13px;line-height:1.45;"><strong>Comanda e încă activă.</strong> Dacă doar eliberezi suma, comanda rămâne activă dar <strong>NEPLĂTITĂ</strong>, iar în ERP figurează încă plătită: aprobarea ei de acolo va fi refuzată (fără AWB) până se rezolvă plata. <strong>Recomandat:</strong> anulează comanda — suma se eliberează automat, ERP-ul e anunțat, clientul primește emailul de anulare și punctele se întorc.</p>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'anuleaza_comanda')" style="padding:6px 12px;background:#b91c1c;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Anulează comanda și eliberează suma (recomandat)</button>
+                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'reverse', 0, 0, true)" style="padding:6px 12px;background:#fff;border:1px solid #b45309;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">Doar eliberează suma (comanda rămâne neplătită)</button>
+                            <button type="button" onclick="btArataAlegere(${btTx}, false)" style="padding:6px 12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer;font-size:13px;">Renunță</button>
+                        </div>
+                    </div>` : ''}
+                    <p id="bt-status-${btTx}" role="status" style="margin:8px 0 0;font-size:13px;"></p>
                 </div>`;
+            };
+            let btPanelHtml = '';
+            if (bt) {
+                btPanelHtml += btPanou(bt, 'Plată Banca Transilvania');
             }
+            btLinkuri.forEach((p) => {
+                btPanelHtml += btPanou(p, 'Plată diferență (link) — Banca Transilvania');
+            });
             let totalsHtml = `
                     <p><span>Subtotal (fără TVA)</span><strong>${formatRon(subtotalWithoutVat)}</strong></p>
                     <p><span>TVA</span><strong>${formatRon(vatTotal)}</strong></p>
@@ -2010,15 +2047,19 @@ function blocheazaComanda(orderId){
 <?php if ($areComenziBt): ?>
 /* --- Plata Banca Transilvania: verifică, încasează, anulează, rambursează --- */
 window.BT_CSRF = <?= json_encode(\App\Support\AdminCsrf::token()) ?>;
-function btActiune(orderId, txId, actiune, maxim, puncte){
-    const status = document.getElementById('bt-status-' + orderId);
-    const panou = document.getElementById('order-bt-' + orderId);
+function btArataAlegere(txId, arata){
+    const caseta = document.getElementById('bt-alegere-' + txId);
+    if (caseta) { caseta.hidden = arata === false; }
+}
+function btActiune(orderId, txId, actiune, maxim, puncte, confirmActiva){
+    const status = document.getElementById('bt-status-' + txId);
+    const panou = document.getElementById('order-bt-' + txId);
     const date = new URLSearchParams();
     date.append('tx_id', String(txId));
     date.append('_csrf', window.BT_CSRF || '');
     let confirmare = '';
     if (actiune === 'deposit' || actiune === 'refund') {
-        const camp = document.getElementById((actiune === 'deposit' ? 'bt-suma-incasare-' : 'bt-suma-rambursare-') + orderId);
+        const camp = document.getElementById((actiune === 'deposit' ? 'bt-suma-incasare-' : 'bt-suma-rambursare-') + txId);
         const suma = Number(String(camp ? camp.value : '').replace(',', '.'));
         if (!Number.isFinite(suma) || suma <= 0) {
             if (status) { status.style.color = '#dc2626'; status.textContent = 'Scrie o sumă mai mare ca 0.'; }
@@ -2031,9 +2072,16 @@ function btActiune(orderId, txId, actiune, maxim, puncte){
         date.append('suma', suma.toFixed(2));
         confirmare = actiune === 'deposit'
             ? 'Încasezi ' + suma.toFixed(2) + ' lei din suma blocată pe cardul clientului?' + (Number(maxim) > suma ? ' Restul de ' + (Number(maxim) - suma).toFixed(2) + ' lei NU se mai încasează.' : '')
-            : 'Rambursezi ' + suma.toFixed(2) + ' lei clientului? Banii pleacă înapoi pe card și operația nu se poate anula.' + (Number(puncte) > 0 ? ' Punctele STAR se întorc primele.' : '');
+            : 'Rambursezi ' + suma.toFixed(2) + ' lei clientului? Banii pleacă înapoi pe card și operația nu se poate anula.' + (Number(puncte) > 0 ? ' Punctele STAR se întorc primele.' : '') + ' Magazinul primește un email despre rambursare.';
     } else if (actiune === 'reverse') {
-        confirmare = 'Anulezi autorizarea? Suma blocată pe cardul clientului se eliberează, iar comanda rămâne fără plată.';
+        if (confirmActiva) {
+            date.append('confirm_activa', '1');
+            confirmare = 'Sigur eliberezi doar suma? Comanda rămâne ACTIVĂ și NEPLĂTITĂ, iar aprobarea ei din ERP va fi refuzată până se rezolvă plata.';
+        } else {
+            confirmare = 'Anulezi autorizarea? Suma blocată pe cardul clientului se eliberează.';
+        }
+    } else if (actiune === 'anuleaza_comanda') {
+        confirmare = 'Anulezi comanda? Suma blocată se eliberează, ERP-ul e anunțat, iar clientul primește emailul de anulare.';
     }
     if (confirmare !== '' && !window.confirm(confirmare)) {
         return;
@@ -2054,6 +2102,7 @@ function btActiune(orderId, txId, actiune, maxim, puncte){
             }
             // Eroarea rămâne pe ecran, ca să poată fi citită; starea reală se
             // vede după reîncărcarea paginii.
+            if (data.cere_confirmare) { btArataAlegere(txId, true); }
             if (status) { status.style.color = '#dc2626'; status.textContent = (data.error || 'Eroare') + ' (Reîncarcă pagina ca să vezi starea actualizată.)'; }
             if (panou) { panou.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
         })
@@ -2074,7 +2123,7 @@ function sendPaymentLink(orderId){
             if (!status) return;
             if (data.ok) {
                 status.style.color = '#16a34a';
-                status.textContent = 'Link trimis pe ' + (data.email || 'emailul clientului') + ' ✓';
+                status.textContent = 'Link trimis pe ' + (data.email || 'emailul clientului') + (data.procesator ? ' (plată prin ' + data.procesator + ')' : '') + ' ✓';
                 return;
             }
             status.style.color = '#dc2626';

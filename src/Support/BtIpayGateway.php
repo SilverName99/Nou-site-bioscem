@@ -72,6 +72,20 @@ final class BtIpayGateway
         'refund' => 'refund.do',
     ];
 
+    /**
+     * Plafonul de apeluri către bancă: o cerere web nu trece de 60, o rulare de
+     * cron (sau alt script din linia de comandă) de 600. E o plasă de siguranță:
+     * o buclă scăpată din mână (sau o pagină publică bătută în neștire) se
+     * oprește aici, înainte să trimită mii de cereri băncii. Fluxurile normale
+     * fac câteva apeluri; ce rămâne neterminat reia cronul.
+     */
+    private const LIMITA_WEB = 60;
+    private const LIMITA_CLI = 600;
+
+    private static ?int $limitaApeluri = null;
+    private static int $apeluriFacute = 0;
+    private static bool $limitaJurnalizata = false;
+
     // ------------------------------------------------------------------
     // Configurare (.env)
     // ------------------------------------------------------------------
@@ -199,6 +213,32 @@ final class BtIpayGateway
     }
 
     // ------------------------------------------------------------------
+    // Plafonul de apeluri
+    // ------------------------------------------------------------------
+
+    /** Schimbă plafonul de apeluri pentru restul cererii / rulării (cronul își pune plafonul lui). */
+    public static function seteazaLimitaApeluri(int $limita): void
+    {
+        self::$limitaApeluri = max(0, $limita);
+    }
+
+    public static function limitaApeluri(): int
+    {
+        return self::$limitaApeluri ?? (PHP_SAPI === 'cli' ? self::LIMITA_CLI : self::LIMITA_WEB);
+    }
+
+    /** Câte apeluri către bancă mai are voie să facă cererea (rularea) curentă. */
+    public static function apeluriRamase(): int
+    {
+        return max(0, self::limitaApeluri() - self::$apeluriFacute);
+    }
+
+    public static function apeluriFacute(): int
+    {
+        return self::$apeluriFacute;
+    }
+
+    // ------------------------------------------------------------------
     // Apelul către bancă
     // ------------------------------------------------------------------
 
@@ -229,6 +269,18 @@ final class BtIpayGateway
             self::jurnal($db, $mod, $actiune, $parametri, 0, null, '', 0, $rezultat['eroare'], $context);
             return $rezultat;
         }
+
+        if (self::apeluriRamase() <= 0) {
+            $rezultat['eroare'] = 'Limita de siguranță de apeluri către bancă pentru această cerere a fost atinsă ('
+                . self::limitaApeluri() . '); operația nu a fost trimisă. Cronul o reia.';
+            // O singură intrare în jurnal pe cerere, ca jurnalul să nu se umple.
+            if (!self::$limitaJurnalizata) {
+                self::$limitaJurnalizata = true;
+                self::jurnal($db, $mod, $actiune, $parametri, 0, null, '', 0, $rezultat['eroare'], $context);
+            }
+            return $rezultat;
+        }
+        self::$apeluriFacute++;
 
         $url = self::urlBaza($mod) . self::CALE_API . self::ACTIUNI[$actiune];
         $deTrimis = $parametri;
@@ -683,7 +735,7 @@ final class BtIpayGateway
         }
 
         $continut = json_decode((string) self::base64UrlDecode($continut64), true);
-        if (!is_array($continut) || ($continut !== [] && array_is_list($continut))) {
+        if (!is_array($continut) || ($continut !== [] && self::esteLista($continut))) {
             return null;
         }
 
@@ -704,6 +756,24 @@ final class BtIpayGateway
         }
 
         return $continut;
+    }
+
+    /**
+     * Lista simplă (chei 0, 1, 2…), nu obiect JSON. Echivalentul lui
+     * `array_is_list`, care există abia din PHP 8.1 (serverul poate fi pe 8.0).
+     *
+     * @param array<mixed> $date
+     */
+    private static function esteLista(array $date): bool
+    {
+        $asteptat = 0;
+        foreach ($date as $cheie => $_) {
+            if ($cheie !== $asteptat) {
+                return false;
+            }
+            $asteptat++;
+        }
+        return true;
     }
 
     /** Numărul comenzii din conținutul callback-ului (payload.orderNumber). */

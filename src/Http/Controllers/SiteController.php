@@ -1377,6 +1377,9 @@ final class SiteController
                 (string) ($_SERVER['HTTP_USER_AGENT'] ?? '')
             );
             if ($start['ok']) {
+                // Adresa de întoarcere e publică: răspunde (și întreabă banca)
+                // doar pentru browserul care a pornit plata.
+                BtIpayPayments::memoreazaInSesiune($start['numar']);
                 unset($_SESSION['checkout_form']);
                 header('Location: ' . $start['url']);
                 return;
@@ -1565,65 +1568,131 @@ final class SiteController
      * Întoarcerea clientului de pe pagina de plată BT (returnUrl). Banca adaugă
      * `orderId`; noi ne luăm după referința noastră și citim starea DIRECT de
      * la bancă — parametrii din adresă nu dovedesc nimic.
+     *
+     * Adresa e publică, deci răspunde doar browserului care a pornit plata
+     * (numărul plății e ținut în sesiunea lui la plecarea spre bancă). Oricui
+     * altcuiva i se arată o pagină generică, fără niciun apel la bancă și fără
+     * nimic despre plată. Pentru proprietar, banca e întrebată cel mult o dată
+     * la 30 de secunde, cât plata se mai poate schimba, cu lacătul așteptat cel
+     * mult 2 secunde; dacă banca nu răspunde (sau plata e ocupată), pagina spune
+     * „verificăm plata" — nu „succes" —, coșul rămâne, iar confirmarea vine
+     * prin callback sau cron.
      */
     public function btIpayReturn(): void
     {
         $db = $this->db();
-        if (!$db instanceof PDO) {
-            Flash::set('error', 'Nu am putut verifica plata. Te rugăm să ne contactezi.');
-            header('Location: /checkout');
+        $ref = trim((string) ($_GET['ref'] ?? ''));
+        if (!$db instanceof PDO || $ref === '' || !BtIpayPayments::sesiuneaDetine($ref)) {
+            $this->randeazaVerificarePlataBt('', '');
             return;
         }
-        $this->ensureStripeSchema($db);
         BtIpayPayments::ensureSchema($db);
 
-        $tx = BtIpayPayments::dupaNumar($db, (string) ($_GET['ref'] ?? ''));
-        if ($tx === null || (string) $tx['kind'] !== BtIpayPayments::TIP_COMANDA || (int) ($tx['order_id'] ?? 0) <= 0) {
-            Flash::set('error', 'Nu am găsit plata. Dacă ai plătit, comanda se confirmă automat în câteva minute.');
-            header('Location: /checkout');
+        $tx = BtIpayPayments::dupaNumar($db, $ref);
+        if ($tx === null || (int) ($tx['order_id'] ?? 0) <= 0
+            || !in_array((string) $tx['kind'], [BtIpayPayments::TIP_COMANDA, BtIpayPayments::TIP_LINK], true)) {
+            $this->randeazaVerificarePlataBt('', '');
+            return;
+        }
+        // Banca adaugă id-ul ei de plată; altul decât al nostru = nu e întoarcerea acestei plăți.
+        $idBanca = trim((string) ($_GET['orderId'] ?? ''));
+        $idSalvat = trim((string) ($tx['bt_order_id'] ?? ''));
+        if ($idBanca !== '' && $idSalvat !== '' && !hash_equals($idSalvat, $idBanca)) {
+            $this->randeazaVerificarePlataBt('', '');
             return;
         }
 
-        // Banca e întrebată cât timp plata se mai poate schimba din partea
-        // clientului (încă neplătită, în 3-D Secure, expirată de curând). O plată
-        // deja autorizată, încasată, refuzată sau eliberată are starea salvată tot
-        // de la bancă: adresa de retur e publică, așa că un refresh (sau oricine
-        // o apelează) nu mai declanșează apeluri către bancă.
-        $stareSalvata = (string) $tx['state'];
-        $creata = strtotime((string) ($tx['created_at'] ?? '')) ?: 0;
-        $deVerificat = in_array($stareSalvata, [BtIpayPayments::STARE_INREGISTRATA, BtIpayPayments::STARE_3DS, BtIpayPayments::STARE_EROARE], true)
-            || ($stareSalvata === BtIpayPayments::STARE_EXPIRATA && $creata >= time() - 86400);
-        $sincronizare = $deVerificat
-            ? BtIpayPayments::sincronizeaza($db, (int) $tx['id'], 'retur')
-            : ['ok' => true, 'mesaj' => ''];
+        $verificare = BtIpayPayments::verificaDinRetur($db, (int) $tx['id']);
         $tx = BtIpayPayments::tx($db, (int) $tx['id']) ?? $tx;
+        $stare = (string) $tx['state'];
+        $neclar = !empty($verificare['ocupat']) || !$verificare['ok']
+            || (!empty($verificare['amanat']) && in_array($stare, [BtIpayPayments::STARE_INREGISTRATA, BtIpayPayments::STARE_3DS], true))
+            || $stare === BtIpayPayments::STARE_3DS;
 
-        $stmt = $db->prepare('SELECT order_number, payment_status FROM orders WHERE id = :id LIMIT 1');
+        if ((string) $tx['kind'] === BtIpayPayments::TIP_LINK) {
+            $this->btIpayReturLink($db, $tx, $ref, $neclar);
+            return;
+        }
+
+        $stmt = $db->prepare('SELECT order_number, status, payment_status, deleted_at FROM orders WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => (int) $tx['order_id']]);
         $comanda = $stmt->fetch();
         $numar = is_array($comanda) ? (string) $comanda['order_number'] : '';
+        $anulata = !is_array($comanda) || $comanda['deleted_at'] !== null
+            || in_array((string) $comanda['status'], ['cancelled', 'refunded', 'returned'], true);
         $platita = is_array($comanda) && strtolower((string) $comanda['payment_status']) === 'paid';
-        $stare = (string) $tx['state'];
-        $succes = '/checkout/succes/' . rawurlencode($numar) . '?bt=1';
 
-        if ($numar !== '' && ($platita || in_array($stare, [BtIpayPayments::STARE_AUTORIZATA, BtIpayPayments::STARE_INCASATA], true))) {
-            header('Location: ' . $succes);
+        if ($anulata) {
+            // Comanda a fost anulată înainte ca plata să se confirme: nu o
+            // reînviem. O sumă abia blocată se eliberează imediat (sau din cron).
+            Flash::set('error', 'Comanda ' . $numar . ' fusese anulată înainte să se confirme plata, așa că nu a fost reactivată.'
+                . (in_array($stare, [BtIpayPayments::STARE_AUTORIZATA, BtIpayPayments::STARE_ANULATA], true)
+                    ? ' Suma blocată pe card se eliberează automat; nu ți se ia niciun ban.'
+                    : '')
+                . ' Dacă vrei produsele, te rugăm să plasezi o comandă nouă.');
+            header('Location: /checkout');
             return;
         }
-        if (!$sincronizare['ok'] && $numar !== '') {
-            // Banca nu a răspuns acum: confirmarea vine prin callback sau cron.
-            // Pagina de succes spune „plata se confirmă în câteva momente".
-            header('Location: ' . $succes);
+        if ($platita) {
+            header('Location: /checkout/succes/' . rawurlencode($numar) . '?bt=1');
+            return;
+        }
+        if ($neclar || in_array($stare, [BtIpayPayments::STARE_AUTORIZATA, BtIpayPayments::STARE_INCASATA], true)) {
+            // Banca nu a răspuns, plata e ocupată sau încă în 3-D Secure: nu
+            // spunem nici „succes", nici „eșec". Fără conversii, coșul rămâne.
+            $this->randeazaVerificarePlataBt($numar, '/checkout/bt/retur?ref=' . rawurlencode($ref));
             return;
         }
         if ($stare === BtIpayPayments::STARE_REFUZATA) {
+            // Motivul exact al băncii doar pentru browserul care a plătit.
             Flash::set('error', 'Plata cu cardul nu a fost aprobată: '
                 . BtIpayGateway::mesajRefuz((int) ($tx['action_code'] ?? 0))
                 . ' Poți reîncerca sau alege altă metodă de plată.');
+        } elseif ($stare === BtIpayPayments::STARE_EROARE) {
+            Flash::set('error', 'Plata cu cardul nu a putut fi pornită. Poți reîncerca sau alege altă metodă de plată.');
         } else {
             Flash::set('error', 'Plata cu cardul nu a fost finalizată. Poți reîncerca sau alege altă metodă de plată.');
         }
         header('Location: /checkout');
+    }
+
+    /** Întoarcerea de la plata unei diferențe (link) prin BT: înapoi pe pagina linkului. */
+    private function btIpayReturLink(PDO $db, array $tx, string $ref, bool $neclar): void
+    {
+        $link = \App\Support\PaymentLink::dupaId($db, (int) ($tx['link_id'] ?? 0));
+        if ($link === null) {
+            $this->randeazaVerificarePlataBt('', '');
+            return;
+        }
+        $pagina = '/plata/' . rawurlencode((string) $link['token']);
+        $stare = (string) $tx['state'];
+        if ((string) $link['status'] === \App\Support\PaymentLink::STATUS_PLATIT) {
+            header('Location: ' . $pagina . '?platit=1');
+            return;
+        }
+        if ($neclar || in_array($stare, [BtIpayPayments::STARE_AUTORIZATA, BtIpayPayments::STARE_INCASATA], true)) {
+            // Autorizată, dar încasarea (imediată) încă nu s-a confirmat.
+            header('Location: ' . $pagina . '?verificare=' . rawurlencode($ref));
+            return;
+        }
+        if ($stare === BtIpayPayments::STARE_REFUZATA) {
+            Flash::set('error', 'Plata cu cardul nu a fost aprobată: ' . BtIpayGateway::mesajRefuz((int) ($tx['action_code'] ?? 0)));
+        }
+        header('Location: ' . $pagina . '?esuat=1');
+    }
+
+    /**
+     * Pagina neutră „verificăm plata": fără conversii și fără să golească
+     * coșul. Fără număr de comandă e varianta generică, pentru cine ajunge pe
+     * adresa de întoarcere fără sesiunea care a pornit plata.
+     */
+    private function randeazaVerificarePlataBt(string $numar, string $urlReverificare): void
+    {
+        View::render('site/checkout-bt-verificare', [
+            'title' => 'Verificăm plata',
+            'numar' => $numar,
+            'urlReverificare' => $urlReverificare,
+        ]);
     }
 
     /**
@@ -1641,7 +1710,6 @@ final class SiteController
             echo json_encode(['success' => false]);
             return;
         }
-        $this->ensureStripeSchema($db);
         BtIpayPayments::ensureSchema($db);
 
         $corp = (string) file_get_contents('php://input', false, null, 0, 16384);
@@ -1650,14 +1718,7 @@ final class SiteController
             // Adresa e publică: jurnalizăm cel mult un refuz pe minut, ca o
             // avalanșă de cereri false să nu umple tabela. Pentru diagnostic
             // (cheie greșită în .env) ajunge.
-            $ultimRefuz = false;
-            try {
-                $ultimRefuz = $db->query(
-                    "SELECT created_at FROM bt_ipay_log WHERE action = 'callback' AND http_code = 401 ORDER BY id DESC LIMIT 1"
-                )->fetchColumn();
-            } catch (\Throwable) {
-            }
-            if ($ultimRefuz === false || (strtotime((string) $ultimRefuz) ?: 0) < time() - 60) {
+            if ($this->btJurnalPermis($db, 'http_code = 401')) {
                 BtIpayGateway::jurnal($db, BtIpayGateway::mod(), 'callback', ['lungime' => strlen($corp)], 401, null, '', 0,
                     BtIpayGateway::cheiCallback() === []
                         ? 'Callback respins: cheia de callback lipsește din .env.'
@@ -1672,22 +1733,41 @@ final class SiteController
         $numar = BtIpayGateway::numarDinCallback($continut);
         $tx = $numar !== '' ? BtIpayPayments::dupaNumar($db, $numar) : null;
         if ($tx === null) {
-            // Nu e o plată de-a noastră: răspundem 200 ca banca să nu insiste la nesfârșit.
-            BtIpayGateway::jurnal($db, BtIpayGateway::mod(), 'callback', ['orderNumber' => $numar], 200, null, '', 0,
-                'Callback pentru o plată necunoscută; ignorat.', ['sursa' => 'callback']);
+            // Nu e o plată de-a noastră: răspundem 200 ca banca să nu insiste la
+            // nesfârșit. Tot un rând pe minut, cel mult.
+            if ($this->btJurnalPermis($db, 'tx_id IS NULL AND http_code = 200')) {
+                BtIpayGateway::jurnal($db, BtIpayGateway::mod(), 'callback', ['orderNumber' => $numar], 200, null, '', 0,
+                    'Callback pentru o plată necunoscută; ignorat.', ['sursa' => 'callback']);
+            }
             echo json_encode(['success' => true]);
             return;
         }
 
-        $rezultat = BtIpayPayments::sincronizeaza($db, (int) $tx['id'], 'callback');
-        BtIpayGateway::jurnal($db, (string) $tx['mode'], 'callback', ['orderNumber' => $numar], $rezultat['ok'] ? 200 : 500, null, '', 0,
-            'Callback verificat; ' . $rezultat['mesaj'], ['tx_id' => (int) $tx['id'], 'order_id' => (int) ($tx['order_id'] ?? 0), 'sursa' => 'callback']);
+        $rezultat = BtIpayPayments::verificaDinCallback($db, (int) $tx['id']);
+        if (!empty($rezultat['verificat']) || !$rezultat['ok']) {
+            BtIpayGateway::jurnal($db, (string) $tx['mode'], 'callback', ['orderNumber' => $numar], $rezultat['ok'] ? 200 : 500, null, '', 0,
+                'Callback verificat; ' . $rezultat['mesaj'], ['tx_id' => (int) $tx['id'], 'order_id' => (int) ($tx['order_id'] ?? 0), 'sursa' => 'callback']);
+        }
         if (!$rezultat['ok']) {
+            // Inclusiv „plata e ocupată acum": banca poate reîncerca.
             http_response_code(500);
             echo json_encode(['success' => false]);
             return;
         }
         echo json_encode(['success' => true]);
+    }
+
+    /** Cel mult un rând pe minut în jurnalul BT pentru cererile publice de felul dat. */
+    private function btJurnalPermis(PDO $db, string $conditie): bool
+    {
+        try {
+            $ultim = $db->query(
+                "SELECT created_at FROM bt_ipay_log WHERE action = 'callback' AND " . $conditie . ' ORDER BY id DESC LIMIT 1'
+            )->fetchColumn();
+        } catch (\Throwable) {
+            return true;
+        }
+        return $ultim === false || (strtotime((string) $ultim) ?: 0) < time() - 60;
     }
 
     public function stripeWebhook(): void
@@ -6067,7 +6147,9 @@ CSS;
         }
 
         $metode = [];
-        if (BtIpayPayments::vizibilInCheckout($settings, Auth::check())) {
+        // Doar citim sesiunea de admin: o vizită în checkout nu are voie să-i
+        // reîmprospăteze ceasul de inactivitate (sau să-l delogheze).
+        if (BtIpayPayments::vizibilInCheckout($settings, Auth::esteAdminGeneralFaraReimprospatare())) {
             $metode[] = PaymentMethods::BT_IPAY;
         }
         if (EuPlatescGateway::isEnabled($settings)) {
@@ -6183,11 +6265,27 @@ CSS;
             return;
         }
 
+        $procesator = \App\Support\PaymentLink::procesorEfectiv($link, Settings::all($db));
+        $esteplatit = (string) ($link['status'] ?? '') === \App\Support\PaymentLink::STATUS_PLATIT;
+        // O plată BT a linkului e autorizată, dar încasarea (imediată) încă nu
+        // s-a confirmat: clientul nu trebuie să plătească din nou.
+        $inCurs = !$esteplatit && BtIpayPayments::areTabele($db)
+            && BtIpayPayments::plataLinkInCurs($db, (int) $link['id']) !== null;
+        // Întoarcerea de la bancă cu plata încă neconfirmată: o reverificăm
+        // la reîncărcare (doar browserul care a pornit plata).
+        $refVerificare = trim((string) ($_GET['verificare'] ?? ''));
+        $urlReverificare = $refVerificare !== '' && BtIpayPayments::sesiuneaDetine($refVerificare)
+            ? '/checkout/bt/retur?ref=' . rawurlencode($refVerificare)
+            : '';
+
         View::render('site/payment-link', [
             'title' => 'Plata diferenței — comanda ' . (string) ($order['order_number'] ?? ''),
             'link' => $link,
             'order' => $order,
-            'esteplatit' => (string) ($link['status'] ?? '') === \App\Support\PaymentLink::STATUS_PLATIT,
+            'esteplatit' => $esteplatit,
+            'procesator' => $procesator,
+            'inCurs' => $inCurs || ($urlReverificare !== '' && !$esteplatit),
+            'urlReverificare' => $urlReverificare,
         ]);
     }
 
@@ -6208,6 +6306,29 @@ CSS;
         $settings = Settings::all($db);
         $appUrl = $this->appUrl();
         $numarComanda = (string) ($order['order_number'] ?? '');
+
+        if (BtIpayPayments::areTabele($db) && BtIpayPayments::plataLinkInCurs($db, (int) $link['id']) !== null) {
+            // Plata BT a acestui link e deja autorizată și se încasează: nu
+            // pornim alta, pe niciun procesator (clientul ar plăti de două ori).
+            Flash::set('error', 'Plata acestui link a fost deja autorizată și se încasează acum; nu e nevoie să plătești din nou.');
+            header('Location: /plata/' . rawurlencode((string) $link['token']));
+            return;
+        }
+
+        if (\App\Support\PaymentLink::procesorEfectiv($link, $settings) === \App\Support\PaymentLink::PROCESATOR_BT) {
+            // Diferența prin Banca Transilvania: o plată separată la bancă, pe
+            // numărul linkului, încasată imediat după autorizare.
+            $start = BtIpayPayments::pornestePlataLink($db, $link, $appUrl . '/checkout/bt/retur', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+            if (!$start['ok']) {
+                Flash::set('error', 'Plata nu a putut fi pornită: ' . $start['eroare']);
+                header('Location: /plata/' . rawurlencode((string) $link['token']));
+                return;
+            }
+            BtIpayPayments::memoreazaInSesiune($start['numar']);
+            header('Location: ' . $start['url']);
+            return;
+        }
+
         try {
             $fields = EuPlatescGateway::buildRequest($settings, [
                 // Referința e unică per încercare; la întoarcere o recunoaștem

@@ -50,6 +50,31 @@ final class Auth
         return true;
     }
 
+    /**
+     * E logat un administrator în sesiunea asta? Doar citește: spre deosebire
+     * de `check()`, nu reîmprospătează ceasul de inactivitate și nu deloghează
+     * pe nimeni. Pentru paginile publice (checkout-ul), unde vizita clientului
+     * nu are voie să țină în viață — sau să închidă — sesiunea de admin.
+     */
+    public static function esteLogatFaraReimprospatare(): bool
+    {
+        if (!isset($_SESSION['admin_id']) || (int) $_SESSION['admin_id'] <= 0) {
+            return false;
+        }
+        $ultima = (int) ($_SESSION['admin_last_seen'] ?? 0);
+        return !($ultima > 0 && (time() - $ultima) > self::INACTIVITATE);
+    }
+
+    /**
+     * Administrator general logat, verificat doar prin citire (vezi mai sus).
+     * `isGeneralAdmin()` singur nu ajunge: fără nimeni logat, rolul implicit
+     * din sesiune e chiar „general".
+     */
+    public static function esteAdminGeneralFaraReimprospatare(): bool
+    {
+        return self::esteLogatFaraReimprospatare() && self::isGeneralAdmin();
+    }
+
     public static function id(): ?int
     {
         return isset($_SESSION['admin_id']) ? (int) $_SESSION['admin_id'] : null;
