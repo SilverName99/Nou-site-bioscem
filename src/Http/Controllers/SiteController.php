@@ -1327,6 +1327,9 @@ final class SiteController
             return;
         }
 
+        // Pagina de confirmare arată emailul întreg doar browserului care a plasat comanda.
+        $this->tineMinteComandaPlasata($orderNumber);
+
         // Comanda cu produse de precomandă se marchează acum, nu mai jos:
         // plata cu cardul pleacă la procesator și nu mai trece pe acolo, iar
         // confirmarea încasării ar fi împins-o în ERP nemarcată.
@@ -1495,6 +1498,12 @@ final class SiteController
             unset($_SESSION['checkout_form']);
         }
 
+        // Numărul comenzii stă în adresă (și numerele sunt consecutive): emailul
+        // clientului îl vede întreg doar cine a plasat comanda; oricui altcuiva, mascat.
+        if ($orderEmail !== '' && !$this->confirmareaEsteAClientului($db, $orderNumber, $euplatescReturn)) {
+            $orderEmail = self::emailMascat($orderEmail);
+        }
+
         // Precomanda se spune si aici: pagina de confirmare e ultimul loc in care
         // clientul mai citeste ceva inainte sa astepte coletul.
         $estePrecomanda = false;
@@ -1562,6 +1571,52 @@ final class SiteController
             'euplatescReturn' => $euplatescReturn,
             'btReturn' => $btReturn,
         ]);
+    }
+
+    /** Sesiunea ține minte comenzile plasate din acest browser (ultimele câteva). */
+    private const SESIUNE_COMENZI_PLASATE = 'comenzi_plasate';
+
+    private function tineMinteComandaPlasata(string $orderNumber): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE || $orderNumber === '') {
+            return;
+        }
+        $lista = is_array($_SESSION[self::SESIUNE_COMENZI_PLASATE] ?? null) ? $_SESSION[self::SESIUNE_COMENZI_PLASATE] : [];
+        $lista[$orderNumber] = time();
+        arsort($lista);
+        $_SESSION[self::SESIUNE_COMENZI_PLASATE] = array_slice($lista, 0, 10, true);
+    }
+
+    /**
+     * Pagina de confirmare e văzută de cine a plasat comanda? Da, dacă sesiunea
+     * a plasat-o. Întoarcerea de la EuPlătesc vine prin POST de pe alt site, deci
+     * fără cookie-ul de sesiune (SameSite=Lax): acolo dovada e chiar răspunsul
+     * semnat al procesatorului pentru comanda asta.
+     */
+    private function confirmareaEsteAClientului(?PDO $db, string $orderNumber, bool $euplatescReturn): bool
+    {
+        $lista = $_SESSION[self::SESIUNE_COMENZI_PLASATE] ?? null;
+        if ($orderNumber !== '' && is_array($lista) && isset($lista[$orderNumber])) {
+            return true;
+        }
+        if ($euplatescReturn && $db instanceof PDO && $orderNumber !== ''
+            && trim((string) ($_POST['invoice_id'] ?? '')) === $orderNumber
+            && EuPlatescGateway::verifyResponse($_POST, (string) ($this->cachedSettings($db)['euplatesc_secret_key'] ?? ''))) {
+            $this->tineMinteComandaPlasata($orderNumber);
+            return true;
+        }
+        return false;
+    }
+
+    /** „client.test@example.com" → „c***@example.com" (domeniul rămâne, ca greșelile de tastare să se vadă). */
+    private static function emailMascat(string $email): string
+    {
+        $email = trim($email);
+        $at = strrpos($email, '@');
+        if ($at === false || $at === 0) {
+            return '***';
+        }
+        return mb_substr($email, 0, 1) . '***' . substr($email, $at);
     }
 
     /**
@@ -8488,7 +8543,9 @@ CSS;
         if ($imageUrl === '' || str_contains($imageUrl, 'via.placeholder.com')) {
             $product['image_url'] = '/assets/img/product-placeholder.svg';
         }
-        $galleryRaw = (string) (($product['gallery_images_json'] ?? $product['gallery_json']) ?? '');
+        // `??` în lanț, fără paranteze: un produs fără coloana veche `gallery_json` nu mai
+        // scoate avertisment (cu display_errors pornit, avertismentul strica redirectul din checkout).
+        $galleryRaw = (string) ($product['gallery_images_json'] ?? $product['gallery_json'] ?? '');
         $gallery = [];
         if (trim($galleryRaw) !== '') {
             $decoded = json_decode($galleryRaw, true);
@@ -9687,7 +9744,7 @@ CSS;
         if (isset($product['gallery_images']) && is_array($product['gallery_images'])) {
             $galleryCandidates = $product['gallery_images'];
         } else {
-            $rawGallery = trim((string) (($product['gallery_images_json'] ?? $product['gallery_json']) ?? ''));
+            $rawGallery = trim((string) ($product['gallery_images_json'] ?? $product['gallery_json'] ?? ''));
             if ($rawGallery !== '') {
                 $decoded = json_decode($rawGallery, true);
                 if (is_array($decoded)) {

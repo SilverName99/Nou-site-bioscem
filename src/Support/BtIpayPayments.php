@@ -94,7 +94,7 @@ final class BtIpayPayments
     private const ZILE_JURNAL = 180;
 
     /** Versiunea tabelelor BT; se schimbă la fiecare coloană nouă. */
-    private const VERSIUNE_SCHEMA = '2';
+    private const VERSIUNE_SCHEMA = '3';
     private const CHEIE_VERSIUNE = 'bt_ipay_schema_version';
 
     /** Adresa publică de întoarcere: cel mult o întrebare la bancă la 30 de secunde, pe plată. */
@@ -115,11 +115,22 @@ final class BtIpayPayments
     private const MAX_PLATI_IN_SESIUNE = 10;
 
     /**
+     * Plata unui link pornită de curând și încă neplătită se refolosește (a doua
+     * filă, dublu-click, „înapoi" din pagina băncii): clientul e trimis pe aceeași
+     * pagină de plată. Pagina băncii trăiește 20 de minute; refolosim doar în primele 10.
+     */
+    private const MINUTE_REFOLOSIRE_LINK = 10;
+    /** Câte plăți NOI se pot înregistra la bancă pe același link într-o oră. */
+    private const MAX_PORNIRI_LINK_PE_ORA = 5;
+
+    /**
      * Ce poate face magazinul cu o comandă BT activă rămasă neplătită (suma
      * eliberată): uneltele care există azi pentru o comandă neplătită.
      */
     public const CUM_SE_REZOLVA = 'Anulează comanda sau, după ce clientul plătește pe alt drum (link EuPlătesc trimis separat, OP), '
-        . 'marcheaz-o din „Acțiuni comandă" → „Plătit prin link extern de plată".';
+        . 'marcheaz-o din „Acțiuni comandă" → „Plătit prin link extern de plată". Dacă pe comandă era deja încasată o parte '
+        . '(o diferență plătită: comanda apare „Plătit parțial"), restul se cere din fereastra comenzii cu „Trimite link de plată '
+        . 'pentru diferență" sau, dacă banii au venit altfel, se consemnează cu „Înregistrează încasarea".';
 
     private const ETICHETE = [
         self::STARE_INREGISTRATA => 'Înregistrată, încă neplătită',
@@ -205,6 +216,7 @@ final class BtIpayPayments
                     mode VARCHAR(4) NOT NULL DEFAULT "test",
                     bt_order_number VARCHAR(40) NOT NULL,
                     bt_order_id VARCHAR(64) DEFAULT NULL,
+                    form_url VARCHAR(1000) DEFAULT NULL,
                     loy_order_id VARCHAR(64) DEFAULT NULL,
                     amount_minor INT UNSIGNED NOT NULL DEFAULT 0,
                     currency SMALLINT UNSIGNED NOT NULL DEFAULT 946,
@@ -253,6 +265,7 @@ final class BtIpayPayments
         // Coloanele adăugate după prima versiune a tabelului.
         foreach ([
             'link_id' => 'INT UNSIGNED DEFAULT NULL AFTER order_id',
+            'form_url' => 'VARCHAR(1000) DEFAULT NULL AFTER bt_order_id',
             'deposit_requested_minor' => 'INT UNSIGNED DEFAULT NULL AFTER deposit_requested_at',
             'public_checked_at' => 'DATETIME DEFAULT NULL AFTER last_checked_at',
             'callback_checked_at' => 'DATETIME DEFAULT NULL AFTER public_checked_at',
@@ -306,7 +319,7 @@ final class BtIpayPayments
         PaymentLink::ensureSchema($db);
 
         try {
-            $db->query('SELECT link_id, deposit_requested_minor, public_checked_at, callback_checked_at FROM bt_ipay_transactions LIMIT 0');
+            $db->query('SELECT link_id, form_url, deposit_requested_minor, public_checked_at, callback_checked_at FROM bt_ipay_transactions LIMIT 0');
             $db->query('SELECT id FROM bt_ipay_log LIMIT 0');
             $db->query('SELECT paid_at, payment_error, paid_amount FROM orders LIMIT 0');
             Settings::save($db, [self::CHEIE_VERSIUNE => self::VERSIUNE_SCHEMA]);
@@ -471,6 +484,11 @@ final class BtIpayPayments
      * separată la bancă, cu numărul linkului („{comanda}-P{n}", la reîncercări
      * „-R2"…), pentru suma linkului. După autorizare se încasează imediat.
      *
+     * Adresa /plata/{token} e la îndemâna oricui are linkul, deci nu orice
+     * „Plătește" înregistrează o plată nouă la bancă: una pornită în ultimele
+     * 10 minute, încă neplătită, se refolosește (aceeași pagină a băncii), iar
+     * plăți noi se pot înregistra cel mult 5 pe oră pe link.
+     *
      * @param array<string, mixed> $link
      * @return array{ok: bool, url: string, eroare: string, tx_id: int, numar: string}
      */
@@ -485,9 +503,6 @@ final class BtIpayPayments
         if ($linkId <= 0 || (string) ($link['status'] ?? '') !== PaymentLink::STATUS_ASTEPTARE) {
             return ['ok' => false, 'url' => '', 'eroare' => 'Linkul de plată nu mai este valabil.', 'tx_id' => 0, 'numar' => ''];
         }
-        if (self::plataLinkInCurs($db, $linkId) !== null) {
-            return ['ok' => false, 'url' => '', 'eroare' => 'Plata acestui link a fost deja autorizată și se încasează acum; nu e nevoie să plătești din nou.', 'tx_id' => 0, 'numar' => ''];
-        }
         $comanda = self::comandaPentruPlata($db, $orderId);
         if ($comanda === null) {
             return ['ok' => false, 'url' => '', 'eroare' => 'Comanda asociată nu mai există.', 'tx_id' => 0, 'numar' => ''];
@@ -496,13 +511,90 @@ final class BtIpayPayments
         if ($suma <= 0) {
             return ['ok' => false, 'url' => '', 'eroare' => 'Suma linkului este invalidă.', 'tx_id' => 0, 'numar' => ''];
         }
-        $date = self::dateClient($comanda) + [
-            'suma' => $suma,
-            'descriere' => 'Diferenta comanda ' . (string) $comanda['order_number'] . ' bioscem.ro',
-            'user_agent' => $userAgent,
-        ];
 
-        return self::inregistreaza($db, self::TIP_LINK, $orderId, (string) ($link['referinta'] ?? ''), $date, $returnUrlBaza, $linkId);
+        // Cererile venite deodată pe același link (dublu-click, două file) se
+        // așază la rând: altfel ar trece toate de refolosire și de plafon.
+        $lacat = 'link-start:' . $linkId;
+        if (!self::iaLacat($db, $lacat, 5)) {
+            return ['ok' => false, 'url' => '', 'eroare' => 'Plata acestui link se pornește chiar acum; reîncearcă în câteva secunde.', 'tx_id' => 0, 'numar' => ''];
+        }
+        try {
+            $recenta = self::plataLinkDeRefolosit($db, $linkId, $suma);
+            if ($recenta !== null) {
+                return ['ok' => true, 'url' => (string) $recenta['form_url'], 'eroare' => '', 'tx_id' => (int) $recenta['id'], 'numar' => (string) $recenta['bt_order_number']];
+            }
+            // Verificarea de mai sus (sau altă cerere) poate să fi găsit linkul plătit între timp.
+            $linkAcum = PaymentLink::dupaId($db, $linkId);
+            if ($linkAcum === null || (string) ($linkAcum['status'] ?? '') !== PaymentLink::STATUS_ASTEPTARE) {
+                return ['ok' => false, 'url' => '', 'eroare' => $linkAcum !== null && (string) ($linkAcum['status'] ?? '') === PaymentLink::STATUS_PLATIT
+                    ? 'Plata acestui link a fost deja făcută; nu e nevoie să plătești din nou.'
+                    : 'Linkul de plată nu mai este valabil.', 'tx_id' => 0, 'numar' => ''];
+            }
+            if (self::plataLinkInCurs($db, $linkId) !== null) {
+                return ['ok' => false, 'url' => '', 'eroare' => 'Plata acestui link a fost deja autorizată și se încasează acum; nu e nevoie să plătești din nou.', 'tx_id' => 0, 'numar' => ''];
+            }
+            if (self::porniriLinkInUltimaOra($db, $linkId) >= self::MAX_PORNIRI_LINK_PE_ORA) {
+                return ['ok' => false, 'url' => '', 'eroare' => 'Plata acestui link a fost pornită de prea multe ori în ultima oră. Din motive de siguranță, '
+                    . 'poți încerca din nou puțin mai târziu; dacă te grăbești, scrie-ne și te ajutăm imediat.', 'tx_id' => 0, 'numar' => ''];
+            }
+            $date = self::dateClient($comanda) + [
+                'suma' => $suma,
+                'descriere' => 'Diferenta comanda ' . (string) $comanda['order_number'] . ' bioscem.ro',
+                'user_agent' => $userAgent,
+            ];
+
+            return self::inregistreaza($db, self::TIP_LINK, $orderId, (string) ($link['referinta'] ?? ''), $date, $returnUrlBaza, $linkId);
+        } finally {
+            self::elibereazaLacat($db, $lacat);
+        }
+    }
+
+    /**
+     * Plata linkului pornită în ultimele 10 minute, pentru aceeași sumă și încă
+     * neplătită (pagina ei de la bancă e încă valabilă). Dacă n-a mai fost
+     * verificată de 30 de secunde, starea se citește întâi de la bancă: una
+     * plătită sau refuzată între timp, fără întoarcere pe site, nu se refolosește.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function plataLinkDeRefolosit(PDO $db, int $linkId, int $suma): ?array
+    {
+        $stmt = $db->prepare(
+            'SELECT id FROM bt_ipay_transactions
+             WHERE kind = :k AND link_id = :l AND mode = :mod AND amount_minor = :suma AND state = :stare
+               AND bt_order_id IS NOT NULL AND form_url IS NOT NULL AND form_url <> "" AND created_at >= :dupa
+             ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([
+            'k' => self::TIP_LINK,
+            'l' => $linkId,
+            'mod' => BtIpayGateway::MOD_LIVE,
+            'suma' => $suma,
+            'stare' => self::STARE_INREGISTRATA,
+            'dupa' => date('Y-m-d H:i:s', time() - self::MINUTE_REFOLOSIRE_LINK * 60),
+        ]);
+        $tx = self::tx($db, (int) ($stmt->fetchColumn() ?: 0));
+        if ($tx === null) {
+            return null;
+        }
+        $reper = max(strtotime((string) $tx['created_at']) ?: 0, strtotime((string) ($tx['last_checked_at'] ?? '')) ?: 0);
+        if ($reper < time() - self::INTERVAL_VERIFICARE_PUBLICA) {
+            self::sincronizeaza($db, (int) $tx['id'], 'link', false, self::ASTEPTARE_PUBLICA);
+            $tx = self::tx($db, (int) $tx['id']);
+        }
+        if ($tx === null || (string) $tx['state'] !== self::STARE_INREGISTRATA
+            || !BtIpayGateway::urlPlataValid((string) ($tx['form_url'] ?? ''), BtIpayGateway::MOD_LIVE)) {
+            return null;
+        }
+        return $tx;
+    }
+
+    /** Câte plăți s-au înregistrat pe link în ultima oră (plafonul încercărilor noi). */
+    private static function porniriLinkInUltimaOra(PDO $db, int $linkId): int
+    {
+        $stmt = $db->prepare('SELECT COUNT(*) FROM bt_ipay_transactions WHERE kind = :k AND link_id = :l AND created_at >= :dupa');
+        $stmt->execute(['k' => self::TIP_LINK, 'l' => $linkId, 'dupa' => date('Y-m-d H:i:s', time() - 3600)]);
+        return (int) $stmt->fetchColumn();
     }
 
     /**
@@ -661,8 +753,10 @@ final class BtIpayPayments
                     self::scrieEroare($db, $txId, $ultimaEroare, self::STARE_EROARE);
                     break;
                 }
-                $db->prepare('UPDATE bt_ipay_transactions SET bt_order_id = :bt, updated_at = :acum WHERE id = :id')
-                    ->execute(['bt' => $btId, 'acum' => date('Y-m-d H:i:s'), 'id' => $txId]);
+                // Adresa paginii de plată rămâne pe plată: un al doilea „Plătește"
+                // pe același link duce tot acolo (vezi pornestePlataLink).
+                $db->prepare('UPDATE bt_ipay_transactions SET bt_order_id = :bt, form_url = :url, updated_at = :acum WHERE id = :id')
+                    ->execute(['bt' => $btId, 'url' => strlen($url) <= 1000 ? $url : null, 'acum' => date('Y-m-d H:i:s'), 'id' => $txId]);
                 return ['ok' => true, 'url' => $url, 'eroare' => '', 'tx_id' => $txId, 'numar' => $numar];
             }
 
@@ -1528,7 +1622,16 @@ final class BtIpayPayments
             if ($efecte['elibereaza']) {
                 self::elibereazaParti($db, $txId, $sursa);
             } elseif ($efecte['incaseaza']) {
-                self::incaseazaFaraLacat($db, self::tx($db, $txId) ?? $txActual, null, $sursa, true);
+                $incasare = self::incaseazaFaraLacat($db, self::tx($db, $txId) ?? $txActual, null, $sursa, true);
+                $dupaIncasare = self::tx($db, $txId) ?? $txActual;
+                $linkAcum = PaymentLink::dupaId($db, (int) ($dupaIncasare['link_id'] ?? 0));
+                if (!$incasare['ok'] && (string) $dupaIncasare['state'] === self::STARE_AUTORIZATA
+                    && (int) ($dupaIncasare['in_comanda'] ?? 0) === 0
+                    && ($linkAcum === null || (string) ($linkAcum['status'] ?? '') !== PaymentLink::STATUS_ASTEPTARE)) {
+                    // Linkul a fost plătit între timp de altă plată (altă filă): asta nu se mai încasează.
+                    self::alerteaza($db, $dupaIncasare, 'plata_link_nevalida', '');
+                    self::elibereazaParti($db, $txId, $sursa);
+                }
             }
             $txActual = self::tx($db, $txId) ?? $txActual;
         }
@@ -1667,7 +1770,8 @@ final class BtIpayPayments
     /**
      * Încasează o plată autorizată: întâi partea în puncte, apoi cea pe card.
      * Suma poate fi mai mică decât cea blocată (comanda s-a micșorat); restul
-     * rămâne neîncasat. Niciodată 0 — la bancă, 0 înseamnă „toată suma".
+     * rămâne neîncasat. Plata unei diferențe (link) se încasează doar întreagă.
+     * Niciodată 0 — la bancă, 0 înseamnă „toată suma".
      *
      * @return array{ok: bool, mesaj: string}
      */
@@ -1694,11 +1798,20 @@ final class BtIpayPayments
         if (isset(self::$efecteInCurs[$txId])) {
             return ['ok' => false, 'mesaj' => 'O operație pe această plată e deja în curs.'];
         }
+        // Două plăți ale aceluiași link (două file), confirmate deodată: se încasează
+        // pe rând, ca a doua să găsească linkul deja plătit și să nu mai fie încasată.
+        $lacatLink = (string) $tx['kind'] === self::TIP_LINK ? 'link:' . (int) ($tx['link_id'] ?? 0) : '';
+        if ($lacatLink !== '' && !self::iaLacat($db, $lacatLink, 15)) {
+            return ['ok' => false, 'mesaj' => 'Altă plată a aceluiași link se încasează chiar acum; reîncearcă peste câteva secunde.'];
+        }
         self::$efecteInCurs[$txId] = true;
         try {
             return self::incaseazaEfectiv($db, $tx, $sumaMinor, $sursa, $stareProaspata);
         } finally {
             unset(self::$efecteInCurs[$txId]);
+            if ($lacatLink !== '') {
+                self::elibereazaLacat($db, $lacatLink);
+            }
         }
     }
 
@@ -1750,6 +1863,12 @@ final class BtIpayPayments
         $maxim = $cardBlocat + $loyBlocat + $loyDejaIncasat + $cardDejaIncasat;
 
         $suma = $sumaMinor ?? $maxim;
+        if ($tip === self::TIP_LINK && $suma !== $maxim) {
+            // Linkul se trece pe comandă cu toată suma lui (PaymentLink::confirmaPlata):
+            // o încasare parțială ar socoti pe comandă bani pe care nu i-a luat nimeni.
+            return ['ok' => false, 'mesaj' => 'Diferența plătită prin link se încasează doar întreagă (' . self::lei($maxim)
+                . '), fiindcă linkul se trece pe comandă cu toată suma lui. Dacă nu vrei s-o încasezi, folosește „Anulează autorizarea".'];
+        }
         if ($suma < 1) {
             return ['ok' => false, 'mesaj' => 'Suma de încasat trebuie să fie de cel puțin 0,01 lei.'];
         }
@@ -1838,8 +1957,10 @@ final class BtIpayPayments
 
     /**
      * Comanda a fost aprobată (facturată) în ERP: încasăm plata BT, dacă are una
-     * doar autorizată. Suma = minimul dintre cât e blocat și totalul de acum al
-     * comenzii de pe site (la precomenzi, factura de avans nu e totalul).
+     * doar autorizată. Suma = cât a mai rămas de încasat pe comandă (totalul de
+     * acum de pe site minus ce s-a încasat deja pe alt drum), dar nu peste cât
+     * e blocat (la precomenzi, factura de avans nu e totalul). Dacă nu mai e
+     * nimic de încasat, suma blocată se eliberează (vezi incaseazaSauElibereaza).
      *
      * @return array{ok: bool, mesaj: string, facut: bool}
      */
@@ -1861,14 +1982,14 @@ final class BtIpayPayments
         }
 
         $suma = self::sumaDeIncasat($db, $tx);
-        $rez = self::incaseaza($db, (int) $tx['id'], $suma, 'erp');
+        $rez = self::incaseazaSauElibereaza($db, $tx, $suma, 'erp', 20, true);
         $mesaj = 'BT: ' . $rez['mesaj'];
         $comanda = self::comanda($db, $orderId);
         if ($totalEveniment !== null && $comanda !== null && abs((float) $comanda['total'] - $totalEveniment) > 0.009) {
             $mesaj .= ' (Totalul facturii din ERP, ' . number_format($totalEveniment, 2, ',', '.') . ' lei, diferă de totalul comenzii de pe site; am încasat după site.)';
         }
         $txDupa = self::tx($db, (int) $tx['id']) ?? $tx;
-        if (!$rez['ok'] && (string) $txDupa['state'] === self::STARE_AUTORIZATA) {
+        if (!$rez['ok'] && !$rez['eliberata'] && (string) $txDupa['state'] === self::STARE_AUTORIZATA) {
             // Doar o încasare care se poate relua (autorizarea e încă valabilă).
             // Dacă suma a fost între timp eliberată, nu e „încasare eșuată": e o
             // comandă neplătită, iar aprobarea o refuză (cu emailul ei).
@@ -1952,7 +2073,12 @@ final class BtIpayPayments
         return 'Plata cu cardul (Banca Transilvania) nu mai acoperă comanda: ' . $cauza . '.';
     }
 
-    /** Cât se încasează automat: min(blocat, totalul comenzii), în bani. */
+    /**
+     * Cât se încasează automat, în bani: ce a mai rămas de încasat pe comandă,
+     * dar nu peste cât e blocat — max(0, min(blocat, total − încasat pe alt
+     * drum)). Pe alt drum = diferențe plătite prin link, „Înregistrează
+     * încasarea" (paid_amount fără partea acestei plăți). 0 = nimic de încasat.
+     */
     private static function sumaDeIncasat(PDO $db, array $tx): int
     {
         $blocat = self::netTx($tx);
@@ -1964,19 +2090,88 @@ final class BtIpayPayments
         if ($comanda === null) {
             return $blocat;
         }
-        $total = (int) round((float) $comanda['total'] * 100);
-        return max(0, min($blocat, $total));
+        return self::deIncasatPeComanda($tx, $comanda, $blocat);
     }
 
-    /** Suma pentru reîncercare: cea cerută (de admin, la aprobare), altfel cea automată. */
+    /** max(0, min(blocat, total − încasat pe alt drum)), în bani. */
+    private static function deIncasatPeComanda(array $tx, array $comanda, int $blocat): int
+    {
+        $total = (int) round((float) ($comanda['total'] ?? 0) * 100);
+        return max(0, min($blocat, $total - self::incasatAltfel($tx, $comanda)));
+    }
+
+    /**
+     * Banii încasați pe comandă pe alt drum decât plata dată (diferențe prin
+     * link, încasări înregistrate de mână), în bani: paid_amount minus partea
+     * plății, când plata e socotită pe comandă. paid_amount gol = nimic știut
+     * încasat altfel (plata BT își scrie suma acolo când devine plătită; gol
+     * rămâne doar pe comenzi vechi), deci se încasează ca înainte: min(blocat, total).
+     */
+    private static function incasatAltfel(array $tx, array $comanda): int
+    {
+        $platit = $comanda['paid_amount'] ?? null;
+        if ($platit === null || $platit === '') {
+            return 0;
+        }
+        $incasat = (int) round((float) $platit * 100);
+        $alPlatii = (int) ($tx['in_comanda'] ?? 0) === 1 ? self::netTx($tx) : 0;
+        return max(0, $incasat - $alPlatii);
+    }
+
+    /**
+     * Suma pentru reîncercare: cea cerută (de admin, la aprobare), dar nu peste
+     * ce a mai rămas de încasat pe comandă; altfel cea automată. Diferențele se
+     * încasează doar întregi.
+     */
     private static function sumaPentruReincercare(PDO $db, array $tx): int
     {
-        $ceruta = (int) ($tx['deposit_requested_minor'] ?? 0);
-        $maxim = self::netTx($tx);
-        if ($ceruta > 0 && $ceruta <= $maxim) {
-            return $ceruta;
+        $automat = self::sumaDeIncasat($db, $tx);
+        if ((string) $tx['kind'] === self::TIP_LINK) {
+            return $automat;
         }
-        return self::sumaDeIncasat($db, $tx);
+        $ceruta = (int) ($tx['deposit_requested_minor'] ?? 0);
+        if ($ceruta > 0 && $ceruta <= self::netTx($tx)) {
+            return min($ceruta, $automat);
+        }
+        return $automat;
+    }
+
+    /**
+     * Încasarea automată a unei plăți (aprobarea din ERP, reîncercarea și ziua 4
+     * din cron), cu suma dată. Sub 1 ban nu e nimic de luat de pe card — comanda
+     * e deja încasată integral pe alt drum (diferență plătită, încasare
+     * înregistrată) sau totalul ei e 0 —, așa că suma blocată se ELIBEREAZĂ în
+     * loc să se încaseze. Magazinul află din email (`$email`; ziua 4 are emailul
+     * ei, cu rezultatul) și din nota de pe plată; dacă eliberarea nu merge acum,
+     * plata rămâne cerută, ca s-o reia cronul.
+     *
+     * @return array{ok: bool, mesaj: string, eliberata: bool}
+     */
+    private static function incaseazaSauElibereaza(PDO $db, array $tx, int $suma, string $sursa, int $asteptare, bool $email): array
+    {
+        if ($suma >= 1) {
+            $r = self::incaseaza($db, (int) $tx['id'], $suma, $sursa, $asteptare);
+            return ['ok' => $r['ok'], 'mesaj' => $r['mesaj'], 'eliberata' => false];
+        }
+        $blocat = self::lei(self::netTx($tx));
+        $motiv = 'Nimic de încasat de pe card: comanda e deja încasată integral pe alt drum (diferență plătită sau încasare înregistrată)'
+            . ' sau totalul ei e 0.';
+        $r = self::anuleaza($db, (int) $tx['id'], $sursa, $asteptare);
+        $txDupa = self::tx($db, (int) $tx['id']) ?? $tx;
+        if ($r['ok']) {
+            $mesaj = $motiv . ' Suma blocată (' . $blocat . ') a fost eliberată: clientul nu plătește nimic în plus.';
+            if ($email) {
+                self::alerteaza($db, $txDupa, 'eliberata_incasata_altfel', $mesaj);
+            } else {
+                self::marcheaza($db, $txDupa, 'eliberata_incasata_altfel');
+            }
+            return ['ok' => true, 'mesaj' => $mesaj, 'eliberata' => true];
+        }
+        $mesaj = $motiv . ' Eliberarea sumei blocate (' . $blocat . ') n-a mers acum (' . $r['mesaj'] . '); cronul reîncearcă.';
+        if ((string) $txDupa['state'] === self::STARE_AUTORIZATA) {
+            self::noteazaEsecIncasare($db, $txDupa, $mesaj);
+        }
+        return ['ok' => false, 'mesaj' => $mesaj, 'eliberata' => true];
     }
 
     // ------------------------------------------------------------------
@@ -2333,9 +2528,10 @@ final class BtIpayPayments
             : (int) round((float) $comanda['paid_amount'] * 100);
         $platitaIntegral = $platita && $incasatComanda >= $totalComanda;
         // Suma eliberată (din admin, portal, expirare, coș) cu comanda încă vie
-        // și neplătită: comanda nu are voie să plece.
+        // și neplătită integral (poate avea doar o diferență plătită): comanda
+        // nu are voie să plece.
         $eliberataActiva = $tip === self::TIP_COMANDA && $stare === self::STARE_ANULATA && $inComanda && !$inchisa
-            && $statusComanda !== '' && !$platita;
+            && $statusComanda !== '' && !$platitaIntegral;
         $aprobareRefuzata = isset($alerte['aprobare_refuzata']) && !$inchisa && !$platitaIntegral;
         $poateIncasa = $stare === self::STARE_AUTORIZATA && !$inchisa
             && ($tip === self::TIP_TEST || ($modLive && ($tip === self::TIP_LINK || $inComanda)));
@@ -2357,8 +2553,9 @@ final class BtIpayPayments
             'rambursat' => self::bani($rambursat),
             'rambursabil' => self::bani($rambursabil),
             'incasabil' => $stare === self::STARE_AUTORIZATA ? self::bani($net) : 0.0,
+            // Ca la încasarea automată: restul de încasat pe comandă, cel mult cât e blocat.
             'sugestie_incasare' => $stare === self::STARE_AUTORIZATA
-                ? self::bani($tip === self::TIP_LINK ? $net : max(0, min($net, $totalComanda)))
+                ? self::bani($tip === self::TIP_LINK ? $net : self::deIncasatPeComanda($tx, $comanda, $net))
                 : 0.0,
             'termen' => $termen,
             'autorizat_la' => (string) ($tx['authorized_at'] ?? ''),
@@ -2376,7 +2573,13 @@ final class BtIpayPayments
             'poate_rambursa' => $rambursabil > 0,
             'necesita_rambursare' => $necesitaRambursare,
             'eliberata_comanda_activa' => $eliberataActiva,
+            // Comanda are totuși o parte încasată (o diferență): e „plătită parțial", nu neplătită.
+            'comanda_platita_partial' => $platita && !$platitaIntegral,
+            'rest_comanda' => self::bani($platita ? max(0, $totalComanda - $incasatComanda) : $totalComanda),
             'aprobare_refuzata' => $aprobareRefuzata,
+            'nota' => isset($alerte['eliberata_incasata_altfel'])
+                ? 'Nimic de încasat de pe card: comanda era deja încasată integral pe alt drum (diferență plătită sau încasare înregistrată), așa că suma blocată a fost eliberată.'
+                : '',
             'plata_test' => !$modLive && $tip !== self::TIP_TEST,
             'link_referinta' => (string) ($link['referinta'] ?? ''),
             'link_status' => (string) ($link['status'] ?? ''),
@@ -2441,9 +2644,11 @@ final class BtIpayPayments
      *     modul test pe comenzi reale, diferențele cu link nevalid și părțile
      *     rămase blocate pe plăți picate se eliberează (testele, după 30 min);
      *  c) încasările cerute (aprobare ERP, buton, diferențe) care au eșuat se
-     *     reîncearcă, cu suma cerută;
+     *     reîncearcă, cu suma cerută (dar nu peste restul de încasat pe comandă);
      *  d) la 72 de ore: email cu plățile încă neîncasate;
      *  e) la 96 de ore (ziua 4): încasare automată, inclusiv precomenzile, și email;
+     *     în c) și e), o comandă încasată deja integral pe alt drum își
+     *     eliberează suma blocată în loc s-o încaseze;
      *  f) curățenia jurnalului; la SFÂRȘIT, bătaia de inimă și rezultatul rulării.
      *
      * Fiecare plată e atinsă cel mult o dată pe rulare, iar rularea are un
@@ -2563,8 +2768,8 @@ final class BtIpayPayments
                     continue;
                 }
                 $suma = self::sumaPentruReincercare($db, $tx);
-                $r = self::incaseaza($db, (int) $tx['id'], $suma, 'cron', 0);
-                $rez['reincercate']++;
+                $r = self::incaseazaSauElibereaza($db, $tx, $suma, 'cron', 0, true);
+                $rez[$r['ok'] && $r['eliberata'] ? 'eliberate' : 'reincercate']++;
                 $txActual = self::tx($db, (int) $tx['id']) ?? $tx;
                 if (!$r['ok']) {
                     $eroare($r['mesaj']);
@@ -2619,13 +2824,16 @@ final class BtIpayPayments
                     continue;
                 }
                 $suma = self::sumaPentruReincercare($db, $tx);
-                if ($suma < 1) {
-                    $r = self::anuleaza($db, (int) $tx['id'], 'cron', 0);
-                    $r['mesaj'] = 'Totalul comenzii e 0, așa că am eliberat suma: ' . $r['mesaj'];
+                // Sub 1 ban (comanda e încasată integral altfel), suma se eliberează;
+                // emailul încasării automate de mai jos spune asta.
+                $r = self::incaseazaSauElibereaza($db, $tx, $suma, 'cron', 0, false);
+                if (!$r['ok']) {
+                    $eroare($r['mesaj']);
+                } elseif ($r['eliberata']) {
+                    $rez['eliberate']++;
                 } else {
-                    $r = self::incaseaza($db, (int) $tx['id'], $suma, 'cron', 0);
+                    $rez['incasate_automat']++;
                 }
-                $r['ok'] ? $rez['incasate_automat']++ : $eroare($r['mesaj']);
                 $txActual = self::tx($db, (int) $tx['id']) ?? $tx;
                 if ($r['ok'] || self::marcheaza($db, $txActual, 'incasare_automata_esuata')) {
                     $autoInEmail[] = ['tx' => $tx, 'suma' => $suma, 'rezultat' => $r];
@@ -2747,6 +2955,7 @@ final class BtIpayPayments
             'incasare_esuata' => 'Încasarea plății BT a eșuat — comanda ' . $numar,
             'incasare_esuata_repetat' => 'Încasarea plății BT eșuează repetat — comanda ' . $numar,
             'necesita_rambursare' => 'Comanda ' . $numar . ' a fost închisă, dar plata BT e încasată — rambursează',
+            'eliberata_incasata_altfel' => 'Plata BT a comenzii ' . $numar . ' nu s-a încasat: comanda era deja încasată integral',
         ];
         $explicatii = [
             'plata_comanda_inchisa' => 'Clientul a plătit cu cardul după ce comanda fusese anulată pe site. '
@@ -2759,7 +2968,8 @@ final class BtIpayPayments
             'plata_link_nevalida' => 'Clientul a plătit un link de diferență după ce linkul fusese anulat (înlocuit de altul) sau plătit pe alt drum. '
                 . 'Site-ul NU a încasat suma: a eliberat-o. Verifică ce mai are clientul de plătit.',
             'eliberata_la_banca' => 'Banca raportează că suma blocată pentru această comandă a fost eliberată (din portalul BT sau la expirarea '
-                . 'autorizării), dar comanda e încă activă pe site. Comanda a devenit NEPLĂTITĂ: aprobarea din ERP va fi refuzată '
+                . 'autorizării), dar comanda e încă activă pe site. Comanda a devenit NEPLĂTITĂ (sau, dacă avea și o diferență încasată, '
+                . 'plătită doar parțial): aprobarea din ERP va fi refuzată '
                 . '(fără AWB) până se rezolvă. ' . self::CUM_SE_REZOLVA,
             'eliberata_comanda_restaurata' => 'Cât timp comanda a stat în coș, cronul i-a eliberat suma blocată pe card. Comanda e acum activă, '
                 . 'dar NEPLĂTITĂ: aprobarea din ERP va fi refuzată (fără AWB) până se rezolvă plata. ' . self::CUM_SE_REZOLVA,
@@ -2772,6 +2982,9 @@ final class BtIpayPayments
             'incasare_esuata_repetat' => 'Încasarea a eșuat de cel puțin 3 ori. Verifică în portalul BT și încearcă din comandă („Încasează").',
             'necesita_rambursare' => 'Plata a fost încasată, dar comanda a fost anulată / returnată (sau plata nu mai poate fi socotită pe ea). '
                 . 'Rambursarea NU se face automat: deschide comanda în admin și apasă „Rambursează" (suma e completată, se poate modifica).',
+            'eliberata_incasata_altfel' => 'La încasarea automată (aprobarea din ERP sau cronul), comanda era deja încasată integral pe alt drum — '
+                . 'o diferență plătită prin link sau o încasare înregistrată în comandă — (sau totalul ei era 0). Ca clientul să nu plătească '
+                . 'de două ori, site-ul NU a încasat nimic de pe card și a eliberat suma blocată. Verifică în comandă că suma încasată e cea corectă.',
         ];
 
         $html = '<p><strong>' . $e($titluri[$tip] ?? ('Plată BT — ' . $numar)) . '</strong></p>'
@@ -2814,7 +3027,8 @@ final class BtIpayPayments
             : 'Eliberare manuală a sumei blocate — ' . ($comanda !== null ? 'comanda ' . $numar : $numar);
         $activa = $comanda !== null && !in_array((string) $comanda['status'], self::COMENZI_INCHISE, true) && $comanda['deleted_at'] === null;
         $avertisment = $operatie === 'reverse' && $ok && $activa && (string) $tx['kind'] === self::TIP_COMANDA
-            ? '<p style="color:#b91c1c;"><strong>Comanda rămâne activă și e acum NEPLĂTITĂ.</strong> Aprobarea din ERP va fi refuzată (fără AWB) '
+            ? '<p style="color:#b91c1c;"><strong>Comanda rămâne activă și e acum NEPLĂTITĂ</strong> (sau doar parțial plătită, dacă avea și o '
+                . 'diferență încasată). Aprobarea din ERP va fi refuzată (fără AWB) '
                 . 'până se rezolvă plata sau se anulează comanda.</p>'
             : '';
 
@@ -2870,25 +3084,33 @@ final class BtIpayPayments
         $e = static fn (string $t): string => htmlspecialchars($t, ENT_QUOTES);
         $randuri = '';
         $reusite = 0;
+        $eliberate = 0;
         foreach ($rezultate as $r) {
             $ok = (bool) ($r['rezultat']['ok'] ?? false);
-            $reusite += $ok ? 1 : 0;
+            // Comanda era deja încasată integral pe alt drum: suma blocată s-a eliberat, nu s-a încasat.
+            $eliberata = $ok && !empty($r['rezultat']['eliberata']);
+            $reusite += $ok && !$eliberata ? 1 : 0;
+            $eliberate += $eliberata ? 1 : 0;
             $randuri .= '<tr>'
                 . '<td>' . $e((string) ($r['tx']['order_number'] ?? $r['tx']['bt_order_number'] ?? ''))
                 . ((string) ($r['tx']['kind'] ?? '') === self::TIP_LINK ? ' (diferență)' : '') . '</td>'
-                . '<td style="text-align:right;">' . $e(self::lei((int) $r['suma'])) . '</td>'
+                . '<td style="text-align:right;">' . $e($eliberata ? '0,00 lei (eliberat ' . self::lei(self::netTx($r['tx'])) . ')' : self::lei((int) $r['suma'])) . '</td>'
                 . '<td style="color:' . ($ok ? '#166534' : '#b91c1c') . ';">' . $e((string) ($r['rezultat']['mesaj'] ?? ''))
                 . ($ok ? '' : ' — cronul reîncearcă la 15 minute; acest email nu se mai repetă pentru plata asta.') . '</td>'
                 . '</tr>';
         }
         $html = '<p><strong>Încasare automată BT (ziua ' . (int) ceil($s['ore_incasare_automata'] / 24) . '):</strong> '
-            . $reusite . ' din ' . count($rezultate) . ' plăți încasate.</p>'
+            . $reusite . ' din ' . count($rezultate) . ' plăți încasate'
+            . ($eliberate > 0 ? ', ' . $eliberate . ' eliberate fără încasare (comanda era deja încasată integral pe alt drum)' : '') . '.</p>'
             . '<p>Comenzile de mai jos nu fuseseră aprobate în ERP la timp, așa că site-ul a încasat singur sumele blocate, ca plata să nu se piardă. '
-            . 'Dacă una dintre ele se anulează ulterior, rambursează din comandă („Rambursează").</p>'
+            . 'Dacă una dintre ele se anulează ulterior, rambursează din comandă („Rambursează").'
+            . ($eliberate > 0 ? ' Unde comanda era deja încasată integral pe alt drum (diferență plătită prin link, încasare înregistrată), '
+                . 'site-ul NU a încasat nimic de pe card: a eliberat suma blocată, ca clientul să nu plătească de două ori.' : '') . '</p>'
             . '<table cellpadding="6" border="1" style="border-collapse:collapse;font-size:13px;border-color:#e2e8f0;">'
             . '<tr style="background:#f1f5f9;"><th>Comanda</th><th>Sumă</th><th>Rezultat</th></tr>' . $randuri . '</table>'
             . '<p><a href="' . $e(AppUrl::absolut('/admin/orders')) . '">Deschide comenzile</a></p>';
-        self::trimiteMagazinului($db, $settings, '[BT iPay] Încasare automată: ' . $reusite . ' din ' . count($rezultate), $html, 'bt_ipay_incasare_automata', 0);
+        self::trimiteMagazinului($db, $settings, '[BT iPay] Încasare automată: ' . $reusite . ' din ' . count($rezultate)
+            . ($eliberate > 0 ? ' (' . $eliberate . ' eliberate)' : ''), $html, 'bt_ipay_incasare_automata', 0);
     }
 
     private static function trimiteMagazinului(PDO $db, array $settings, string $subiect, string $html, string $tip, int $orderId): void

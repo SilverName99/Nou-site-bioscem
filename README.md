@@ -183,7 +183,11 @@ Ce se intampla cu banii:
 - suma se **incaseaza** (deposit) automat cand comanda e **aprobata (facturata) in ERP**
   — inainte de AWB —, din butonul **„Incaseaza"** din fereastra comenzii sau, daca nu s-a
   intamplat pana atunci, **automat in ziua 4** (96 de ore; banca cere incasarea in cel
-  mult 5 zile). Suma = cea mai mica dintre cea blocata si totalul de acum al comenzii;
+  mult 5 zile). Suma = cat a mai ramas de incasat pe comanda (totalul de acum minus ce s-a
+  incasat deja pe alt drum: diferente platite prin link, „Inregistreaza incasarea"), dar
+  cel mult suma blocata. Daca nu mai e nimic de incasat (comanda e deja achitata integral),
+  suma blocata se **elibereaza** in loc sa se incaseze: magazinul afla din email, iar
+  plata din comanda are o nota. „Incaseaza" din comanda propune aceeasi suma;
 - comanda **anulata / returnata inainte de incasare** isi elibereaza automat suma
   blocata (reverse). **Dupa incasare nu se ramburseaza nimic automat**: in comanda apare
   „Plata incasata – necesita rambursare" si butonul **„Rambursează"** (suma completata,
@@ -196,13 +200,15 @@ Ce se intampla cu banii:
 - o plata venita pentru o comanda deja anulata (sau stearsa) nu reinvie comanda: suma
   blocata se elibereaza imediat si magazinul primeste email;
 - daca suma blocata a unei comenzi inca active e eliberata (din admin, din portalul BT,
-  la expirarea autorizarii sau cat comanda a stat in cos), comanda devine NEPLATITA si e
-  marcata cu rosu in lista; **aprobarea ei din ERP e refuzata** (fara „in procesare" si
-  fara AWB, ca marfa sa nu plece neplatita si fara ramburs): ERP-ul primeste un raspuns de
-  eroare (se vede in jurnalul lui), magazinul primeste email, iar aprobarea se reia singura
-  dupa ce comanda e anulata sau — dupa ce clientul a platit pe alt drum (link EuPlatesc
-  trimis separat, OP) — marcata din „Actiuni comanda" -> „Platit prin link extern de
-  plata" (marcajul rosu dispare odata cu plata);
+  la expirarea autorizarii sau cat comanda a stat in cos), comanda devine NEPLATITA (sau,
+  daca avea si o diferenta incasata, platita doar partial) si e marcata cu rosu in lista;
+  **aprobarea ei din ERP e refuzata** (fara „in procesare" si fara AWB, ca marfa sa nu
+  plece neplatita si fara ramburs): ERP-ul primeste un raspuns de eroare (se vede in
+  jurnalul lui), magazinul primeste email, iar aprobarea se reia singura dupa ce comanda e
+  anulata sau — dupa ce clientul a platit pe alt drum (link EuPlatesc trimis separat, OP) —
+  marcata din „Actiuni comanda" -> „Platit prin link extern de plata"; pe o comanda platita
+  partial, restul se cere cu „Trimite link de plata pentru diferenta" sau se consemneaza cu
+  „Inregistreaza incasarea". Marcajul rosu dispare cand comanda e platita integral;
 - „Anuleaza autorizarea" pe o comanda inca activa cere o alegere explicita: **„Anuleaza
   comanda si elibereaza suma" (recomandat** — trece prin anularea obisnuita: ERP anuntat,
   email catre client, puncte intoarse) sau „Doar elibereaza suma" (comanda ramane activa
@@ -228,8 +234,12 @@ in doua faze, dar **incasata imediat dupa autorizare** (nu exista o aprobare ERP
 ea); daca incasarea imediata nu merge, o reia cronul, cu aceeasi plasa de 96 de ore.
 Dupa incasare, suma se adauga la cea incasata pe comanda si comanda se retrimite in ERP —
 exact ca la un link platit prin EuPlatesc. In fereastra comenzii, plata diferentei are
-panoul ei, cu „Incaseaza" / „Anuleaza autorizarea" / „Rambursează". Fara niciun procesator
-pornit, adminul primeste un mesaj clar si poate consemna incasarea altfel.
+panoul ei, cu „Incaseaza" / „Anuleaza autorizarea" / „Rambursează"; diferenta se incaseaza
+doar intreaga (linkul se trece pe comanda cu toata suma lui). Un nou „Plateste" pe acelasi
+link in 10 minute duce pe aceeasi pagina a bancii (nu se inregistreaza alta plata), iar pe
+un link se pot porni cel mult 5 plati noi pe ora; daca doua plati ale aceluiasi link ajung
+totusi autorizate (doua file), se incaseaza doar una, iar cealalta se elibereaza. Fara
+niciun procesator pornit, adminul primeste un mesaj clar si poate consemna incasarea altfel.
 
 #### 1. Datele de acces (doar in `.env`, niciodata in admin sau in git)
 
@@ -281,9 +291,11 @@ banca platile neterminate si le expira dupa 60 de minute (comanda devine esuata)
 elibereaza suma blocata pentru comenzile anulate / returnate / sterse, platile in plus,
 platile din modul test ajunse pe comenzi reale, diferentele cu link nevalabil (si platile
 de test uitate, dupa 30 de minute), reincearca incasarile esuate cu suma ceruta atunci
-(de admin sau la aprobare), trimite email la 72 de ore cu platile inca neincasate si le
-incaseaza singur la 96 de ore (inclusiv precomenzile si diferentele), cu email — o singura
-data pe plata, nu la fiecare rulare. Rularile nu se suprapun (lacat MySQL), fiecare plata
+(de admin sau la aprobare, dar nu peste cat a mai ramas de incasat pe comanda), trimite
+email la 72 de ore cu platile inca neincasate si le incaseaza singur la 96 de ore
+(inclusiv precomenzile si diferentele), cu email — o singura data pe plata, nu la fiecare
+rulare. O comanda achitata intre timp integral pe alt drum isi elibereaza suma blocata in
+loc s-o incaseze. Rularile nu se suprapun (lacat MySQL), fiecare plata
 e atinsa cel mult o data pe rulare, o rulare face cel mult 600 de apeluri catre banca (o
 cerere web, cel mult 60), iar „bataia de inima" si rezultatul se scriu la SFARSITUL
 rularii: o rulare care moare pe drum se vede in admin ca „nu a mai rulat". Scriptul merge

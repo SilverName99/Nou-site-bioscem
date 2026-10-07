@@ -416,7 +416,7 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
                     <input type="checkbox" name="bt_ipay_deposit_on_erp" value="1" <?= !empty($btSetari['incaseaza_la_aprobare']) ? 'checked' : '' ?>>
                     Încasează automat când comanda e aprobată (facturată) în ERP
                 </label>
-                <small style="color:#64748b;">Suma încasată = cea mai mică dintre suma blocată și totalul de acum al comenzii.</small>
+                <small style="color:#64748b;">Suma încasată = cât a mai rămas de încasat pe comandă (totalul de acum minus ce s-a încasat deja altfel: diferențe plătite prin link, încasări înregistrate), cel mult suma blocată. Dacă nu mai e nimic de încasat, suma blocată se eliberează (cu email către magazin).</small>
             </div>
             <div class="field">
                 <label for="bt-ore-reamintire">Email de reamintire după (ore)</label>

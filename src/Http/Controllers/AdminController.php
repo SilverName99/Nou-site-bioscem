@@ -19190,10 +19190,14 @@ HTML;
     {
         $activeCategory = trim((string) ($_GET['categorie'] ?? $_GET['category'] ?? ''));
         $sort = $this->shopCatalogSortPreview();
-        [$products] = $this->loadShopPreviewProducts($db, $activeCategory, $sort);
+        // loadShopPreviewProducts întoarce direct lista de produse. Despachetată
+        // ca `[$products] = …`, rămânea doar PRIMUL produs, iar șablonul îi
+        // parcurgea câmpurile ca pe niște produse (Precomanda::estePrecomanda()
+        // primea un int → TypeError pe /admin/pages/new și la editarea paginilor).
+        $products = $this->loadShopPreviewProducts($db, $activeCategory, $sort);
         $categories = $this->loadShopPreviewCategories($db);
         if ($categories === []) {
-            [$fallbackProducts] = $this->loadShopPreviewProducts($db, '', 'featured');
+            $fallbackProducts = $this->loadShopPreviewProducts($db, '', 'featured');
             $categories = $this->buildShopPreviewCategoriesFromProducts($fallbackProducts);
         }
         return $this->renderPartialPhpView('site/components/shop-catalog', [

@@ -454,7 +454,7 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
     if (!empty($btRand['necesita_rambursare'])) {
         $btEticheta = 'BT: plată încasată — necesită rambursare';
     } elseif (!empty($btRand['eliberata_comanda_activa'])) {
-        $btEticheta = 'BT: suma eliberată — comanda NU e plătită';
+        $btEticheta = 'BT: suma eliberată — comanda NU e plătită' . (!empty($btRand['comanda_platita_partial']) ? ' integral' : '');
     } elseif (!empty($btRand['aprobare_refuzata'])) {
         $btEticheta = 'BT: aprobarea din ERP refuzată — plata lipsește';
     } elseif (($btRand['stare'] ?? '') === 'authorized') {
@@ -1198,7 +1198,8 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                         <span class="status-pill status-pill--${btClasa}">${esc(p.eticheta)}</span>
                     </div>
                     ${p.necesita_rambursare ? banner('Plată încasată – necesită rambursare. Comanda e închisă, dar banii au fost încasați; rambursarea NU se face automat.') : ''}
-                    ${p.eliberata_comanda_activa ? banner('Suma blocată a fost eliberată, dar comanda e încă activă: comanda NU mai e plătită. Aprobarea din ERP e refuzată (fără AWB) până o anulezi sau, după ce clientul plătește pe alt drum, o marchezi din „Acțiuni comandă" → „Plătit prin link extern de plată".') : ''}
+                    ${p.eliberata_comanda_activa && !p.comanda_platita_partial ? banner('Suma blocată a fost eliberată, dar comanda e încă activă: comanda NU mai e plătită. Aprobarea din ERP e refuzată (fără AWB) până o anulezi sau, după ce clientul plătește pe alt drum, o marchezi din „Acțiuni comandă" → „Plătit prin link extern de plată".') : ''}
+                    ${p.eliberata_comanda_activa && p.comanda_platita_partial ? banner(`Suma blocată a fost eliberată, dar comanda e încă activă: comanda NU mai e plătită integral (rest de încasat ${formatRon(p.rest_comanda)}). Aprobarea din ERP e refuzată (fără AWB) până o anulezi sau încasezi restul: „Trimite link de plată pentru diferență” sau, dacă banii au venit altfel, „Înregistrează încasarea”.`) : ''}
                     ${p.aprobare_refuzata && !p.eliberata_comanda_activa ? banner('Aprobarea din ERP a fost refuzată: plata nu acoperă comanda. Comanda NU a trecut în procesare și nu are AWB.') : ''}
                     ${p.plata_test ? banner('Plată făcută pe platforma de TEST: nu se socotește pe comandă.') : ''}
                     <table style="border-collapse:collapse;font-size:13px;margin:0 0 8px;">
@@ -1212,13 +1213,20 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                         ${p.termen ? btRand('Încasare automată', `${esc(p.termen)} <small style="color:#64748b;">(${p.tip === 'link' ? 'dacă încasarea imediată n-a mers' : 'dacă nu e aprobată în ERP înainte'})</small>`) : ''}
                         ${p.cod_aprobare ? btRand('Cod autorizare', esc(p.cod_aprobare)) : ''}
                         ${p.eroare ? btRand('Ultima problemă', `<span style="color:#b91c1c;">${esc(p.eroare)}</span>`) : ''}
+                        ${p.nota ? btRand('Notă', esc(p.nota)) : ''}
                     </table>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                         <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'status')" style="padding:6px 12px;background:#fff;border:1px solid #6366f1;border-radius:5px;cursor:pointer;font-size:13px;color:#3730a3;">Verifică la bancă</button>
-                        ${p.poate_incasa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
+                        ${p.poate_incasa && p.tip === 'link' ? `<span style="display:inline-flex;gap:6px;align-items:center;">
+                            <input type="hidden" id="bt-suma-incasare-${btTx}" value="${Number(p.incasabil || 0).toFixed(2)}">
+                            <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'deposit', ${Number(p.incasabil || 0)})" style="padding:6px 12px;background:#15803d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Încasează ${formatRon(p.incasabil)}</button>
+                            <small style="color:#64748b;">diferența se încasează doar întreagă</small>
+                        </span>` : ''}
+                        ${p.poate_incasa && p.tip !== 'link' ? `<span style="display:inline-flex;gap:6px;align-items:center;">
                             <input type="number" step="0.01" min="0.01" max="${Number(p.incasabil || 0).toFixed(2)}" id="bt-suma-incasare-${btTx}" value="${Number(p.sugestie_incasare || 0).toFixed(2)}" aria-label="Suma de încasat (lei)" style="width:100px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;">
                             <button type="button" onclick="btActiune(${order.id}, ${btTx}, 'deposit', ${Number(p.incasabil || 0)})" style="padding:6px 12px;background:#15803d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;">Încasează</button>
                             <small style="color:#64748b;">max ${formatRon(p.incasabil)}</small>
+                            ${Number(p.sugestie_incasare || 0) <= 0 ? '<small style="color:#b45309;">nimic de încasat: comanda e deja încasată integral (suma blocată se poate elibera)</small>' : ''}
                         </span>` : ''}
                         ${p.poate_anula ? `<button type="button" onclick="${p.cere_confirmare_eliberare ? `btArataAlegere(${btTx})` : `btActiune(${order.id}, ${btTx}, 'reverse')`}" style="padding:6px 12px;background:#fff;border:1px solid #b45309;border-radius:5px;cursor:pointer;font-size:13px;color:#92400e;">Anulează autorizarea</button>` : ''}
                         ${p.poate_rambursa ? `<span style="display:inline-flex;gap:6px;align-items:center;">
