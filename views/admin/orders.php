@@ -312,6 +312,14 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                             (string) ($order['billing_last_name'] ?? ''),
                             (string) ($order['billing_email'] ?? '')
                         );
+                        // „Client agresiv” din ERP: rând roz + eticheta roșie în
+                        // fereastra comenzii. Doar pe cele marcate ajunge în datele
+                        // ferestrei; restul comenzilor rămân exact ca înainte.
+                        $eClientAgresiv = (string) ($order['erp_client_agresiv'] ?? '') === '1';
+                        unset($order['erp_client_agresiv']);
+                        if ($eClientAgresiv) {
+                            $order['client_agresiv'] = true;
+                        }
                         $orderJson = htmlspecialchars((string) json_encode($order, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE), ENT_QUOTES);
                     ?>
                     <?php
@@ -404,14 +412,14 @@ $sortToggleLabel = strtolower($sortDir) === 'asc'
                         $precomandaStare = strtolower(trim((string) ($order['preorder_status'] ?? '')));
                         $ePrecomandaInAsteptare = $precomandaStare === 'asteptare';
                     ?>
-                    <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?>">
+                    <tr class="<?= $isCancelled ? 'is-cancelled' : '' ?><?= $eClientAgresiv ? ($isCancelled ? ' ' : '') . 'is-client-agresiv' : '' ?>">
                         <td class="orders-table__check">
                             <input type="checkbox" class="order-bulk-checkbox" data-order-id="<?= $orderId ?>" <?= $isCancelled ? 'disabled' : '' ?>>
                         </td>
                         <td>
                             <small style="display:block;color:#94a3b8;">#<?= (int) $orderId ?> / <?= htmlspecialchars((string) ($order['order_number'] ?? ''), ENT_QUOTES) ?></small>
                             <strong><?= htmlspecialchars($customerName !== '' ? $customerName : 'Client', ENT_QUOTES) ?></strong>
-                            <small style="display:block;color:#64748b;"><?= htmlspecialchars((string) ($order['billing_email'] ?? ''), ENT_QUOTES) ?></small>
+                            <?php if ($eClientAgresiv): ?><span class="client-agresiv-badge" title="În ERP, clientul acestei comenzi are semnul „Client agresiv” pe fișă.">Client agresiv</span><?php endif; ?><small style="display:block;color:#64748b;"><?= htmlspecialchars((string) ($order['billing_email'] ?? ''), ENT_QUOTES) ?></small>
                             <?php if (trim((string) ($order['ad_source'] ?? '')) !== ''): ?>
                                 <span title="Comandă provenită dintr-un anunț Google Ads<?= trim((string) ($order['ad_click_id'] ?? '')) !== '' ? (' (' . htmlspecialchars((string) $order['ad_click_id'], ENT_QUOTES) . ')') : '' ?>"
                                       style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:999px;background:#e8f0fe;color:#1a73e8;font-size:11px;font-weight:700;line-height:1.4;">
@@ -1361,7 +1369,7 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 </div>`;
             }
 
-            content.innerHTML = `
+            content.innerHTML = `${order.client_agresiv === true ? '<p class="client-agresiv-note"><span class="client-agresiv-badge">Client agresiv</span> În ERP, clientul acestei comenzi are semnul „Client agresiv” pe fișă.</p>' : ''}
                 <div class="order-modal-grid">
                     <div><small>Client</small><p id="order-client-name-${order.id}">${esc(order.display_name || ((order.billing_first_name||'') + ' ' + (order.billing_last_name||'')).trim())}</p></div>
                     <div><small>Email</small><p id="order-client-email-${order.id}">${esc(order.billing_email)}</p></div>

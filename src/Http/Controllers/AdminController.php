@@ -86,7 +86,8 @@ final class AdminController
             $metrics['users'] = (int) $db->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
             $recentOrder = $db->query(
-                'SELECT order_number, billing_first_name, billing_last_name, total, status
+                'SELECT order_number, billing_first_name, billing_last_name, total, status'
+                . ($this->tableHasColumn($db, 'orders', 'erp_client_agresiv') ? ', erp_client_agresiv' : '') . '
                  FROM orders
                  WHERE deleted_at IS NULL
                  ORDER BY id DESC
@@ -4817,6 +4818,11 @@ final class AdminController
             if ($arePrecomanda) {
                 $selectPlata .= ', preorder_status, preorder_released_at';
             }
+            // „Client agresiv” din ERP: rândul roz. Coloana vine prin ALTER
+            // (ErpSync::ensureSchema); fără ea, lista arată ca înainte.
+            if ($this->tableHasColumn($db, 'orders', 'erp_client_agresiv')) {
+                $selectPlata .= ', erp_client_agresiv';
+            }
             $stmt = $db->prepare(
                 'SELECT id, order_number, status, payment_method, payment_status, total, shipping_cost, subtotal, discount_total,
                         coupon_code,
@@ -8410,6 +8416,16 @@ final class AdminController
         $stmt->execute(['nr' => $numarSite]);
         $order = $stmt->fetch() ?: null;
         if (!is_array($order)) {
+            // „Client agresiv” pe o comandă pe care n-o avem (ștearsă, sau
+            // venită pe alt drum) n-are ce colora: „ok”, ca ERP-ul s-o închidă
+            // și cron-ul s-o confirme, în loc s-o ia de la capăt la fiecare rulare.
+            if ($eveniment === 'client_agresiv') {
+                return [
+                    'ok' => true,
+                    'ignorat' => true,
+                    'message' => 'Comanda ' . $numarSite . ' nu există pe site.',
+                ];
+            }
             return ['ok' => false, 'message' => 'Comanda ' . $numarSite . ' nu există pe site.'];
         }
         $orderId = (int) $order['id'];
@@ -8418,8 +8434,51 @@ final class AdminController
             'comanda_aprobata' => $this->applyErpApproval($db, $orderId, $order, $event),
             'comanda_anulata' => $this->applyErpCancellation($db, $orderId, $order),
             'comanda_modificata' => $this->applyErpOrderChange($db, $orderId, $event),
+            'client_agresiv' => $this->applyErpClientAgresiv($db, $orderId, $event),
             default => ['ok' => false, 'message' => 'Eveniment necunoscut: ' . $eveniment],
         };
+    }
+
+    /**
+     * Clientul comenzii are (sau nu mai are) semnul „Client agresiv” în ERP.
+     * Rândul comenzii devine roz în lista din admin.
+     *
+     * Vestea e o stare, nu o schimbare: câștigă cea cu `versiune` mai mare.
+     * Aceeași comandă poate veni și direct, și prin cron, iar cele două se pot
+     * încrucișa — cron-ul aplică ce a luat mai devreme după ce a sosit deja una
+     * mai nouă. UPDATE-ul condiționat ține regula într-o singură instrucțiune,
+     * deci rămâne corectă și când cele două rulează deodată. Una mai veche sau
+     * egală nu schimbă nimic, dar e tot „ok”: ERP-ul o închide, cron-ul o confirmă.
+     */
+    private function applyErpClientAgresiv(PDO $db, int $orderId, array $event): array
+    {
+        $valoare = filter_var($event['clientAgresiv'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        $versiune = (int) ($event['versiune'] ?? 0);
+
+        $stmt = $db->prepare(
+            'UPDATE orders
+             SET erp_client_agresiv = :v, erp_client_agresiv_versiune = :ver
+             WHERE id = :id
+               AND (erp_client_agresiv_versiune IS NULL OR erp_client_agresiv_versiune < :ver2)'
+        );
+        $stmt->bindValue(':v', $valoare, PDO::PARAM_INT);
+        $stmt->bindValue(':ver', $versiune, PDO::PARAM_INT);
+        $stmt->bindValue(':ver2', $versiune, PDO::PARAM_INT);
+        $stmt->bindValue(':id', $orderId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        if ($stmt->rowCount() === 0) {
+            return [
+                'ok' => true,
+                'ignorat' => true,
+                'message' => 'Comanda are deja o valoare „Client agresiv” mai nouă.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => $valoare === 1 ? 'Comanda e marcată „Client agresiv”.' : 'Marcajul „Client agresiv” a fost scos de pe comandă.',
+        ];
     }
 
     /**

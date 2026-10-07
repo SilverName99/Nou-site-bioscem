@@ -165,6 +165,42 @@ php /home/USER/domains/bioscem.ro/public_html/scripts/test-precomanda.php
 
 Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
 
+### ERP ANDAXI: „Client agresiv” pe comenzi
+
+Cand in ERP e pornita setarea „Bifa „Client agresiv” pe fisa clientului” (Setari →
+Date firma → „Clienti”) si clientul legat de comanda are bifa, comanda e „agresiva”.
+In `Admin -> Comenzi` randul ei e roz (`#fee2e2`, la hover `#fecaca` — culorile din
+ERP), langa nume apare eticheta rosie „Client agresiv”, iar fereastra comenzii o arata
+sus. La fel pe randul din „Comenzi recente” de pe Dashboard. Comenzile fara marcaj
+arata exact ca inainte.
+
+- **Coloane noi** pe `orders` (create singure de `ErpSync::ensureSchema`, prin `ALTER`):
+  `erp_client_agresiv TINYINT(1) NULL` (1 / 0; NULL = ERP-ul n-a spus nimic) si
+  `erp_client_agresiv_versiune BIGINT NULL` (versiunea ultimului eveniment aplicat,
+  milisecunde; NULL = niciun eveniment inca).
+- **La trimiterea comenzii** (`POST /api/comenzi-site/ingest`) raspunsul ERP-ului are
+  `clientAgresiv: true|false`. Se scrie doar cat comanda n-are versiune (n-a primit
+  inca niciun eveniment); un ERP vechi, fara camp, nu schimba nimic.
+- **Evenimentul `client_agresiv`** vine pe `POST /api/erp/notificare` (aceeasi cheie
+  `X-Andaxi-Site-Key`, aceleasi verificari ca la aprobare/anulare/modificare):
+  `{"eveniment":"client_agresiv","numarSite":"100045","clientAgresiv":true,"versiune":1791311874495}`.
+  E o stare, nu o schimbare: castiga versiunea cea mai mare (un singur `UPDATE ...
+  WHERE versiune IS NULL OR versiune < :noua`). Una mai veche sau egala raspunde
+  `{"ok":true,"ignorat":true}` fara sa schimbe ceva; o comanda inexistenta (sau
+  stearsa) raspunde tot `{"ok":true,"ignorat":true,"message":"Comanda … nu există pe site."}`,
+  ca ERP-ul s-o inchida si cron-ul s-o confirme.
+- **Cron-ul** `scripts/erp-sync.php` cere notificarile nelivrate cu
+  `GET /api/site/notificari?evenimente=client_agresiv` — la **fiecare** apel
+  (`ErpClient::pendingNotifications`). ERP-ul tine minte cererea si de atunci lasa
+  pentru cron vestile `client_agresiv` pe care n-a putut sa le livreze direct; un apel
+  fara parametru i-ar spune ca site-ul nu le mai culege. Le aplica la fel ca pe celelalte
+  (`handleErpEvent`, cu regula versiunii) si le confirma pe
+  `POST /api/site/notificari/confirma`. Aprobarile, anularile si modificarile merg ca
+  inainte (ERP-ul le serveste primele).
+- Dupa primul deploy: lasa cron-ul sa ruleze o data, apoi in ERP, Setari → Date firma →
+  „Clienti”, debifeaza „Bifa „Client agresiv” pe fisa clientului” + „Salveaza”, bifeaz-o
+  la loc + „Salveaza”: ERP-ul retrimite valorile pe comenzile din ultimele 12 luni.
+
 ### Plata cu cardul prin Banca Transilvania (BT iPay)
 
 Integrarea urmeaza modulul oficial BT pentru Magento (`btrl/ipay` 100.0.2): aceleasi

@@ -38,11 +38,11 @@
             <h2>Comenzi recente</h2>
             <a href="/admin/orders">Vezi toate</a>
         </div>
-        <?php if (!empty($recentOrder)): ?>
-            <div class="recent-order-row">
+        <?php if (!empty($recentOrder)): $recentClientAgresiv = (string) ($recentOrder['erp_client_agresiv'] ?? '') === '1'; ?>
+            <div class="recent-order-row<?= $recentClientAgresiv ? ' is-client-agresiv' : '' ?>">
                 <div>
                     <strong><?= htmlspecialchars(trim((string) $recentOrder['billing_first_name'] . ' ' . (string) $recentOrder['billing_last_name']), ENT_QUOTES) ?></strong>
-                    <p><?= htmlspecialchars((string) $recentOrder['order_number'], ENT_QUOTES) ?></p>
+                    <?php if ($recentClientAgresiv): ?><span class="client-agresiv-badge" title="În ERP, clientul acestei comenzi are semnul „Client agresiv” pe fișă.">Client agresiv</span><?php endif; ?><p><?= htmlspecialchars((string) $recentOrder['order_number'], ENT_QUOTES) ?></p>
                 </div>
                 <div class="right">
                     <strong><?= number_format((float) $recentOrder['total'], 2) ?> RON</strong>

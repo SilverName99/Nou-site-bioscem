@@ -111,11 +111,18 @@ final class ErpClient
      * Notificările pe care ERP-ul nu a reușit să ni le livreze (site jos,
      * rețea căzută). Cron-ul le preia și le aplică, apoi le confirmă.
      *
+     * `?evenimente=client_agresiv` cere și vestea „Client agresiv” (pe lângă
+     * aprobare / modificare / anulare, care vin oricum, primele). Parametrul
+     * trebuie trimis la FIECARE apel: ERP-ul ține minte cererea și, de cum îl
+     * vede, lasă pentru cron vestea pe care n-a putut-o livra direct; un apel
+     * fără el îi spune că site-ul nu mai o culege și o închide. Un ERP mai
+     * vechi ignoră parametrul.
+     *
      * @return array<int, array<string, mixed>>
      */
     public function pendingNotifications(): array
     {
-        $rows = $this->request('GET', '/api/site/notificari');
+        $rows = $this->request('GET', '/api/site/notificari?evenimente=client_agresiv');
         $out = [];
         foreach ($rows as $row) {
             if (is_array($row)) {

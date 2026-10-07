@@ -175,6 +175,8 @@ final class ErpSync
             'problems' => $probleme,
         ]);
 
+        self::noteazaClientAgresiv($db, $orderId, $response);
+
         // ERP-ul a primit o comandă nouă: modulul „Magazin online” e deschis.
         // Bannerul nu mai așteaptă ping-ul cron-ului, iar comenzile ținute
         // pleacă la rularea următoare.
@@ -197,6 +199,37 @@ final class ErpSync
                     ? 'Comanda exista deja în ERP; am actualizat referința.'
                     : 'Comanda a fost trimisă în ERP.'),
         ];
+    }
+
+    /**
+     * „Client agresiv” din răspunsul ERP-ului la trimiterea comenzii.
+     *
+     * Răspunsul n-are versiune, deci valoarea lui intră doar cât comanda n-a
+     * primit încă niciun eveniment `client_agresiv` (versiunea e NULL): după
+     * aceea decid evenimentele, care vin cu versiune și ajung oricum la fiecare
+     * schimbare din ERP. Un ERP mai vechi nu trimite câmpul — atunci nu știm
+     * nimic și lăsăm ce era, nu scriem „nu”.
+     *
+     * @param array<mixed> $response
+     */
+    private static function noteazaClientAgresiv(PDO $db, int $orderId, array $response): void
+    {
+        if (!array_key_exists('clientAgresiv', $response)) {
+            return;
+        }
+        $valoare = filter_var($response['clientAgresiv'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($valoare === null) {
+            return;
+        }
+        try {
+            $db->prepare(
+                'UPDATE orders SET erp_client_agresiv = :v
+                 WHERE id = :id AND erp_client_agresiv_versiune IS NULL'
+            )->execute(['v' => $valoare ? 1 : 0, 'id' => $orderId]);
+        } catch (Throwable) {
+            // Coloana lipsește (ALTER refuzat): comanda a plecat oricum, doar
+            // culoarea din admin nu se vede.
+        }
     }
 
     /**
@@ -912,6 +945,13 @@ final class ErpSync
             // factură, nici în emailuri — dar pleacă în ERP, ca să nu fie
             // sunat a doua oară pentru acelaşi lucru.
             'admin_notes' => 'TEXT DEFAULT NULL',
+            // „Client agresiv” din ERP: clientul legat de comandă are semnul pe
+            // fișă. NULL = ERP-ul n-a spus nimic. Versiunea (milisecunde, din
+            // evenimentul `client_agresiv`) ține cea mai nouă valoare când
+            // apelul direct și cron-ul se încrucișează; NULL = niciun eveniment
+            // aplicat încă, deci răspunsul de la trimitere mai are voie s-o scrie.
+            'erp_client_agresiv' => 'TINYINT(1) DEFAULT NULL',
+            'erp_client_agresiv_versiune' => 'BIGINT DEFAULT NULL',
         ];
 
         // Reducerea pusă de operator din ERP pe o linie. Prețul din
