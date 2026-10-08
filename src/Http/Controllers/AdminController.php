@@ -6240,12 +6240,19 @@ final class AdminController
             }
         }
 
-        $lines = [];
-        $subtotal = 0.0;
+        // Același produs ales de două ori (un rând nou pe un produs deja din
+        // comandă) rămâne o singură linie, cu cantitățile adunate. ERP-ul
+        // rezervă stocul pe produs și nu aprobă o comandă cu două linii pe
+        // același produs.
+        $peProdus = [];
         foreach ($pids as $i => $pRaw) {
             $pid = (int) $pRaw;
             $qty = max(0, (int) ($qtys[$i] ?? 0));
             if ($pid <= 0 || $qty <= 0 || !isset($products[$pid])) {
+                continue;
+            }
+            if (isset($peProdus[$pid])) {
+                $peProdus[$pid]['qty'] += $qty;
                 continue;
             }
             $prod = $products[$pid];
@@ -6255,9 +6262,15 @@ final class AdminController
                 $sale = (float) ($prod['sale_price'] ?? 0);
                 $unit = ($sale > 0 && $sale < $price) ? $sale : $price;
             }
-            $lineTotal = round($unit * $qty, 2);
+            $peProdus[$pid] = ['pid' => $pid, 'name' => (string) ($prod['name'] ?? ''), 'qty' => $qty, 'unit' => $unit];
+        }
+
+        $lines = [];
+        $subtotal = 0.0;
+        foreach ($peProdus as $ln) {
+            $lineTotal = round($ln['unit'] * $ln['qty'], 2);
             $subtotal += $lineTotal;
-            $lines[] = ['pid' => $pid, 'name' => (string) ($prod['name'] ?? ''), 'qty' => $qty, 'unit' => round($unit, 2), 'total' => $lineTotal];
+            $lines[] = ['pid' => $ln['pid'], 'name' => $ln['name'], 'qty' => $ln['qty'], 'unit' => round($ln['unit'], 2), 'total' => $lineTotal];
         }
 
         if ($lines === []) {

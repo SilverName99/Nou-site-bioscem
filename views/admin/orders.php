@@ -1872,6 +1872,22 @@ function recalcOrderItem(el){
 function orderPickProduct(sel){
     const row = sel.closest('.oi-row');
     if (!row) return;
+    // Produsul e deja în comandă: se adună la rândul lui, nu se face a doua
+    // linie (ERP-ul nu aprobă o comandă cu două linii pe același produs).
+    const wrap = row.parentElement;
+    const altul = sel.value === '' || !wrap ? null : Array.from(wrap.querySelectorAll('.oi-row')).find((r) =>
+        r !== row && String(r.dataset.pid || r.querySelector('.oi-pid')?.value || '') === sel.value);
+    if (altul) {
+        const q = altul.querySelector('.oi-qty');
+        const adaug = Math.max(1, Number(row.querySelector('.oi-qty')?.value) || 1);
+        if (q) { q.value = (Number(q.value) || 0) + adaug; recalcOrderItem(q); }
+        row.remove();
+        altul.style.background = '#fef9c3';
+        setTimeout(() => { altul.style.background = ''; }, 2000);
+        const status = document.getElementById('order-items-status-' + String(wrap.id || '').replace('order-items-', ''));
+        if (status) { status.style.color = '#b45309'; status.textContent = 'Produsul era deja în comandă: i-am crescut cantitatea.'; }
+        return;
+    }
     const opt = sel.options[sel.selectedIndex];
     const price = opt ? (Number(opt.dataset.price)||0) : 0;
     row.dataset.unit = price;
