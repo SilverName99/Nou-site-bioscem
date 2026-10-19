@@ -92,11 +92,39 @@ final class SiteController
 
         if ($categoryName === '') {
             http_response_code(404);
+        } else {
+            // Aceeași categorie scrisă altfel (litere mari): 301 la forma salvată.
+            $slugCorect = $this->slugCanonicCategorie($slug, $categoryName);
+            if ($slugCorect !== '' && $slugCorect !== $slug
+                && \App\Support\SeoRedirects::redirectCanonic('/categorie/' . rawurlencode($slugCorect))) {
+                return;
+            }
         }
 
         // shop() citește filtrul din query string.
         $_GET['categorie'] = $categoryName;
         $this->shop();
+    }
+
+    /**
+     * Forma salvată a slug-ului unei categorii găsite (cea din product_categories,
+     * altfel cea generată din nume), ca variantele cu litere mari să ducă la ea.
+     */
+    private function slugCanonicCategorie(string $slugCerut, string $numeCategorie): string
+    {
+        $db = $this->db();
+        if ($db instanceof PDO) {
+            try {
+                $stmt = $db->prepare('SELECT slug FROM product_categories WHERE LOWER(slug) = :slug LIMIT 1');
+                $stmt->execute(['slug' => mb_strtolower(trim($slugCerut))]);
+                $salvat = $stmt->fetchColumn();
+                if (is_string($salvat) && trim($salvat) !== '') {
+                    return trim($salvat);
+                }
+            } catch (Throwable) {
+            }
+        }
+        return $this->slugifyCategoryName($numeCategorie);
     }
 
     /** Slug simplu, pentru comparat branduri și etichete scrise oricum. */
@@ -211,6 +239,7 @@ final class SiteController
      */
     private function renderListaFiltrata(string $tip, string $slug): void
     {
+        $slugCerut = $slug;
         $slug = $this->slugSimplu($slug);
         $db = $this->db();
         [$toate] = $this->loadProducts();
@@ -234,6 +263,10 @@ final class SiteController
 
         if ($eticheta === '') {
             http_response_code(404);
+        } elseif ($slugCerut !== $slug
+            && \App\Support\SeoRedirects::redirectCanonic(($tip === 'brand' ? '/marca/' : '/eticheta/') . rawurlencode($slug))) {
+            // Aceeași marcă sau etichetă scrisă altfel (litere mari): 301 la forma corectă.
+            return;
         }
 
         $titlu = $eticheta !== ''
@@ -483,6 +516,14 @@ final class SiteController
                 'Este posibil ca linkul să fie vechi sau produsul să nu mai fie disponibil. Caută-l după nume sau vezi toate produsele din magazin.',
                 $db
             );
+            return;
+        }
+
+        // Același produs scris altfel (litere mari, alt fel de codare): 301 la
+        // adresa lui, ca Google să vadă o singură adresă.
+        $slugSalvat = (string) ($product['slug'] ?? '');
+        if ($slugSalvat !== '' && $slugSalvat !== (string) $slug
+            && \App\Support\SeoRedirects::redirectCanonic('/produs/' . rawurlencode($slugSalvat))) {
             return;
         }
 
@@ -3637,6 +3678,13 @@ final class SiteController
         $this->ensureOptionalPageSchema($db);
 
         $page = $this->findPublishedPageBySlug($slug);
+
+        // Aceeași pagină scrisă altfel (litere mari): 301 la adresa ei.
+        $slugSalvat = is_array($page) ? (string) ($page['slug'] ?? '') : '';
+        if ($slugSalvat !== '' && $slugSalvat !== $slug
+            && \App\Support\SeoRedirects::redirectCanonic('/' . implode('/', array_map('rawurlencode', explode('/', $slugSalvat))))) {
+            return;
+        }
 
         if ($page === null) {
             $notFoundPage = $this->findPublishedPageBySlug('404');

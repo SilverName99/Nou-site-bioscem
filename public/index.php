@@ -33,6 +33,13 @@ declare(strict_types=1);
     exit;
 })();
 
+// O singură adresă pentru fiecare pagină (https://bioscem.ro, fără www, fără „/”
+// final) și redirecționările adreselor vechi din config/redirecturi.php.
+// Doar GET/HEAD; niciodată pe coș, plată, cont, admin, API, confirmările de
+// plată sau ERP (lista în SeoRedirects::CAI_EXCLUSE). Rulează înaintea sesiunii.
+require_once __DIR__ . '/../src/Support/SeoRedirects.php';
+\App\Support\SeoRedirects::incepe(dirname(__DIR__));
+
 require_once __DIR__ . '/../bootstrap.php';
 
 use App\Http\Controllers\AdminController;
