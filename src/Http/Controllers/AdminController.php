@@ -7573,6 +7573,44 @@ final class AdminController
         }
     }
 
+    /**
+     * Numărul de colete ales în ERP pentru AWB, din notificarea de aprobare.
+     *
+     * Doar un întreg între 1 și 99 (cât primește FAN pe un AWB); orice
+     * altceva — câmp lipsă, text, zecimale, `true` — se ignoră, iar AWB-ul se
+     * calculează din greutate, ca înainte.
+     */
+    private static function coleteAleseDinErp(array $event): ?int
+    {
+        $valoare = $event['coleteAlese'] ?? null;
+        if ($valoare === null || is_bool($valoare) || is_array($valoare)) {
+            return null;
+        }
+        $numar = filter_var($valoare, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 99],
+        ]);
+        return $numar === false ? null : (int) $numar;
+    }
+
+    /**
+     * Notează în jurnal că numărul de colete ales în ERP n-a fost folosit:
+     * comanda pleacă pe câte un AWB per depozit, iar fiecare AWB își
+     * calculează coletele din marfa lui. Fără urma asta, cine a schimbat
+     * numărul în ERP n-ar ști de ce AWB-urile au altele.
+     */
+    private function logColeteErpNeaplicate(PDO $db, int $orderId, int $coleteAlese, int $depozite): void
+    {
+        try {
+            AdminActivityLog::log($db, 'awb_colete_erp_neaplicate', [
+                'comanda_id' => $orderId,
+                'colete_alese_in_erp' => $coleteAlese,
+                'awb_uri_pe_depozite' => $depozite,
+            ]);
+        } catch (Throwable) {
+            // Jurnalul nu trebuie să oprească generarea AWB-ului.
+        }
+    }
+
     private function createFanAwbInternal(
         PDO $db,
         int $orderId,
@@ -7601,8 +7639,9 @@ final class AdminController
             return ['ok' => false, 'message' => 'Completeaza in Setari Livrare: FAN client id, username si parola API.'];
         }
 
-        // `$colete` vine din fereastra de emitere, când omul a schimbat numărul
-        // calculat din greutate; null = se calculează ca până acum.
+        // `$colete` vine din fereastra de emitere sau din aprobarea din ERP,
+        // când omul a schimbat numărul calculat din greutate; null = se
+        // calculează ca până acum.
         $payload = $this->buildFanShipmentPayload(
             $order,
             $settings,
@@ -8796,10 +8835,20 @@ final class AdminController
                         if ($unSingurAwb && count($colete) >= 2) {
                             $this->logComasareColete($db, $orderId, $colete);
                         }
+                        // Numărul de colete ales în ERP la aprobare. Lipsă (ERP
+                        // mai vechi, comandă trimisă în plicuri) = calculul din
+                        // greutate, ca până acum. Pe AWB-urile per depozit nu se
+                        // aplică — fiecare își socotește coletele din marfa lui —
+                        // și rămâne doar în jurnal.
+                        $coleteAlese = self::coleteAleseDinErp($event);
+                        $peDepozite = !$unSingurAwb && count($colete) >= 2;
+                        if ($peDepozite && $coleteAlese !== null) {
+                            $this->logColeteErpNeaplicate($db, $orderId, $coleteAlese, count($colete));
+                        }
                         try {
-                            $rezultat = (!$unSingurAwb && count($colete) >= 2)
+                            $rezultat = $peDepozite
                                 ? $this->createFanAwbMulti($db, $orderId, $colete)
-                                : $this->createFanAwbInternal($db, $orderId);
+                                : $this->createFanAwbInternal($db, $orderId, true, $coleteAlese);
                             if (($rezultat['ok'] ?? false) !== true) {
                                 $awbMessage = (string) ($rezultat['message'] ?? '');
                             }
