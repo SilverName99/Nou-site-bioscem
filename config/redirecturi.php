@@ -141,6 +141,23 @@ return [
         ['/produs/vitamina',                                 '/categorie/vitamine-minerale',                     301, 'adresă trunchiată; azi potrivirea automată o trimitea greșit la un gel cu siliciu'],
         ['/produs/vitamina-c-actinovo-250',                  '/produs/actinovo-vitamina-c-lipozomala',           301, 'același produs (ActiNovo 250 ml), slug schimbat'],
         ['/produs/vivomixx-neo',                             '/produs/vivomixx-neo-460',                         301, 'același produs, slug schimbat (rând „da” în lista din plan)'],
+        // Deciziile proprietarului din 19 oct 2026 („da la toate”): produse și etichete șterse -> înlocuitorul
+        // recomandat, verificat live în aceeași zi. Fără regulă încă: /author/adrian-vornicu (+ /page/2) și
+        // /retur-garantie, până există paginile Despre (C10) și Retur (C2). Clarkia rămâne 404 (fără înlocuitor).
+        ['/produs/glutathione-lipozomal-300mg-liporom',       '/produs/glutathione-liposomal-quicksilver',        301, 'Glutathione Liporom (șters) -> același glutation lipozomal, de la Quicksilver'],
+        ['/produs/casti-antiradiatii-aircall-sp21',           '/produs/casti-antiradiatii-aircall-sp21N',         301, 'modelul vechi SP21 -> varianta neagră SP21N (dacă slug-ul trece la litere mici, D5, se schimbă și ținta de aici)'],
+        ['/produs/ascolip-vitamina-c-lipozomala-500mg-cirese', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
+        ['/produs/ascolip-vitamina-c-lipozomala-1000mg-lamaie', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
+        ['/produs/ascolip-vitamina-c-lipozomala-1000mg-coacaze', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
+        ['/produs/magneziu-lipozomal-200mg-liporom',          '/eticheta/magneziu',                               301, 'magneziu lipozomal Liporom (șters) -> eticheta magneziu (6 produse, rămâne în Google)'],
+        ['/produs/vitadlip-vitamina-d-lipozomala-4000',       '/eticheta/vitamina-d',                             301, 'vitamina D lipozomală Liporom (produs șters) -> eticheta vitamina-d (rămâne în Google, excepție D2)'],
+        ['/produs/vita-d-lip-vitamina-d-lipozomala-1000',     '/eticheta/vitamina-d',                             301, 'vitamina D lipozomală Liporom (produs șters) -> eticheta vitamina-d (rămâne în Google, excepție D2)'],
+        ['/produs/vollagen-lipozomal-liporom-colagen-vegan',  '/eticheta/colagen',                                301, 'colagen vegan Liporom (șters) -> eticheta colagen (6 produse, rămâne în Google)'],
+        ['/produs/pachet-energie-naturala-gustari-pentru-intreaga-zi', '/produs/pachet-batoane-kanne-bio-energie-nack-4%2B1gratuit', 301, 'pachet de gustări șters -> alt pachet pentru energie (batoane KANNE, 4+1 gratuit)'],
+        ['/produs/caramele-miere-propolis-mucolid',           '/produs/caramele-propolis-pin-mucolid',            301, 'caramele Mucolid cu miere și propolis (șterse) -> aceeași gamă, aroma propolis și pin'],
+        ['/eticheta/ascolip',                                 '/produs/vitamina-c-lipozomala-quicksilver',        301, 'eticheta Ascolip (marca nu mai există) -> vitamina C lipozomală Quicksilver'],
+        ['/eticheta/oferte',                                  '/categorie/promotii',                              301, 'eticheta Oferte -> categoria PROMOTII (/categorie/promotii)'],
+        ['/eticheta/sistem-respirator',                       '/categorie/respiro',                               301, 'eticheta sistem respirator -> categoria Respiro'],
         // Resturi tehnice WordPress: 410
         ['/*',                                               null,                                               410, 'rest tehnic WordPress'],
         ['/tag/icons',                                       null,                                               410, 'rest tehnic WordPress'],
