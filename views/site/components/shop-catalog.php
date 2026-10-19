@@ -24,171 +24,8 @@ if ($sortOptions === []) {
     ];
 }
 ?>
-<section class="shop-catalog-v2" data-shop-catalog-token="1">
-  <div class="shop-catalog-v2__toolbar">
-    <button type="button" class="shop-catalog-v2__filter-toggle" data-shop-filters-toggle aria-expanded="false" aria-controls="shop-catalog-filters-panel">
-      <span class="shop-catalog-v2__filter-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 5h18"></path>
-          <path d="M7 12h10"></path>
-          <path d="M10 19h4"></path>
-        </svg>
-      </span>
-      FILTRE
-    </button>
-
-    <div class="shop-catalog-v2__sort-wrap">
-      <button type="button" class="shop-catalog-v2__sort-btn" data-shop-sort-toggle>
-        <?= htmlspecialchars((string) ($sortOptions[$sortKey] ?? 'Alfabetică'), ENT_QUOTES) ?>
-        <span class="shop-catalog-v2__sort-chevron" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 10l6 6 6-6"></path>
-          </svg>
-        </span>
-      </button>
-      <div class="shop-catalog-v2__sort-menu" data-shop-sort-menu>
-        <?php foreach ($sortOptions as $key => $label): ?>
-          <a class="shop-catalog-v2__sort-option <?= (string) $key === (string) $sortKey ? 'is-active' : '' ?>" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>?sort=<?= rawurlencode((string) $key) ?><?= $activeCategory !== '' ? '&categorie=' . rawurlencode($activeCategory) : '' ?>">
-            <?= htmlspecialchars((string) $label, ENT_QUOTES) ?>
-          </a>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </div>
-
-  <div class="shop-catalog-v2__filters-overlay" data-shop-filters-overlay></div>
-  <div class="shop-catalog-v2__filters" data-shop-filters id="shop-catalog-filters-panel" aria-hidden="true">
-    <div class="shop-catalog-v2__filters-head">
-      <strong>FILTRE</strong>
-      <button type="button" class="shop-catalog-v2__filters-close" data-shop-filters-close aria-label="Închide filtrele">×</button>
-    </div>
-    <div class="shop-catalog-v2__filters-grid">
-      <div class="shop-catalog-v2__filter-col">
-        <h4>CATEGORII</h4>
-        <label><input type="radio" name="category" data-filter-value="" <?= $activeCategory === '' ? 'checked' : '' ?>> Toate</label>
-        <?php foreach ($categories as $category): ?>
-          <?php
-          $value = trim((string) ($category['value'] ?? ''));
-          $label = trim((string) ($category['label'] ?? $value));
-          $count = max(0, (int) ($category['count'] ?? 0));
-          if ($value === '') {
-              continue;
-          }
-          ?>
-          <label>
-            <input type="radio" name="category" data-filter-value="<?= htmlspecialchars($value, ENT_QUOTES) ?>" <?= $activeCategory === $value ? 'checked' : '' ?>>
-            <?= htmlspecialchars($label, ENT_QUOTES) ?><?= $count > 0 ? ' (' . $count . ')' : '' ?>
-          </label>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </div>
-
-  <?php if ($products === []): ?>
-    <div class="shop-catalog-v2__empty">Nu există produse pentru filtrele selectate.</div>
-  <?php else: ?>
-    <div class="bv-popular__grid shop-catalog-v2__grid">
-      <?php foreach ($products as $product): ?>
-        <?php
-        $name = trim((string) ($product['name'] ?? 'Produs'));
-        $slug = trim((string) ($product['slug'] ?? ''));
-        $desc = trim((string) ($product['short_description'] ?? ''));
-        $price = (float) ($product['price'] ?? 0);
-        $basePrice = (float) ($product['base_price'] ?? $price);
-        $hasSale = (bool) ($product['has_sale_price'] ?? false);
-        $image = trim((string) ($product['image_url'] ?? ''));
-        if ($image === '') {
-            $image = '/assets/img/product-placeholder.svg';
-        }
-        $reviewsCount = max(0, (int) ($product['reviews_count'] ?? 0));
-        $reviewsAverage = max(0.0, min(5.0, (float) ($product['reviews_average'] ?? 0)));
-        $roundedStars = (int) round($reviewsAverage);
-        // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără rândul
-        // ăsta, produsul bifat rămânea fără buton în listă, deși pe fișa lui
-        // se putea comanda.
-        $ePrecomanda = \App\Support\Precomanda::estePrecomanda($product);
-        $outOfStock = (int) ($product['out_of_stock'] ?? 0) === 1 && !$ePrecomanda;
-        $hasBbdOffers = \App\Support\BbdOferte::cereAlegere($product);
-        $discountMode = (string) ($product['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent';
-        $discount = 0;
-        $discountValue = 0.0;
-        if ($basePrice > 0 && $price < $basePrice) {
-            $discount = (int) round((($basePrice - $price) / $basePrice) * 100);
-            $discountValue = $basePrice - $price;
-        }
-        $discountValueLabel = rtrim(rtrim(number_format($discountValue, 2, '.', ''), '0'), '.');
-        ?>
-        <article class="bv-popular-card shop-catalog-v2__card" data-product-category="<?= htmlspecialchars((string) ($product['category'] ?? ''), ENT_QUOTES) ?>">
-          <div class="bv-popular-card__media-wrap">
-            <a class="bv-popular-card__media" href="/produs/<?= rawurlencode($slug) ?>">
-              <img class="bv-popular-card__img" src="<?= htmlspecialchars($image, ENT_QUOTES) ?>" alt="<?= htmlspecialchars($name, ENT_QUOTES) ?>" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
-              <?php if ($discount > 0): ?>
-                <?php if ($discountMode === 'value'): ?>
-                  <span class="bv-popular-card__bubble bv-popular-card__bubble--value">-<?= $discountValueLabel ?> lei</span>
-                <?php else: ?>
-                  <span class="bv-popular-card__bubble">-<?= $discount ?>%</span>
-                <?php endif; ?>
-              <?php endif; ?>
-              <?php if ($hasBbdOffers): ?>
-                <span class="bv-popular-card__bubble bv-popular-card__bubble--offer">OFERTE PREȚ</span>
-              <?php endif; ?>
-            </a>
-          </div>
-
-          <div class="bv-popular-card__body">
-            <p class="bv-popular-card__desc"><?= htmlspecialchars($desc !== '' ? $desc : 'Supliment natural', ENT_QUOTES) ?></p>
-            <h3 class="bv-popular-card__name"><a href="/produs/<?= rawurlencode($slug) ?>"><?= htmlspecialchars($name, ENT_QUOTES) ?></a></h3>
-
-            <div class="bv-popular-card__rating">
-              <span class="bv-popular-card__stars" aria-label="Rating <?= number_format($reviewsAverage, 1) ?> din 5">
-                <?php for ($i = 1; $i <= 5; $i++): ?>
-                  <svg class="bv-popular-card__star" viewBox="0 0 24 24" fill="<?= $i <= $roundedStars ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3.8l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 17l-5.2 2.8 1-5.8-4.2-4.1 5.8-.8L12 3.8z"/></svg>
-                <?php endfor; ?>
-              </span>
-              <span class="bv-popular-card__reviews">(<?= $reviewsCount ?>)</span>
-            </div>
-
-            <div class="bv-popular-card__bottom">
-              <p class="bv-popular-card__price">
-                <?= number_format($price, 2) ?> lei
-                <?php if ($hasSale && $basePrice > $price): ?>
-                  <span class="bv-popular-card__old"><?= number_format($basePrice, 2) ?> lei</span>
-                <?php endif; ?>
-              </p>
-              <?php if ($outOfStock): ?>
-                <span class="bv-popular-card__stock-out">Stoc epuizat</span>
-              <?php elseif ($ePrecomanda): ?>
-                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
-                   href="/produs/<?= rawurlencode($slug) ?>"
-                   title="Se livrează după ce marfa ajunge la noi"
-                   aria-label="Precomandă">
-                  Precomandă
-                </a>
-              <?php elseif ($hasBbdOffers): ?>
-                <?php /* Produsul are oferte cu dată de expirare, deci nu poate fi
-                        adăugat fără să fie aleasă una. Butonul de coș trimitea
-                        formularul fără alegere: vizitatorul era întors la pagina
-                        produsului, iar el credea că l-a pus în coș. Aici îl ducem
-                        direct acolo unde alege. */ ?>
-                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
-                   href="/produs/<?= rawurlencode($slug) ?>" aria-label="Alege oferta">
-                  Alege oferta
-                </a>
-              <?php else: ?>
-                <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
-                  <button type="submit" class="bv-popular-card__cart-btn" aria-label="Adaugă în coș">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H7"/></svg>
-                  </button>
-                </form>
-              <?php endif; ?>
-            </div>
-          </div>
-        </article>
-      <?php endforeach; ?>
-    </div>
-  <?php endif; ?>
-</section>
-
+<?php /* Stilurile cardurilor stau înaintea cardurilor: altfel browserul putea desena
+        lista fără ele (poze la mărimea lor reală) și apoi o rearanja (CLS). */ ?>
 <style>
 .shop-catalog-v2{background:#fff;padding:20px 0 34px;}
 .shop-catalog-v2__toolbar{width:min(1200px,92%);margin:0 auto 14px;display:flex;justify-content:space-between;align-items:center;gap:12px;}
@@ -355,6 +192,170 @@ if ($sortOptions === []) {
   .bv-popular-card__name{font-size:22px;}
 }
 </style>
+<section class="shop-catalog-v2" data-shop-catalog-token="1">
+  <div class="shop-catalog-v2__toolbar">
+    <button type="button" class="shop-catalog-v2__filter-toggle" data-shop-filters-toggle aria-expanded="false" aria-controls="shop-catalog-filters-panel">
+      <span class="shop-catalog-v2__filter-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 5h18"></path>
+          <path d="M7 12h10"></path>
+          <path d="M10 19h4"></path>
+        </svg>
+      </span>
+      FILTRE
+    </button>
+
+    <div class="shop-catalog-v2__sort-wrap">
+      <button type="button" class="shop-catalog-v2__sort-btn" data-shop-sort-toggle>
+        <?= htmlspecialchars((string) ($sortOptions[$sortKey] ?? 'Alfabetică'), ENT_QUOTES) ?>
+        <span class="shop-catalog-v2__sort-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 10l6 6 6-6"></path>
+          </svg>
+        </span>
+      </button>
+      <div class="shop-catalog-v2__sort-menu" data-shop-sort-menu>
+        <?php foreach ($sortOptions as $key => $label): ?>
+          <a class="shop-catalog-v2__sort-option <?= (string) $key === (string) $sortKey ? 'is-active' : '' ?>" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>?sort=<?= rawurlencode((string) $key) ?><?= $activeCategory !== '' ? '&categorie=' . rawurlencode($activeCategory) : '' ?>">
+            <?= htmlspecialchars((string) $label, ENT_QUOTES) ?>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+
+  <div class="shop-catalog-v2__filters-overlay" data-shop-filters-overlay></div>
+  <div class="shop-catalog-v2__filters" data-shop-filters id="shop-catalog-filters-panel" aria-hidden="true">
+    <div class="shop-catalog-v2__filters-head">
+      <strong>FILTRE</strong>
+      <button type="button" class="shop-catalog-v2__filters-close" data-shop-filters-close aria-label="Închide filtrele">×</button>
+    </div>
+    <div class="shop-catalog-v2__filters-grid">
+      <div class="shop-catalog-v2__filter-col">
+        <h4>CATEGORII</h4>
+        <label><input type="radio" name="category" data-filter-value="" <?= $activeCategory === '' ? 'checked' : '' ?>> Toate</label>
+        <?php foreach ($categories as $category): ?>
+          <?php
+          $value = trim((string) ($category['value'] ?? ''));
+          $label = trim((string) ($category['label'] ?? $value));
+          $count = max(0, (int) ($category['count'] ?? 0));
+          if ($value === '') {
+              continue;
+          }
+          ?>
+          <label>
+            <input type="radio" name="category" data-filter-value="<?= htmlspecialchars($value, ENT_QUOTES) ?>" <?= $activeCategory === $value ? 'checked' : '' ?>>
+            <?= htmlspecialchars($label, ENT_QUOTES) ?><?= $count > 0 ? ' (' . $count . ')' : '' ?>
+          </label>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+
+  <?php if ($products === []): ?>
+    <div class="shop-catalog-v2__empty">Nu există produse pentru filtrele selectate.</div>
+  <?php else: ?>
+    <div class="bv-popular__grid shop-catalog-v2__grid">
+      <?php foreach ($products as $product): ?>
+        <?php
+        $name = trim((string) ($product['name'] ?? 'Produs'));
+        $slug = trim((string) ($product['slug'] ?? ''));
+        $desc = trim((string) ($product['short_description'] ?? ''));
+        $price = (float) ($product['price'] ?? 0);
+        $basePrice = (float) ($product['base_price'] ?? $price);
+        $hasSale = (bool) ($product['has_sale_price'] ?? false);
+        $image = trim((string) ($product['image_url'] ?? ''));
+        if ($image === '') {
+            $image = '/assets/img/product-placeholder.svg';
+        }
+        $reviewsCount = max(0, (int) ($product['reviews_count'] ?? 0));
+        $reviewsAverage = max(0.0, min(5.0, (float) ($product['reviews_average'] ?? 0)));
+        $roundedStars = (int) round($reviewsAverage);
+        // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără rândul
+        // ăsta, produsul bifat rămânea fără buton în listă, deși pe fișa lui
+        // se putea comanda.
+        $ePrecomanda = \App\Support\Precomanda::estePrecomanda($product);
+        $outOfStock = (int) ($product['out_of_stock'] ?? 0) === 1 && !$ePrecomanda;
+        $hasBbdOffers = \App\Support\BbdOferte::cereAlegere($product);
+        $discountMode = (string) ($product['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent';
+        $discount = 0;
+        $discountValue = 0.0;
+        if ($basePrice > 0 && $price < $basePrice) {
+            $discount = (int) round((($basePrice - $price) / $basePrice) * 100);
+            $discountValue = $basePrice - $price;
+        }
+        $discountValueLabel = rtrim(rtrim(number_format($discountValue, 2, '.', ''), '0'), '.');
+        ?>
+        <article class="bv-popular-card shop-catalog-v2__card" data-product-category="<?= htmlspecialchars((string) ($product['category'] ?? ''), ENT_QUOTES) ?>">
+          <div class="bv-popular-card__media-wrap">
+            <a class="bv-popular-card__media" href="/produs/<?= rawurlencode($slug) ?>">
+              <img class="bv-popular-card__img" src="<?= htmlspecialchars($image, ENT_QUOTES) ?>" alt="<?= htmlspecialchars($name, ENT_QUOTES) ?>"<?= \App\Support\ImageDimensions::atribute($image) ?> loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
+              <?php if ($discount > 0): ?>
+                <?php if ($discountMode === 'value'): ?>
+                  <span class="bv-popular-card__bubble bv-popular-card__bubble--value">-<?= $discountValueLabel ?> lei</span>
+                <?php else: ?>
+                  <span class="bv-popular-card__bubble">-<?= $discount ?>%</span>
+                <?php endif; ?>
+              <?php endif; ?>
+              <?php if ($hasBbdOffers): ?>
+                <span class="bv-popular-card__bubble bv-popular-card__bubble--offer">OFERTE PREȚ</span>
+              <?php endif; ?>
+            </a>
+          </div>
+
+          <div class="bv-popular-card__body">
+            <p class="bv-popular-card__desc"><?= htmlspecialchars($desc !== '' ? $desc : 'Supliment natural', ENT_QUOTES) ?></p>
+            <h3 class="bv-popular-card__name"><a href="/produs/<?= rawurlencode($slug) ?>"><?= htmlspecialchars($name, ENT_QUOTES) ?></a></h3>
+
+            <div class="bv-popular-card__rating">
+              <span class="bv-popular-card__stars" aria-label="Rating <?= number_format($reviewsAverage, 1) ?> din 5">
+                <?php for ($i = 1; $i <= 5; $i++): ?>
+                  <svg class="bv-popular-card__star" viewBox="0 0 24 24" fill="<?= $i <= $roundedStars ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3.8l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 17l-5.2 2.8 1-5.8-4.2-4.1 5.8-.8L12 3.8z"/></svg>
+                <?php endfor; ?>
+              </span>
+              <span class="bv-popular-card__reviews">(<?= $reviewsCount ?>)</span>
+            </div>
+
+            <div class="bv-popular-card__bottom">
+              <p class="bv-popular-card__price">
+                <?= number_format($price, 2) ?> lei
+                <?php if ($hasSale && $basePrice > $price): ?>
+                  <span class="bv-popular-card__old"><?= number_format($basePrice, 2) ?> lei</span>
+                <?php endif; ?>
+              </p>
+              <?php if ($outOfStock): ?>
+                <span class="bv-popular-card__stock-out">Stoc epuizat</span>
+              <?php elseif ($ePrecomanda): ?>
+                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
+                   href="/produs/<?= rawurlencode($slug) ?>"
+                   title="Se livrează după ce marfa ajunge la noi"
+                   aria-label="Precomandă">
+                  Precomandă
+                </a>
+              <?php elseif ($hasBbdOffers): ?>
+                <?php /* Produsul are oferte cu dată de expirare, deci nu poate fi
+                        adăugat fără să fie aleasă una. Butonul de coș trimitea
+                        formularul fără alegere: vizitatorul era întors la pagina
+                        produsului, iar el credea că l-a pus în coș. Aici îl ducem
+                        direct acolo unde alege. */ ?>
+                <a class="bv-popular-card__cart-btn bv-popular-card__cart-btn--choose"
+                   href="/produs/<?= rawurlencode($slug) ?>" aria-label="Alege oferta">
+                  Alege oferta
+                </a>
+              <?php else: ?>
+                <form method="post" action="/cos/adauga/<?= (int) ($product['id'] ?? 0) ?>">
+                  <button type="submit" class="bv-popular-card__cart-btn" aria-label="Adaugă în coș">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H7"/></svg>
+                  </button>
+                </form>
+              <?php endif; ?>
+            </div>
+          </div>
+        </article>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+</section>
 
 <script>
 (() => {

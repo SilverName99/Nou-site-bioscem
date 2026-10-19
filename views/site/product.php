@@ -44,11 +44,12 @@ if ($galleryUrls === []) {
             <img
                 id="product-default-main-image"
                 src="<?= htmlspecialchars((string) ($galleryUrls[0] ?? '/assets/img/product-placeholder.svg'), ENT_QUOTES) ?>"
-                alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"
-                loading="lazy"
+                alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"<?= /* width/height rezervă locul pozei; ea e elementul principal al paginii (LCP), deci se încarcă imediat și cu prioritate */ \App\Support\ImageDimensions::atribute((string) ($galleryUrls[0] ?? '')) . "\n" ?>
+                loading="eager"
+                fetchpriority="high"
                 decoding="async"
                 onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';"
-                style="max-width:420px;width:100%;border-radius:10px;"
+                style="max-width:420px;width:100%;height:auto;border-radius:10px;"
             >
             <?php if (count($galleryUrls) > 1): ?>
                 <div class="product-default-thumbs">
@@ -56,7 +57,7 @@ if ($galleryUrls === []) {
                         <button type="button" class="product-default-thumb" data-image-url="<?= htmlspecialchars((string) $url, ENT_QUOTES) ?>">
                             <img
                                 src="<?= htmlspecialchars((string) $url, ENT_QUOTES) ?>"
-                                alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"
+                                alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"<?= \App\Support\ImageDimensions::atribute((string) $url) . "\n" ?>
                                 loading="lazy"
                                 decoding="async"
                                 onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';"

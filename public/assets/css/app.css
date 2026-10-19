@@ -6298,6 +6298,9 @@ body.floating-cart-open {
 
 .product-carousel__slide img {
     width: 100%;
+    /* Poza are width/height în HTML ca locul ei să fie rezervat înainte să se
+       încarce; înălțimea afișată rămâne cea proporțională, ca până acum. */
+    height: auto;
     border-radius: 12px;
     border: 1px solid #e5e7eb;
     display: block;

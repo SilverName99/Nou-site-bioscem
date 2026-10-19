@@ -10036,7 +10036,9 @@ CSS;
         foreach ($urls as $url) {
             $safeUrl = htmlspecialchars((string) $url, ENT_QUOTES);
             $safeAlt = htmlspecialchars($productName, ENT_QUOTES);
-            $items[] = '<img src="' . $safeUrl . '" alt="' . $safeAlt . '" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';">';
+            // width/height: locul pozei e rezervat înainte să se încarce (fără „săritură”).
+            $dimensiuni = \App\Support\ImageDimensions::atribute((string) $url);
+            $items[] = '<img src="' . $safeUrl . '" alt="' . $safeAlt . '"' . $dimensiuni . ' loading="lazy" decoding="async" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';">';
         }
         return '<div class="product-image-gallery">' . implode('', $items) . '</div>';
     }
@@ -10048,8 +10050,13 @@ CSS;
         foreach ($urls as $index => $url) {
             $safeUrl = htmlspecialchars((string) $url, ENT_QUOTES);
             $safeAlt = htmlspecialchars($productName, ENT_QUOTES);
-            $slides[] = '<figure class="product-carousel__slide" data-slide="' . $index . '"><img src="' . $safeUrl . '" alt="' . $safeAlt . '" loading="lazy" decoding="async" draggable="false" data-carousel-image="1" data-target="' . $index . '" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';"></figure>';
-            $thumbs[] = '<button type="button" class="product-carousel__thumb" data-target="' . $index . '" aria-label="Imagine ' . ($index + 1) . '"><img src="' . $safeUrl . '" alt="' . $safeAlt . '" loading="lazy" decoding="async" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';"></button>';
+            // width/height: locul pozei e rezervat înainte să se încarce (fără „săritură”).
+            $dimensiuni = \App\Support\ImageDimensions::atribute((string) $url);
+            // Prima poză e elementul principal al paginii (LCP): se încarcă imediat
+            // și cu prioritate; restul rămân „leneșe”.
+            $incarcare = $index === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"';
+            $slides[] = '<figure class="product-carousel__slide" data-slide="' . $index . '"><img src="' . $safeUrl . '" alt="' . $safeAlt . '"' . $dimensiuni . ' ' . $incarcare . ' decoding="async" draggable="false" data-carousel-image="1" data-target="' . $index . '" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';"></figure>';
+            $thumbs[] = '<button type="button" class="product-carousel__thumb" data-target="' . $index . '" aria-label="Imagine ' . ($index + 1) . '"><img src="' . $safeUrl . '" alt="' . $safeAlt . '"' . $dimensiuni . ' loading="lazy" decoding="async" onerror="this.onerror=null;this.src=\'/assets/img/product-placeholder.svg\';"></button>';
         }
         $overlayBadges = trim($badgesHtml) !== '' ? $badgesHtml : '';
 
