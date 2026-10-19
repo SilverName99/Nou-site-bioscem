@@ -9055,7 +9055,8 @@ final class AdminController
             'settings' => $settings,
             'galleryImages' => $galleryImages,
             'sitemapFilename' => $sitemapFilename,
-            'sitemapUrl' => rtrim($this->appUrl(), '/') . '/' . $sitemapFilename,
+            // Sitemap-ul principal e mereu /sitemap.xml, construit din baza de date.
+            'sitemapUrl' => rtrim($this->appUrl(), '/') . '/sitemap.xml',
             'appUrl' => $appUrl,
             'storeSettingsTab' => trim((string) ($_GET['tab'] ?? 'pages')),
             'cacheStats' => ResponseCache::pageCacheStats(),
@@ -18378,28 +18379,20 @@ HTML;
             return ['ok' => false, 'message' => 'Nu am găsit URL-uri publicabile pentru sitemap.'];
         }
 
-        $xml = [];
-        $xml[] = '<?xml version="1.0" encoding="UTF-8"?>';
-        $xml[] = '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
-        foreach ($urls as $entry) {
-            if (!is_array($entry)) {
-                continue;
+        // /sitemap.xml se construiește din baza de date la fiecare cerere (ruta
+        // din public/index.php). Un fișier vechi cu același nume doar ar încurca:
+        // îl ștergem, nu-l mai scriem.
+        if ($sitemapFilename === 'sitemap.xml') {
+            if (is_file($publicPath)) {
+                @unlink($publicPath);
             }
-            $loc = trim((string) ($entry['loc'] ?? ''));
-            if ($loc === '') {
-                continue;
+            if (is_file($publicPath)) {
+                return ['ok' => false, 'message' => 'Sitemap-ul se construiește automat la ' . $baseUrl . '/sitemap.xml, dar fișierul vechi public/sitemap.xml nu a putut fi șters. Șterge-l din File Manager.'];
             }
-            $lastmod = trim((string) ($entry['lastmod'] ?? ''));
-            $xml[] = '  <url>';
-            $xml[] = '    <loc>' . $this->xmlEscape($loc) . '</loc>';
-            if ($lastmod !== '') {
-                $xml[] = '    <lastmod>' . $this->xmlEscape($lastmod) . '</lastmod>';
-            }
-            $xml[] = '  </url>';
+            return ['ok' => true, 'message' => 'Sitemap-ul se construiește automat, mereu la zi: ' . $baseUrl . '/sitemap.xml (' . count($urls) . ' adrese).'];
         }
-        $xml[] = '</urlset>';
 
-        $written = @file_put_contents($publicPath, implode("\n", $xml) . "\n");
+        $written = @file_put_contents($publicPath, \App\Support\Sitemap::xml($urls));
         if ($written === false) {
             return ['ok' => false, 'message' => 'Nu am putut scrie fișierul ' . $sitemapFilename . ' în directorul public.'];
         }
@@ -18431,96 +18424,9 @@ HTML;
 
     private function sitemapUrls(PDO $db, string $baseUrl): array
     {
-        $urls = [];
-        $seen = [];
-        $add = function (string $path, string $lastmod = '') use (&$urls, &$seen, $baseUrl): void {
-            $path = '/' . ltrim(trim($path), '/');
-            if ($path === '//') {
-                $path = '/';
-            }
-            $loc = $path === '/' ? $baseUrl . '/' : $baseUrl . $path;
-            if (isset($seen[$loc])) {
-                return;
-            }
-            $seen[$loc] = true;
-            $urls[] = [
-                'loc' => $loc,
-                'lastmod' => $lastmod,
-            ];
-        };
-        $toLastmod = static function (mixed $raw): string {
-            $ts = strtotime((string) $raw);
-            if ($ts === false) {
-                return '';
-            }
-            return gmdate('Y-m-d\TH:i:s\Z', $ts);
-        };
-
-        $add('/');
-        try {
-            $pages = $db->query(
-                'SELECT slug, updated_at, created_at
-                 FROM pages
-                 WHERE is_published = 1
-                   AND deleted_at IS NULL
-                 ORDER BY id DESC'
-            )->fetchAll() ?: [];
-            foreach ($pages as $page) {
-                if (!is_array($page)) {
-                    continue;
-                }
-                $slug = trim((string) ($page['slug'] ?? ''));
-                $lastmod = $toLastmod((string) ($page['updated_at'] ?? $page['created_at'] ?? ''));
-                $add($slug === '' ? '/' : ('/' . ltrim($slug, '/')), $lastmod);
-            }
-        } catch (Throwable) {
-            // Keep sitemap generation resilient on partial schema issues.
-        }
-
-        try {
-            $products = $db->query(
-                'SELECT slug, updated_at, created_at
-                 FROM products
-                 WHERE deleted_at IS NULL
-                   AND is_active = 1
-                 ORDER BY id DESC'
-            )->fetchAll() ?: [];
-            foreach ($products as $product) {
-                if (!is_array($product)) {
-                    continue;
-                }
-                $slug = trim((string) ($product['slug'] ?? ''));
-                if ($slug === '') {
-                    continue;
-                }
-                $lastmod = $toLastmod((string) ($product['updated_at'] ?? $product['created_at'] ?? ''));
-                $add('/produs/' . rawurlencode($slug), $lastmod);
-            }
-        } catch (Throwable) {
-        }
-
-        try {
-            $posts = $db->query(
-                'SELECT slug, updated_at, created_at
-                 FROM blog_posts
-                 WHERE deleted_at IS NULL
-                 ORDER BY id DESC'
-            )->fetchAll() ?: [];
-            foreach ($posts as $post) {
-                if (!is_array($post)) {
-                    continue;
-                }
-                $slug = trim((string) ($post['slug'] ?? ''));
-                if ($slug === '') {
-                    continue;
-                }
-                $lastmod = $toLastmod((string) ($post['updated_at'] ?? $post['created_at'] ?? ''));
-                $add('/blog/' . rawurlencode($slug), $lastmod);
-            }
-        } catch (Throwable) {
-        }
-
-        return $urls;
+        // Aceleași reguli ca /sitemap.xml: fără pagini de sistem, fără produse
+        // inactive, cu categorii, mărci și etichete (App\Support\Sitemap).
+        return \App\Support\Sitemap::urls($db, $baseUrl);
     }
 
     private function xmlEscape(string $value): string

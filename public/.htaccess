@@ -1,5 +1,9 @@
 RewriteEngine On
 
+# /sitemap.xml se construiește din baza de date (ruta din index.php). Un fișier
+# sitemap.xml vechi rămas în public/ nu trebuie să-l acopere.
+RewriteRule ^sitemap\.xml$ index.php [L,QSA]
+
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]

@@ -114,7 +114,10 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             <?php $sitemapFilename = trim((string) ($sitemapFilename ?? 'sitemap.xml')); ?>
             <h3 style="margin-top:0;">Sitemap XML</h3>
             <p style="margin:0 0 10px;color:#64748b;">
-                Generează sitemap-ul pentru indexare în Google Search Console.
+                Sitemap-ul se construiește automat din baza de date, la fiecare cerere: produsele active,
+                categoriile, mărcile, etichetele și paginile publicate. Nu mai trebuie generat după modificări.
+                Butonul de mai jos verifică lista și șterge un fișier sitemap.xml vechi rămas pe server
+                (cu alt nume de fișier, scrie o copie statică, de exemplu pentru teste).
             </p>
             <p style="margin:0 0 10px;">
                 URL sitemap: <a href="<?= htmlspecialchars($sitemapUrl, ENT_QUOTES) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($sitemapUrl, ENT_QUOTES) ?></a>

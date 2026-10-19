@@ -102,12 +102,8 @@ final class SiteController
     /** Slug simplu, pentru comparat branduri și etichete scrise oricum. */
     private function slugSimplu(string $valoare): string
     {
-        $valoare = mb_strtolower(trim($valoare));
-        $valoare = strtr($valoare, [
-            'ă' => 'a', 'â' => 'a', 'î' => 'i', 'ș' => 's', 'ş' => 's', 'ț' => 't', 'ţ' => 't',
-        ]);
-        $valoare = (string) preg_replace('/[^a-z0-9]+/', '-', $valoare);
-        return trim($valoare, '-');
+        // Aceeași regulă și în sitemap: \App\Support\Slug.
+        return \App\Support\Slug::simplu($valoare);
     }
 
     /**
@@ -314,17 +310,8 @@ final class SiteController
 
     private function slugifyCategoryName(string $value): string
     {
-        $value = mb_strtolower(trim($value));
-        $value = strtr($value, [
-            'ă' => 'a', 'â' => 'a', 'î' => 'i', 'ș' => 's', 'ş' => 's', 'ț' => 't', 'ţ' => 't',
-        ]);
-        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        if (is_string($ascii) && $ascii !== '') {
-            $value = $ascii;
-        }
-        $value = (string) preg_replace('/[^a-z0-9]+/', '-', $value);
-
-        return trim($value, '-');
+        // Aceeași regulă și în sitemap: \App\Support\Slug.
+        return \App\Support\Slug::categorie($value);
     }
 
     public function shop(): void
@@ -6916,6 +6903,29 @@ CSS;
         // „Disallow: /” rămânea ținut minte de Google până la o zi după ce
         // mentenanța se terminase. Regulile stau în \App\Support\Robots.
         echo \App\Support\Robots::text(rtrim($this->appUrl(), '/'));
+    }
+
+    /**
+     * /sitemap.xml, construit din baza de date la fiecare cerere: produsele
+     * active, categoriile, mărcile, etichetele, paginile publicate și articolele.
+     * Un fișier sitemap.xml vechi din public/ nu-l mai poate acoperi
+     * (public/.htaccess trimite /sitemap.xml mereu aici).
+     */
+    public function sitemap(): void
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            http_response_code(503);
+            header('Retry-After: 600');
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Sitemap indisponibil momentan.';
+            return;
+        }
+        $xml = \App\Support\Sitemap::xml(\App\Support\Sitemap::urls($db, rtrim($this->appUrl(), '/')));
+        header('Content-Type: application/xml; charset=utf-8');
+        header('Cache-Control: public, max-age=3600');
+        header('X-Robots-Tag: noindex');
+        echo $xml;
     }
 
     private function appUrl(): string

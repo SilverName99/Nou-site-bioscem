@@ -104,6 +104,9 @@ $router->get('/health', static function (): void {
 // robots.txt e servit dinamic (regulile în App\Support\Robots); rămâne același
 // și în mentenanță.
 $router->get('/robots\.txt', [SiteController::class, 'robots']);
+// sitemap.xml e construit din baza de date la fiecare cerere (public/.htaccess
+// îl trimite mereu aici, chiar dacă pe server a rămas un fișier vechi).
+$router->get('/sitemap\.xml', [SiteController::class, 'sitemap']);
 
 $router->get('/', [SiteController::class, 'home']);
 $router->get('/magazin', [SiteController::class, 'shop']);
