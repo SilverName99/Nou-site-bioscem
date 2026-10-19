@@ -16134,6 +16134,7 @@ final class AdminController
 
         $entries = [];
         $seen = [];
+        $bazeCheie = [];
         foreach ($decoded as $item) {
             if (!is_array($item)) {
                 continue;
@@ -16172,9 +16173,17 @@ final class AdminController
             }
             $seen[$key] = true;
 
+            // Cheia primită se păstrează ca atare. Recalculată la fiecare
+            // salvare, se schimba ori de câte ori se atingea data, LOT-ul sau
+            // prețul redus — iar stocul consumat, care se numără după cheie în
+            // `order_items.bbd_key`, rămânea legat de cea veche. Efectul: o
+            // ofertă epuizată redevenea disponibilă după o simplă editare de
+            // preț, iar coșurile clienților cu vechea cheie se rupeau.
+            // Ofertele fără cheie validă o primesc mai jos, după ce le vedem pe toate.
+            $bazeCheie[count($entries)] = $normalizedDate . '|' . $lot . '|' . ($reducedPrice === null ? '-' : number_format($reducedPrice, 2, '.', ''));
             $label = 'Expiră la data de: ' . date('d.m.Y', $timestamp);
             $entries[] = [
-                'key' => substr(sha1($normalizedDate . '|' . $lot . '|' . ($reducedPrice === null ? '-' : number_format($reducedPrice, 2, '.', ''))), 0, 20),
+                'key' => is_scalar($item['key'] ?? null) ? $this->normalizeProductBbdKey((string) $item['key']) : '',
                 'date' => $normalizedDate,
                 'lot' => $lot,
                 'label' => $label,
@@ -16184,6 +16193,32 @@ final class AdminController
             if (count($entries) >= 60) {
                 break;
             }
+        }
+
+        // Oferta nouă (sau cu cheie stricată ori dublată) primește cheia
+        // calculată ca până acum. Dacă însă unei oferte existente i s-a schimbat
+        // prețul (sau data, LOT-ul), cheia ei păstrată e exact cea pe care ar
+        // primi-o acum o ofertă nouă cu datele ei vechi. Magazinul ține doar
+        // prima ofertă cu o cheie dată, deci a doua ar dispărea și ar împărți
+        // rezervările cu prima: în cazul ăsta oferta nouă primește altă cheie.
+        $cheiPastrate = [];
+        foreach ($entries as $entry) {
+            if ($entry['key'] !== '') {
+                $cheiPastrate[$entry['key']] = true;
+            }
+        }
+        $cheiFolosite = [];
+        foreach ($entries as $index => $entry) {
+            $cheie = (string) $entry['key'];
+            if ($cheie === '' || isset($cheiFolosite[$cheie])) {
+                $bazaCheie = $bazeCheie[$index];
+                $cheie = substr(sha1($bazaCheie), 0, 20);
+                for ($varianta = 2; isset($cheiPastrate[$cheie]) || isset($cheiFolosite[$cheie]); $varianta++) {
+                    $cheie = substr(sha1($bazaCheie . '|' . $varianta), 0, 20);
+                }
+            }
+            $cheiFolosite[$cheie] = true;
+            $entries[$index]['key'] = $cheie;
         }
 
         usort($entries, static function (array $left, array $right): int {
@@ -16204,6 +16239,16 @@ final class AdminController
             return '';
         }
         return $safe;
+    }
+
+    /** Aceeași regulă ca în magazin (SiteController::normalizeProductBbdKey). */
+    private function normalizeProductBbdKey(string $raw): string
+    {
+        $raw = strtolower(trim($raw));
+        if (preg_match('/^[a-z0-9]{1,64}$/', $raw) !== 1) {
+            return '';
+        }
+        return $raw;
     }
 
     private function normalizeProductSalePeriods(mixed $raw): array
