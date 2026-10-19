@@ -56,6 +56,8 @@ final class SiteController
     private const REGISTER_ANTIBOT_MAX_AGE_SECONDS = 7200;
     private const REGISTER_ANTIBOT_MAX_ATTEMPTS_PER_15_MIN = 8;
     private array $cachedSettings = [];
+    /** Blocurile JSON-LD ale paginii curente (de exemplu firimiturile unei categorii). */
+    private array $jsonLdPagina = [];
     public function home(): void
     {
         $homePage = $this->findPublishedRootPage();
@@ -66,6 +68,7 @@ final class SiteController
                 'title' => (string) ($homePage['title'] ?? 'Acasă'),
                 'page' => $homePage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
+                'jsonLd' => $this->jsonLdAcasa($settings),
             ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $homePage)));
             return;
         }
@@ -78,6 +81,7 @@ final class SiteController
             'categories' => $this->loadShopCatalogCategories($db instanceof PDO ? $db : null),
             'blogPosts' => $this->loadPublishedBlogPosts($db instanceof PDO ? $db : null, 3),
             'title' => 'Acasă',
+            'jsonLd' => $this->jsonLdAcasa($this->cachedSettings($db instanceof PDO ? $db : null)),
         ]);
     }
 
@@ -99,6 +103,11 @@ final class SiteController
                 && \App\Support\SeoRedirects::redirectCanonic('/categorie/' . rawurlencode($slugCorect))) {
                 return;
             }
+            $baza = rtrim($this->appUrl(), '/');
+            $this->jsonLdPagina = [\App\Support\JsonLd::firimituri([
+                ['name' => 'Acasă', 'url' => $baza . '/'],
+                ['name' => $categoryName, 'url' => $baza . '/categorie/' . rawurlencode($slugCorect !== '' ? $slugCorect : $slug)],
+            ])];
         }
 
         // shop() citește filtrul din query string.
@@ -125,6 +134,36 @@ final class SiteController
             }
         }
         return $this->slugifyCategoryName($numeCategorie);
+    }
+
+    /**
+     * Slug-ul la care /categorie/{slug} afișează categoria cu numele dat, sau
+     * gol dacă nu există o astfel de pagină (pentru firimiturile produsului).
+     */
+    private function slugCategoriePentruNume(string $numeCategorie): string
+    {
+        $numeCategorie = trim($numeCategorie);
+        if ($numeCategorie === '') {
+            return '';
+        }
+        $db = $this->db();
+        if ($db instanceof PDO) {
+            try {
+                $stmt = $db->prepare('SELECT slug FROM product_categories WHERE LOWER(TRIM(name)) = :nume AND TRIM(COALESCE(slug, "")) <> "" ORDER BY id ASC LIMIT 1');
+                $stmt->execute(['nume' => mb_strtolower($numeCategorie)]);
+                $salvat = $stmt->fetchColumn();
+                if (is_string($salvat) && trim($salvat) !== ''
+                    && mb_strtolower($this->resolveCategoryNameBySlug(trim($salvat))) === mb_strtolower($numeCategorie)) {
+                    return trim($salvat);
+                }
+            } catch (Throwable) {
+            }
+        }
+        $generat = $this->slugifyCategoryName($numeCategorie);
+        if ($generat !== '' && mb_strtolower($this->resolveCategoryNameBySlug($generat)) === mb_strtolower($numeCategorie)) {
+            return $generat;
+        }
+        return '';
     }
 
     /** Slug simplu, pentru comparat branduri și etichete scrise oricum. */
@@ -370,6 +409,7 @@ final class SiteController
                 'shopCatalogHtml' => $this->renderShopCatalogSection($db, $categoryFilter),
                 'shopCategoryLabel' => $shopCategoryLabel,
                 'shopPageTitle' => (string) ($shopPage['title'] ?? 'Magazin'),
+                'jsonLd' => $this->jsonLdPagina,
             ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $shopPage)));
             return;
         }
@@ -379,6 +419,7 @@ final class SiteController
             'products' => $products,
             'title' => 'Magazin',
             'activeCategory' => $categoryFilter,
+            'jsonLd' => $this->jsonLdPagina,
         ]);
     }
 
@@ -567,6 +608,13 @@ final class SiteController
         if ($db instanceof PDO) {
             $productSeoMeta = $this->seoMetaFor($db, 'product', (string) ((int) ($product['id'] ?? 0)));
         }
+        $jsonLd = [];
+        try {
+            $jsonLd = $this->jsonLdProdus($product, $productReviews, is_array($template) ? (string) ($template['html_content'] ?? '') : null);
+        } catch (Throwable) {
+            // Datele structurate nu au voie să strice pagina produsului.
+            $jsonLd = [];
+        }
         View::render('site/product', array_merge([
             'product' => $product,
             'extraFields' => $extraFields,
@@ -583,6 +631,7 @@ final class SiteController
             ],
             'isOutOfStock' => $isOutOfStock,
             'title' => (string) $product['name'],
+            'jsonLd' => $jsonLd,
         ], $productSeoMeta));
     }
 
@@ -6974,6 +7023,194 @@ CSS;
         header('Cache-Control: public, max-age=3600');
         header('X-Robots-Tag: noindex');
         echo $xml;
+    }
+
+    /**
+     * JSON-LD pentru pagina unui produs: Product + Offer și firimiturile.
+     * Prețul e cel afișat (cu reducerea activă), stocul vine după ERP,
+     * precomanda devine PreOrder. Produsele inactive (nu se pot cumpăra) nu
+     * primesc Product, doar firimituri. Stele doar din recenzii reale aprobate
+     * care se văd pe pagină.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function jsonLdProdus(array $product, array $productReviews, ?string $templateHtml): array
+    {
+        $baza = rtrim($this->appUrl(), '/');
+        $slug = (string) ($product['slug'] ?? '');
+        $nume = trim((string) ($product['name'] ?? ''));
+        if ($baza === '' || $slug === '' || $nume === '') {
+            return [];
+        }
+        $url = $baza . '/produs/' . rawurlencode($slug);
+        $absolut = static function (string $adresa) use ($baza): string {
+            $adresa = trim($adresa);
+            if ($adresa === '' || preg_match('#^https?://#i', $adresa) === 1) {
+                return $adresa;
+            }
+            if (str_starts_with($adresa, '//')) {
+                return 'https:' . $adresa;
+            }
+            return $baza . '/' . ltrim($adresa, '/');
+        };
+
+        $noduri = [];
+        $activ = !array_key_exists('is_active', $product) || (int) $product['is_active'] === 1;
+        if ($activ) {
+            $imagini = [];
+            foreach ($this->extractProductImageUrls($product, true) as $imagine) {
+                if (str_contains((string) $imagine, 'product-placeholder')) {
+                    continue;
+                }
+                $imagini[] = $absolut((string) $imagine);
+            }
+            $descriere = trim((string) ($product['short_description'] ?? ''));
+            if (trim(strip_tags($descriere)) === '') {
+                $descriere = (string) ($product['description'] ?? '');
+            }
+
+            if (\App\Support\Precomanda::estePrecomanda($product)) {
+                $disponibil = 'PreOrder';
+            } elseif ((int) ($product['out_of_stock'] ?? 0) === 1) {
+                $disponibil = 'OutOfStock';
+            } else {
+                $disponibil = 'InStock';
+            }
+
+            // priceValidUntil doar când reducerea are o dată de final reală
+            // (o perioadă de reducere activă acum), nu pentru „preț redus” fără termen.
+            $panaLa = '';
+            if ((bool) ($product['has_sale_price'] ?? false)) {
+                $acum = date('Y-m-d H:i:s');
+                foreach ((array) ($product['sale_price_periods'] ?? []) as $perioada) {
+                    if (!is_array($perioada)) {
+                        continue;
+                    }
+                    $start = (string) ($perioada['start_date'] ?? '');
+                    $final = (string) ($perioada['end_date'] ?? '');
+                    if ($start !== '' && $final !== '' && $start <= $acum && $acum <= $final
+                        && abs((float) ($perioada['sale_price'] ?? 0) - (float) ($product['price'] ?? 0)) < 0.005) {
+                        $panaLa = substr($final, 0, 10);
+                        break;
+                    }
+                }
+            }
+
+            // Recenziile apar în pagină în tab-uri (șablon) sau sub produs (fără șablon).
+            $recenziiVizibile = $templateHtml === null
+                || preg_match('/\{\{\s*product[_:](tabs_section|reviews|reviews_section|reviews_block|reviews_list)\s*\}\}/', $templateHtml) === 1;
+            $recenzii = ['count' => 0, 'average' => 0.0, 'items' => []];
+            if ($recenziiVizibile && (int) ($productReviews['count'] ?? 0) > 0) {
+                $recenzii = [
+                    'count' => (int) $productReviews['count'],
+                    'average' => (float) ($productReviews['average'] ?? 0),
+                    'items' => (array) ($productReviews['items'] ?? []),
+                ];
+            }
+
+            $nodProdus = \App\Support\JsonLd::produs([
+                'url' => $url,
+                'name' => $nume,
+                'images' => $imagini,
+                'description' => $descriere,
+                'sku' => (string) ($product['sku'] ?? ''),
+                'brand' => (string) ($product['brand'] ?? ''),
+                'price' => (float) ($product['price'] ?? 0),
+                'availability' => $disponibil,
+                'priceValidUntil' => $panaLa,
+                'reviews' => $recenzii,
+            ]);
+            if ($nodProdus !== []) {
+                $noduri[] = $nodProdus;
+            }
+        }
+
+        $firimituri = [['name' => 'Acasă', 'url' => $baza . '/']];
+        $categorie = trim((string) (($product['category_name'] ?? $product['category']) ?? ''));
+        $slugCategorie = $this->slugCategoriePentruNume($categorie);
+        if ($slugCategorie !== '') {
+            $firimituri[] = ['name' => $categorie, 'url' => $baza . '/categorie/' . rawurlencode($slugCategorie)];
+        }
+        $firimituri[] = ['name' => $nume];
+        $nodFirimituri = \App\Support\JsonLd::firimituri($firimituri);
+        if ($nodFirimituri !== []) {
+            $noduri[] = $nodFirimituri;
+        }
+
+        return $noduri;
+    }
+
+    /**
+     * Organization + WebSite, pe prima pagină. Numele e cel din titlurile
+     * paginilor; emailul și telefonul din setări (sau din linkurile mailto:/tel:
+     * din subsol); logo doar dacă are cel puțin 112×112 px (cerința Google);
+     * sameAs doar cu profiluri sociale reale din antet și subsol.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function jsonLdAcasa(array $settings): array
+    {
+        try {
+            $baza = rtrim($this->appUrl(), '/');
+            if ($baza === '') {
+                return [];
+            }
+            $nume = trim((string) ($settings['store_name'] ?? ''));
+            if ($nume === '') {
+                $nume = 'Bioscem Shop';
+            }
+            $htmlDesign = (string) ($settings['design_header_html'] ?? '') . "\n"
+                . (string) ($settings['design_menu_html'] ?? '') . "\n"
+                . (string) ($settings['design_footer_html'] ?? '');
+
+            $email = trim((string) ($settings['contact_email'] ?? ''));
+            if ($email === '' && preg_match('#href\s*=\s*["\']mailto:([^"\'?\s]+)#i', $htmlDesign, $m) === 1) {
+                $email = trim(rawurldecode($m[1]));
+            }
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                $email = '';
+            }
+            $telefon = trim((string) ($settings['contact_phone'] ?? ''));
+            if ($telefon === '' && preg_match('#href\s*=\s*["\']tel:([^"\'\s]+)#i', $htmlDesign, $m) === 1) {
+                $telefon = trim(rawurldecode($m[1]));
+            }
+            if (preg_match('/\d{6,}/', (string) preg_replace('/\D+/', '', $telefon)) !== 1) {
+                $telefon = '';
+            }
+
+            $logo = '';
+            $candidati = [
+                '/uploads/gallery/bioscem-logo.png',
+                '/uploads/gallery/bioscem-logo.webp',
+                '/uploads/gallery/bioscem-logo.jpg',
+                '/uploads/gallery/bioscem-logo-2.png',
+                trim((string) ($settings['store_favicon_url'] ?? '')),
+            ];
+            foreach ($candidati as $candidat) {
+                if ($candidat === '') {
+                    continue;
+                }
+                $dim = \App\Support\ImageDimensions::pentru($candidat);
+                if ($dim !== null && $dim[0] >= 112 && $dim[1] >= 112) {
+                    $logo = preg_match('#^https?://#i', $candidat) === 1 ? $candidat : $baza . '/' . ltrim($candidat, '/');
+                    break;
+                }
+            }
+
+            return array_values(array_filter([
+                \App\Support\JsonLd::organizatie([
+                    'name' => $nume,
+                    'url' => $baza,
+                    'logo' => $logo,
+                    'email' => $email,
+                    'telephone' => $telefon,
+                    'sameAs' => \App\Support\JsonLd::profiluriSociale($htmlDesign),
+                ]),
+                \App\Support\JsonLd::site($nume, $baza),
+            ]));
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     private function appUrl(): string

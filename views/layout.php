@@ -283,6 +283,13 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     <?php if ($canonicalUrlFinal !== ''): ?>
         <link rel="canonical" href="<?= htmlspecialchars($canonicalUrlFinal, ENT_QUOTES) ?>">
     <?php endif; ?>
+<?php /* Date structurate (produs, firimituri, firmă, site): un bloc <script> pentru fiecare tip. */
+foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
+    $jsonLdScript = is_array($jsonLdNod) ? \App\Support\JsonLd::script($jsonLdNod) : '';
+    if ($jsonLdScript !== '') {
+        echo '    ', $jsonLdScript, "\n";
+    }
+} ?>
     <meta property="og:type" content="website">
     <meta property="og:title" content="<?= htmlspecialchars($metaTitleFinal, ENT_QUOTES) ?>">
     <?php if ($metaDescriptionFinal !== ''): ?>
