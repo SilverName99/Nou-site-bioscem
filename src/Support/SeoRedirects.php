@@ -13,8 +13,13 @@ namespace App\Support;
  * CAI_EXCLUSE). Orice altă cerere trece exact ca înainte, fără nicio atingere.
  *
  * Trei lucruri:
- *  1. gazda și schema: www.bioscem.ro sau http → https://bioscem.ro (gazda din
- *     APP_URL; nu face nimic dacă APP_URL nu e https, deci nici local);
+ *  1. gazda: www.bioscem.ro (pe http sau https) → https://bioscem.ro (gazda din
+ *     APP_URL; nu face nimic dacă APP_URL nu e https, deci nici local). Pe gazda
+ *     corectă nu se redirecționează după schemă: http → https îl face deja
+ *     marginea Hostinger, iar dacă serverul din spatele CDN-ului n-ar vedea
+ *     https, o regulă de schemă de aici ar trimite fiecare pagină la ea însăși.
+ *     Cine are deja coș sau cont deschis pe www rămâne pe www (cookie-ul de
+ *     sesiune e legat de gazdă); roboții și vizitatorii noi se mută;
  *  2. calea: „/x/" și „/x//y" → „/x" și „/x/y" (prima pagină rămâne „/");
  *  3. harta din config/redirecturi.php: adrese vechi (WordPress, produse
  *     șterse) → pagina nouă, cu 301, sau 410 pentru resturi tehnice WordPress.
@@ -29,7 +34,8 @@ namespace App\Support;
  *  - o pagină care există primește 301 la adresa curată;
  *  - o pagină inexistentă pe gazda corectă își păstrează 404-ul (fără 301 spre 404).
  * Rezultatul: un singur 301, fără lanțuri și fără bucle; parametrii din adresă
- * (gclid, utm_*…) se păstrează.
+ * (gclid, utm_*…) se păstrează. Un 301 nu trimite cookie-uri unui vizitator
+ * fără sesiune (robot, link vechi); pagina la care ajunge îl primește normal.
  *
  * Oprire de urgență: SEO_REDIRECTURI=0 în .env dezactivează tot stratul.
  */
@@ -115,9 +121,8 @@ final class SeoRedirects
         if (self::$bazaCanonica !== null) {
             $gazdaCanonica = (string) parse_url(self::$bazaCanonica, PHP_URL_HOST);
             $gazda = self::gazdaCerere();
-            if ($gazda === $gazdaCanonica) {
-                $gazdaGresita = !self::eHttps();
-            } elseif (in_array($gazda, self::aliasuriGazda($gazdaCanonica), true)) {
+            // Pe gazda canonică nimic de mutat, oricare ar fi schema (vezi sus).
+            if ($gazda !== $gazdaCanonica && in_array($gazda, self::aliasuriGazda($gazdaCanonica), true)) {
                 $gazdaGresita = true;
             }
             // Orice altă gazdă (adresa tehnică a serverului, un IP) nu se
@@ -174,6 +179,14 @@ final class SeoRedirects
             return;
         }
 
+        // Cine are deja coș sau cont deschis pe www rămâne pe www: cookie-ul de
+        // sesiune e legat de gazdă, iar pe bioscem.ro coșul ar apărea gol.
+        // Roboții și vizitatorii noi n-au sesiune, deci se mută.
+        if (self::$gazdaGresita && self::areSesiuneCuCosSauCont()) {
+            self::$gazdaGresita = false;
+            self::$bazaCanonica = null;
+        }
+
         $cod = (int) (http_response_code() ?: 200);
         $locatieAplicatie = self::antet('Location');
 
@@ -189,9 +202,15 @@ final class SeoRedirects
                     http_response_code(410);
                     return;
                 }
-            } elseif ($tinta !== null && self::cheie($tinta) !== self::cheie(self::$caleCurata)) {
-                self::redirectioneaza(self::adresaCompleta($tinta, self::$query), 301);
-                return;
+            } elseif ($tinta !== null) {
+                // Un rând adăugat mai târziu poate face lanț (A → B, B → C) sau
+                // buclă (A → B, B → A): lanțul se urmează până la capăt, într-un
+                // singur salt; o buclă nu redirecționează deloc (rămâne 404).
+                $tinta = self::tintaFinala(self::$caleCurata, $tinta);
+                if ($tinta !== null) {
+                    self::redirectioneaza(self::adresaCompleta($tinta, self::$query), 301);
+                    return;
+                }
             }
         }
 
@@ -223,12 +242,77 @@ final class SeoRedirects
         }
     }
 
+    /**
+     * Ținta unei reguli, urmând lanțul prin alte reguli din hartă (cel mult
+     * 10 pași). Null dacă lanțul se întoarce la o adresă deja văzută (buclă),
+     * dacă ajunge la o regulă 410 sau dacă ținta finală e chiar adresa cerută.
+     */
+    private static function tintaFinala(string $cale, string $tinta): ?string
+    {
+        $vazute = [self::cheie($cale) => true];
+        for ($pas = 0; $pas < 10; $pas++) {
+            $cheie = self::cheie($tinta);
+            if (isset($vazute[$cheie])) {
+                return null;
+            }
+            $vazute[$cheie] = true;
+            $urmatoarea = self::regulaPentru($tinta);
+            if ($urmatoarea === null) {
+                return $tinta;
+            }
+            if ($urmatoarea[1] === 410 || $urmatoarea[0] === null) {
+                return null;
+            }
+            $tinta = $urmatoarea[0];
+        }
+        return null;
+    }
+
+    /**
+     * Vizitatorul are o sesiune deja existentă (cookie trimis de browser și
+     * acceptat) cu produse în coș sau cu contul de client deschis?
+     */
+    private static function areSesiuneCuCosSauCont(): bool
+    {
+        if (!self::areSesiuneExistenta()) {
+            return false;
+        }
+        if (!empty($_SESSION['cart']['items'])) {
+            return true;
+        }
+        return class_exists(CustomerAuth::class) && CustomerAuth::check();
+    }
+
+    /**
+     * Browserul a trimis cookie-ul de sesiune și sesiunea lui e cea folosită
+     * acum? (Cu use_strict_mode, un cookie inventat sau expirat primește un id
+     * nou, deci nu contează ca sesiune existentă.)
+     */
+    private static function areSesiuneExistenta(): bool
+    {
+        $trimis = (string) ($_COOKIE[session_name()] ?? '');
+        return $trimis !== '' && $trimis === session_id();
+    }
+
+    /**
+     * Un 301 către un vizitator fără sesiune (robot, link vechi) pleacă fără
+     * cookie-uri: pagina la care ajunge îi pornește sesiunea, ca înainte. Cine
+     * are deja o sesiune își primește cookie-urile neatinse.
+     */
+    private static function faraCookieuriPentruVizitatorNou(): void
+    {
+        if (!headers_sent() && !self::areSesiuneExistenta()) {
+            header_remove('Set-Cookie');
+        }
+    }
+
     private static function redirectioneaza(string $locatie, int $cod): void
     {
         while (ob_get_level() >= self::$nivelBuffer && ob_get_level() > 0) {
             ob_end_clean();
         }
         http_response_code($cod);
+        self::faraCookieuriPentruVizitatorNou();
         header('Location: ' . $locatie, true);
         header_remove('Content-Length');
         header_remove('ETag');
@@ -263,6 +347,7 @@ final class SeoRedirects
         }
         [, $query] = self::imparteUri((string) ($_SERVER['REQUEST_URI'] ?? '/'));
         self::$redirectCanonic = true;
+        self::faraCookieuriPentruVizitatorNou();
         header('Location: ' . $caleCorecta . ($query !== '' ? '?' . $query : ''), true, 301);
         header('Cache-Control: ' . self::cacheControlRedirect(), true);
         return true;
@@ -435,23 +520,6 @@ final class SeoRedirects
         $gazda = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '')));
         $gazda = (string) preg_replace('/:\d+$/', '', $gazda);
         return rtrim($gazda, '.');
-    }
-
-    /** La fel ca bootstrap.php (cookie-ul „secure"), plus antetele obișnuite ale proxy-urilor. */
-    private static function eHttps(): bool
-    {
-        $https = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
-        if ($https !== '' && $https !== 'off') {
-            return true;
-        }
-        if (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
-            || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on'
-            || strtolower((string) ($_SERVER['REQUEST_SCHEME'] ?? '')) === 'https'
-            || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443'
-            || str_contains(strtolower((string) ($_SERVER['HTTP_CF_VISITOR'] ?? '')), 'https')) {
-            return true;
-        }
-        return false;
     }
 
     /** Adresa absolută (pe gazda canonică, dacă există) pentru o cale + query. */

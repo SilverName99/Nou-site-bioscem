@@ -15,7 +15,14 @@ declare(strict_types=1);
  * o potrivire aproximativă de produs): o pagină care există nu e acoperită
  * niciodată de o regulă de aici. Fiecare țintă a fost verificată pe site pe
  * 19 octombrie 2026 (200, fără noindex, canonical = ținta); nicio țintă nu
- * este la rândul ei o adresă veche din listă (fără lanțuri).
+ * este la rândul ei o adresă veche din listă (fără lanțuri). Dacă totuși apare
+ * un lanț (A -> B, B -> C), site-ul îl urmează într-un singur salt; o buclă
+ * (A -> B, B -> A) nu redirecționează deloc.
+ *
+ * Ținte de evitat (planul SEO, §8.2): prima pagină, coșul și paginile de cont,
+ * etichetele care vor ieși din Google (sub 3 produse și sub 5 clicuri, D2) și
+ * etichetele cu nume de boli (D3). Unde nu există o categorie sau un produs
+ * potrivit, adresa veche rămâne 404.
  *
  * Cum adaugi un rând: copiezi un rând existent, schimbi adresele și motivul.
  * Cum scoți unul: îl ștergi. Regulile rămân pe site cel puțin un an.
@@ -28,7 +35,7 @@ declare(strict_types=1);
 return [
     'exacte' => [
         // Pagini și articole WordPress, liste vechi
-        ['/cart',                                            '/cos',                                             301, 'coșul WooCommerce -> coșul nou (pagină GET, fără efecte)'],
+        ['/cart',                                            '/cos',                                             301, 'coșul WooCommerce -> coșul nou (pentru vizitatori; 0 clicuri; /cos e închis pentru Google, deci regula nu aduce nimic în Google, dar nici nu strică)'],
         ['/index.php',                                       '/',                                                301, 'prima pagină WordPress'],
         ['/plasma-quinton-sanatatea-nazala',                 '/categorie/plasma-quinton',                        301, 'articol WordPress Quinton nazal -> categoria (3 spray-uri nazale)'],
         ['/plasma-quinton-sanatatea-ochilor',                '/produs/quinton-ocular',                           301, 'articol WordPress Quinton pentru ochi -> produsul Quinton Ocular'],
@@ -62,42 +69,34 @@ return [
         ['/category/siliciul-organic',                       '/categorie/siliciu-organic',                       301, 'categorie de blog -> categoria de produse'],
         ['/eticheta-produs/magneziu',                        '/eticheta/magneziu',                               301, 'baza WooCommerce /eticheta-produs/ -> /eticheta/'],
         ['/eticheta-produs/vitamina-c',                      '/eticheta/vitamina-c',                             301, 'baza WooCommerce /eticheta-produs/ -> /eticheta/'],
-        ['/eticheta-produs/zeolit',                          '/eticheta/zeolit',                                 301, 'baza WooCommerce /eticheta-produs/ -> /eticheta/'],
+        ['/eticheta-produs/zeolit',                           '/categorie/detox',                                 301, 'eticheta zeolit (2 produse, iese din Google la D2) -> categoria Detox, unde sunt ambele produse Zeolit'],
         ['/eticheta/biofarmland',                            '/marca/biofarmland',                               301, 'eticheta cu numele mărcii -> pagina mărcii'],
         ['/eticheta/concentrare/feed',                       '/eticheta/concentrare',                            301, 'eticheta (fără /feed) (flux RSS)'],
-        ['/eticheta/coq10',                                  '/eticheta/coenzima-q10',                           301, 'aceeași etichetă (CoQ10 = coenzima Q10)'],
-        ['/eticheta/eczeme/feed',                            '/eticheta/eczeme',                                 301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/fara-gluten/feed',                       '/eticheta/fara-gluten',                            301, 'eticheta (fără /feed) (flux RSS)'],
-        ['/eticheta/glutathione',                            '/eticheta/glutation',                              301, 'aceeași etichetă, scrisă în engleză'],
+        ['/eticheta/glutathione',                             '/produs/glutathione-liposomal-quicksilver',        301, 'glutation (eticheta glutation are 1 produs și iese din Google la D2) -> produsul cu glutation'],
         ['/eticheta/herbagetica',                            '/marca/herbagetica',                               301, 'eticheta cu numele mărcii -> pagina mărcii'],
-        ['/eticheta/indulcitor/feed',                        '/eticheta/indulcitor',                             301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/metilsilanol',                           '/categorie/siliciu-organic',                       301, 'metilsilanol = siliciu organic'],
         ['/eticheta/mucolid/feed',                           '/eticheta/mucolid',                                301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/muschi/feed',                            '/eticheta/muschi',                                 301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/mustar-salbatic/feed',                   '/eticheta/mustar-salbatic',                        301, 'eticheta (fără /feed) (flux RSS)'],
-        ['/eticheta/neuroprotector/feed',                    '/eticheta/neuroprotector',                         301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/shilajit',                               '/produs/super-shilajit-mumio-herbagetica-120caps', 301, 'singurul produs cu shilajit'],
         ['/eticheta/sport',                                  '/categorie/sport',                                 301, 'eticheta Sport -> categoria Sport'],
         ['/eticheta/sport-',                                 '/categorie/sport',                                 301, 'adresă trunchiată'],
         ['/eticheta/stevie/feed',                            '/eticheta/stevie',                                 301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/synerj-health',                          '/marca/synerj-health',                             301, 'eticheta cu numele mărcii -> pagina mărcii'],
-        ['/eticheta/taurina/feed',                           '/eticheta/taurina',                                301, 'eticheta (fără /feed) (flux RSS)'],
-        ['/eticheta/turmeric',                               '/eticheta/curcuma',                                301, 'aceeași plantă (turmeric = curcuma)'],
-        ['/eticheta/valeriana/feed',                         '/eticheta/valeriana',                              301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/vitamina-b9',                            '/produs/vitamina-b9-lipozomala-novo-biomedics',    301, 'singurul produs cu vitamina B9'],
-        ['/eticheta/vitamina-k1/feed',                       '/eticheta/vitamina-k1',                            301, 'eticheta (fără /feed) (flux RSS)'],
         ['/eticheta/vivomixx',                               '/marca/vivomixx',                                  301, 'eticheta cu numele mărcii -> pagina mărcii'],
         ['/tag/detoxifiere',                                 '/eticheta/detoxifiere',                            301, 'etichetă de blog -> eticheta de produse cu același nume'],
-        ['/tag/electroliti',                                 '/eticheta/electroliti',                            301, 'etichetă de blog -> eticheta de produse cu același nume'],
+        ['/tag/electroliti',                                  '/categorie/plasma-quinton',                        301, 'etichetă de blog (articolele Quinton) -> categoria Plasma Quinton, unde sunt ambele produse cu eticheta electroliti'],
         ['/tag/imunitate',                                   '/eticheta/imunitate',                              301, 'etichetă de blog -> eticheta de produse cu același nume'],
         ['/tag/ingrijirea-pielii',                           '/eticheta/ingrijirea-pielii',                      301, 'etichetă de blog -> eticheta de produse cu același nume'],
         ['/tag/izotonic',                                    '/eticheta/izotonic',                               301, 'etichetă de blog -> eticheta de produse cu același nume'],
         ['/tag/minerale',                                    '/eticheta/minerale',                               301, 'etichetă de blog -> eticheta de produse cu același nume'],
         ['/tag/monometilsilanetriol',                        '/categorie/siliciu-organic',                       301, 'monometilsilanetriol = siliciu organic'],
         ['/tag/ochi',                                        '/eticheta/ochi',                                   301, 'etichetă de blog -> eticheta de produse cu același nume'],
-        ['/tag/ocular',                                      '/eticheta/ocular',                                 301, 'etichetă de blog -> eticheta de produse cu același nume'],
+        ['/tag/ocular',                                       '/eticheta/ochi',                                   301, 'etichetă de blog -> eticheta ochi (aceleași produse ca eticheta ocular; ochi rămâne în Google la D2)'],
         ['/tag/oligoelemente',                               '/eticheta/oligoelemente',                          301, 'etichetă de blog -> eticheta de produse cu același nume'],
-        ['/tag/quinton',                                     '/eticheta/quinton',                                301, 'etichetă de blog -> eticheta de produse cu același nume'],
+        ['/tag/quinton',                                      '/categorie/plasma-quinton',                        301, 'etichetă de blog Quinton -> categoria Plasma Quinton (eticheta quinton are 2 produse și iese din Google la D2)'],
         ['/tag/quinton-nazal',                               '/eticheta/quinton-nazal',                          301, 'etichetă de blog -> eticheta de produse cu același nume'],
         ['/tag/silicium',                                    '/marca/silicium-laboratories',                     301, 'eticheta de blog Silicium -> pagina mărcii Silicium Laboratories'],
         // Mărci: /brand/ (WordPress) -> /marca/

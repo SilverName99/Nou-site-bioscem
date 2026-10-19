@@ -118,6 +118,9 @@ final class SiteController
     /**
      * Forma salvată a slug-ului unei categorii găsite (cea din product_categories,
      * altfel cea generată din nume), ca variantele cu litere mari să ducă la ea.
+     * O categorie găsită după numele scris altfel (de exemplu
+     * „vitamine-si-minerale” pentru slug-ul salvat „vitamine-minerale”) duce la
+     * slug-ul salvat, aceeași adresă ca în sitemap și în firimituri.
      */
     private function slugCanonicCategorie(string $slugCerut, string $numeCategorie): string
     {
@@ -132,6 +135,10 @@ final class SiteController
                 }
             } catch (Throwable) {
             }
+        }
+        $salvat = $this->slugCategoriePentruNume($numeCategorie);
+        if ($salvat !== '') {
+            return $salvat;
         }
         return $this->slugifyCategoryName($numeCategorie);
     }
@@ -7143,7 +7150,8 @@ CSS;
     /**
      * Organization + WebSite, pe prima pagină. Numele e cel din titlurile
      * paginilor; emailul și telefonul din setări (sau din linkurile mailto:/tel:
-     * din subsol); logo doar dacă are cel puțin 112×112 px (cerința Google);
+     * din subsol); logo doar dacă are cel puțin 112×112 px (cerința Google) și e
+     * aproape pătrat (altfel iconița site-ului);
      * sameAs doar cu profiluri sociale reale din antet și subsol.
      *
      * @return list<array<string, mixed>>
@@ -7191,7 +7199,10 @@ CSS;
                     continue;
                 }
                 $dim = \App\Support\ImageDimensions::pentru($candidat);
-                if ($dim !== null && $dim[0] >= 112 && $dim[1] >= 112) {
+                // Cel puțin 112×112 și aproape pătrat (Google îl arată într-un
+                // pătrat; un banner lat, de exemplu 977×240, ar ieși mărunt).
+                if ($dim !== null && $dim[0] >= 112 && $dim[1] >= 112
+                    && max($dim[0], $dim[1]) <= 1.5 * min($dim[0], $dim[1])) {
                     $logo = preg_match('#^https?://#i', $candidat) === 1 ? $candidat : $baza . '/' . ltrim($candidat, '/');
                     break;
                 }

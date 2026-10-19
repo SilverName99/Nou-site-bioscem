@@ -12,13 +12,49 @@ use Throwable;
  *
  * Conține doar pagini care răspund 200 și pot intra în Google: prima pagină,
  * paginile publicate (fără cele de sistem: coș, checkout, cont, login,
- * înregistrare, 404, acorduri GDPR), /magazin, categoriile, mărcile și
- * etichetele care au cel puțin un produs activ, produsele active și articolele
+ * înregistrare, 404, acorduri GDPR), /magazin, categoriile și mărcile care au
+ * cel puțin un produs activ, etichetele care rămân în Google după deciziile D2
+ * și D3 din planul SEO (vezi ETICHETE_*), produsele active și articolele
  * publicate. Nimic din ce blochează robots.txt. <lastmod> vine din data ultimei
  * modificări, unde există.
  */
 final class Sitemap
 {
+    /** D2: o etichetă intră în sitemap de la atâtea produse active în sus. */
+    public const ETICHETA_MINIM_PRODUSE = 3;
+
+    /**
+     * D2: etichetele mici (sub 3 produse) care aduc totuși trafic din Google
+     * (cel puțin 5 clicuri în exportul Search Console) și rămân în sitemap.
+     */
+    public const ETICHETE_MICI_PASTRATE = [
+        'vitamina-d', 'lacto-fermentate', 'concentrare', 'lithothamne', 'antidepresiv',
+        'sistem-imunitar', 'tulburari-de-somn', 'cupru', 'ochi', 'renofix',
+        'proteine-vegetale', 'alge',
+    ];
+
+    /**
+     * D3: etichete cu nume de boli. Nu se trimit lui Google, oricâte produse au
+     * (suplimentele nu au voie să pretindă că previn sau tratează o boală);
+     * proprietarul decide redenumirea sau ștergerea lor (C9).
+     */
+    public const ETICHETE_BOLI = [
+        'alzheimer', 'parkinson', 'scleroza-multipla', 'osteoporoza', 'antidepresiv',
+        'tulburari-de-somn', 'depresie', 'anxietate', 'insomnie', 'diabet', 'eczeme',
+        'dermatita-atopica', 'psoriasis', 'psoriazis', 'acnee', 'herpes', 'paradontoza',
+        'viroze', 'racei',
+    ];
+
+    /** Eticheta merge în sitemap? (după numărul de produse active și deciziile D2/D3) */
+    public static function etichetaInSitemap(string $slug, int $produseActive): bool
+    {
+        if ($slug === '' || in_array($slug, self::ETICHETE_BOLI, true)) {
+            return false;
+        }
+        return $produseActive >= self::ETICHETA_MINIM_PRODUSE
+            || ($produseActive > 0 && in_array($slug, self::ETICHETE_MICI_PASTRATE, true));
+    }
+
     /** Pagini de sistem: există ca rânduri în `pages`, dar n-au ce căuta în Google. */
     private const PAGINI_SISTEM = [
         '', 'acasa', 'home', '404', 'cos', 'cos-cumparaturi', 'checkout', 'contul-meu',
@@ -83,9 +119,10 @@ final class Sitemap
             $adauga('/categorie/' . rawurlencode($categorie['slug']), $categorie['lastmod']);
         }
 
-        // Mărcile și etichetele cu cel puțin un produs activ.
+        // Mărcile cu cel puțin un produs activ; etichetele după D2/D3 (sus).
         $marci = [];
         $etichete = [];
+        $produsePeEticheta = [];
         foreach ($produse as $produs) {
             $marca = Slug::simplu((string) ($produs['brand'] ?? ''));
             if ($marca !== '') {
@@ -95,6 +132,8 @@ final class Sitemap
                 $slugEticheta = Slug::simplu($eticheta);
                 if ($slugEticheta !== '') {
                     $etichete[$slugEticheta] = self::celMaiNou([$etichete[$slugEticheta] ?? '', $produs['lastmod']]);
+                    // Un produs se numără o singură dată, chiar dacă are eticheta scrisă de două ori.
+                    $produsePeEticheta[$slugEticheta][$produs['id'] . '|' . $produs['slug']] = true;
                 }
             }
         }
@@ -104,7 +143,9 @@ final class Sitemap
             $adauga('/marca/' . rawurlencode((string) $slug), $lastmod);
         }
         foreach ($etichete as $slug => $lastmod) {
-            $adauga('/eticheta/' . rawurlencode((string) $slug), $lastmod);
+            if (self::etichetaInSitemap((string) $slug, count($produsePeEticheta[$slug] ?? []))) {
+                $adauga('/eticheta/' . rawurlencode((string) $slug), $lastmod);
+            }
         }
 
         foreach ($produse as $produs) {
