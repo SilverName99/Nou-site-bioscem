@@ -6911,49 +6911,11 @@ CSS;
         header('Content-Type: text/plain; charset=utf-8');
         header('Cache-Control: public, max-age=3600');
 
-        $settings = $this->cachedSettings($this->db());
-        $baseUrl = rtrim($this->appUrl(), '/');
-
-        // În mentenanță nu vrem pagina de „revenim imediat" în index.
-        if ((string) ($settings['maintenance_enabled'] ?? '0') === '1') {
-            echo "User-agent: *\nDisallow: /\n";
-            return;
-        }
-
-        $interzise = [
-            '/admin', '/api/', '/auth/', '/webhook/',
-            '/cos', '/checkout', '/contul-meu', '/login', '/register',
-            '/plata/', '/newsletter/', '/gdpr-agreements',
-        ];
-
-        $linii = ['User-agent: *'];
-        foreach ($interzise as $cale) {
-            $linii[] = 'Disallow: ' . $cale;
-        }
-        $linii[] = '';
-
-        $sitemap = $this->numeSitemap((string) ($settings['store_sitemap_filename'] ?? 'sitemap.xml'));
-        if ($baseUrl !== '') {
-            $linii[] = 'Sitemap: ' . $baseUrl . '/' . $sitemap;
-        }
-
-        echo implode("\n", $linii) . "\n";
-    }
-
-    /** Numele fișierului de sitemap, curățat la fel ca în admin. */
-    private function numeSitemap(string $value): string
-    {
-        $value = strtolower(trim($value));
-        $value = str_replace(['\\', '/'], '', $value);
-        $value = preg_replace('/[^a-z0-9._-]+/', '-', $value) ?? '';
-        $value = trim($value, '-._');
-        if ($value === '') {
-            $value = 'sitemap';
-        }
-        if (!str_ends_with($value, '.xml')) {
-            $value .= '.xml';
-        }
-        return $value;
+        // Același robots.txt și în modul mentenanță: paginile răspund atunci 503
+        // cu Retry-After (Google înțelege că e temporar), pe când un
+        // „Disallow: /” rămânea ținut minte de Google până la o zi după ce
+        // mentenanța se terminase. Regulile stau în \App\Support\Robots.
+        echo \App\Support\Robots::text(rtrim($this->appUrl(), '/'));
     }
 
     private function appUrl(): string
