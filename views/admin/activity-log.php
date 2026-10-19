@@ -11,6 +11,7 @@ $actionLabels = [
     'comanda_restaurata' => 'Comandă restaurată din coș',
     'comenzi_sterse_in_masa' => 'Comenzi mutate în coș (în masă)',
     'comanda_awb_reemis' => 'AWB reemis',
+    'awb_colete_erp_neaplicate' => 'Colete alese în ERP, neaplicate (AWB pe depozite)',
     'comanda_transport_corectat' => 'Transport corectat',
     'comanda_reducere_comerciala' => 'Reducere comercială aplicată',
     'comanda_reducere_anulata' => 'Reducere comercială anulată',
