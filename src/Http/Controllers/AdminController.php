@@ -2633,8 +2633,8 @@ final class AdminController
 
             try {
                 $stmt = $db->prepare(
-                    'INSERT INTO blog_posts (title, slug, excerpt, content, reading_minutes, published_at, is_published, template_id, author_id, featured_image_url)
-                     VALUES (:title, :slug, :excerpt, :content, :reading_minutes, NOW(), :is_published, :template_id, :author_id, :featured_image_url)'
+                    'INSERT INTO blog_posts (title, slug, excerpt, content, reading_minutes, published_at, is_published, template_id, author_id, featured_image_url, category, category_id)
+                     VALUES (:title, :slug, :excerpt, :content, :reading_minutes, NOW(), :is_published, :template_id, :author_id, :featured_image_url, :category, :category_id)'
                 );
                 $stmt->execute([
                     'title' => $copyTitle,
@@ -2646,11 +2646,23 @@ final class AdminController
                     'template_id' => ((int) ($source['template_id'] ?? 0)) > 0 ? (int) $source['template_id'] : null,
                     'author_id' => ((int) ($source['author_id'] ?? 0)) > 0 ? (int) $source['author_id'] : null,
                     'featured_image_url' => trim((string) ($source['featured_image_url'] ?? '')) !== '' ? (string) $source['featured_image_url'] : null,
+                    'category' => trim((string) ($source['category'] ?? '')) !== '' ? (string) $source['category'] : null,
+                    'category_id' => ((int) ($source['category_id'] ?? 0)) > 0 ? (int) $source['category_id'] : null,
                 ]);
                 $newId = (int) $db->lastInsertId();
                 if ($newId > 0) {
                     $sourceSeo = $this->loadSeoSettings($db, 'blog_post', (string) $id);
                     $this->saveSeoSettings($db, 'blog_post', (string) $newId, $sourceSeo);
+                    // Copia păstrează categoriile originalului: altfel ar trebui
+                    // rebifate de fiecare dată.
+                    try {
+                        $copiazaCategorii = $db->prepare(
+                            'INSERT IGNORE INTO blog_post_categories (post_id, category_id)
+                             SELECT :nou, category_id FROM blog_post_categories WHERE post_id = :vechi'
+                        );
+                        $copiazaCategorii->execute(['nou' => $newId, 'vechi' => $id]);
+                    } catch (Throwable) {
+                    }
                 }
                 $this->refreshCacheAfterPublicContentChange($db);
                 Flash::set('success', 'Postarea a fost duplicată. Editează copia înainte de publicare.');
@@ -16530,27 +16542,8 @@ final class AdminController
             );
             $stmt->execute(['id' => $id]);
             $row = $stmt->fetch() ?: null;
-            if (!is_array($row)) {
-                return null;
-            }
-            // Categoriile (many-to-many) selectate pentru această postare.
-            $catIds = [];
-            try {
-                $catStmt = $db->prepare('SELECT category_id FROM blog_post_categories WHERE post_id = :id');
-                $catStmt->execute(['id' => $id]);
-                foreach ($catStmt->fetchAll() as $cr) {
-                    $cid = (int) ($cr['category_id'] ?? 0);
-                    if ($cid > 0) {
-                        $catIds[] = $cid;
-                    }
-                }
-            } catch (Throwable) {
-            }
-            if ($catIds === [] && (int) ($row['category_id'] ?? 0) > 0) {
-                $catIds[] = (int) $row['category_id'];
-            }
-            $row['category_ids'] = $catIds;
-            return $row;
+
+            return is_array($row) ? $row : null;
         } catch (Throwable) {
             return null;
         }
@@ -16727,7 +16720,33 @@ final class AdminController
             );
             $stmt->execute(['id' => $id]);
             $row = $stmt->fetch() ?: null;
-            return is_array($row) ? $row : null;
+            if (!is_array($row)) {
+                return null;
+            }
+
+            // Categoriile alese (many-to-many), ca editorul să le arate bifate
+            // când redeschizi postarea. Blocul ăsta stătea din greșeală în
+            // `loadBlogAuthorById`, unde căuta categoriile după id-ul autorului:
+            // editorul bifa doar categoria principală, iar la salvare restul
+            // categoriilor se ștergeau.
+            $catIds = [];
+            try {
+                $catStmt = $db->prepare('SELECT category_id FROM blog_post_categories WHERE post_id = :id');
+                $catStmt->execute(['id' => $id]);
+                foreach ($catStmt->fetchAll() ?: [] as $cr) {
+                    $cid = (int) ($cr['category_id'] ?? 0);
+                    if ($cid > 0) {
+                        $catIds[] = $cid;
+                    }
+                }
+            } catch (Throwable) {
+            }
+            if ($catIds === [] && (int) ($row['category_id'] ?? 0) > 0) {
+                $catIds[] = (int) $row['category_id'];
+            }
+            $row['category_ids'] = $catIds;
+
+            return $row;
         } catch (Throwable) {
             return null;
         }
