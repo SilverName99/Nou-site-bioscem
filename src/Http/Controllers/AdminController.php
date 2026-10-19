@@ -2727,6 +2727,23 @@ final class AdminController
                     $categoryIds[] = $cid;
                 }
             }
+            // La o postare existentă, categoria principală rămâne aceeași cât timp
+            // e încă bifată. Editorul trimite bifele în ordinea listei, așa că
+            // după o reordonare sau redenumire a categoriilor „prima bifată" ar fi
+            // alta și eticheta de pe site s-ar schimba la o simplă re-salvare.
+            if ($id > 0 && $singleCategoryId <= 0 && count($categoryIds) > 1) {
+                try {
+                    $mainStmt = $db->prepare('SELECT category_id FROM blog_posts WHERE id = :id');
+                    $mainStmt->execute(['id' => $id]);
+                    $currentMainId = (int) ($mainStmt->fetchColumn() ?: 0);
+                    $mainPos = $currentMainId > 0 ? array_search($currentMainId, $categoryIds, true) : false;
+                    if (is_int($mainPos) && $mainPos > 0) {
+                        array_splice($categoryIds, $mainPos, 1);
+                        array_unshift($categoryIds, $currentMainId);
+                    }
+                } catch (Throwable) {
+                }
+            }
             if ($categoryIds !== [] && $validNames[$categoryIds[0]] !== '') {
                 $category = $validNames[$categoryIds[0]];
             }
