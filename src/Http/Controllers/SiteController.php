@@ -7219,7 +7219,8 @@ CSS;
      * Prețul e cel afișat (cu reducerea activă), stocul vine după ERP,
      * precomanda devine PreOrder. Produsele inactive (nu se pot cumpăra) nu
      * primesc Product, doar firimituri. Stele doar din recenzii reale aprobate
-     * care se văd pe pagină.
+     * care se văd pe pagină. Oferta are și livrarea (prețurile fixe din Setări
+     * livrare) și politica de retur din termeni (vezi PoliticaLivrare).
      *
      * @return list<array<string, mixed>>
      */
@@ -7297,6 +7298,17 @@ CSS;
                 ];
             }
 
+            // Livrarea și returul (A5 din planul SEO): costul transportului pentru
+            // produsul comandat singur, din prețurile fixe ale checkout-ului, și
+            // politica de retur din termeni. Vezi PoliticaLivrare.
+            $db = $this->db();
+            $livrare = \App\Support\PoliticaLivrare::optiuni(
+                $this->cachedSettings($db),
+                $db,
+                (float) ($product['price'] ?? 0),
+                (bool) ($product['has_sale_price'] ?? false)
+            );
+
             $nodProdus = \App\Support\JsonLd::produs([
                 'url' => $url,
                 'name' => $nume,
@@ -7308,6 +7320,8 @@ CSS;
                 'availability' => $disponibil,
                 'priceValidUntil' => $panaLa,
                 'reviews' => $recenzii,
+                'shipping' => $livrare,
+                'returnPolicy' => \App\Support\PoliticaLivrare::activ() ? \App\Support\JsonLd::politicaRetur($baza) : [],
             ]);
             if ($nodProdus !== []) {
                 $noduri[] = $nodProdus;
@@ -7334,7 +7348,8 @@ CSS;
      * paginilor; emailul și telefonul din setări (sau din linkurile mailto:/tel:
      * din subsol); logo doar dacă are cel puțin 112×112 px (cerința Google) și e
      * aproape pătrat (altfel iconița site-ului);
-     * sameAs doar cu profiluri sociale reale din antet și subsol.
+     * sameAs doar cu profiluri sociale reale din antet și subsol; politica de
+     * retur a magazinului (aceeași ca pe produse, vezi PoliticaLivrare).
      *
      * @return list<array<string, mixed>>
      */
@@ -7398,6 +7413,7 @@ CSS;
                     'email' => $email,
                     'telephone' => $telefon,
                     'sameAs' => \App\Support\JsonLd::profiluriSociale($htmlDesign),
+                    'returnPolicy' => \App\Support\PoliticaLivrare::activ() ? \App\Support\JsonLd::politicaRetur($baza) : [],
                 ]),
                 \App\Support\JsonLd::site($nume, $baza),
             ]));

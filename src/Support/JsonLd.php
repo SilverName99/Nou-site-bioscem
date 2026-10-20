@@ -13,8 +13,10 @@ namespace App\Support;
  *    marca, codul; adrese absolute;
  *  - fără stele inventate: aggregateRating/review apar doar dacă produsul are
  *    recenzii reale aprobate, afișate pe pagină;
- *  - livrarea și returul (shippingDetails, hasMerchantReturnPolicy) NU sunt
- *    puse până nu le confirmă proprietarul;
+ *  - livrarea (shippingDetails) și returul (hasMerchantReturnPolicy), după
+ *    condițiile confirmate de proprietar (vezi PoliticaLivrare): doar ce e
+ *    sigur pentru produsul comandat singur; fără termen de livrare până nu e
+ *    hotărât;
  *  - un bloc <script> pentru fiecare tip.
  */
 final class JsonLd
@@ -43,7 +45,8 @@ final class JsonLd
      * @param array{
      *   url: string, name: string, images: list<string>, description: string, sku: string,
      *   brand: string, price: float, availability: string, priceValidUntil: string,
-     *   reviews?: array{count: int, average: float, items: list<array<string, mixed>>}
+     *   reviews?: array{count: int, average: float, items: list<array<string, mixed>>},
+     *   shipping?: list<array{serviciu: string, pret: float}>, returnPolicy?: array<string, mixed>
      * } $p
      */
     public static function produs(array $p): array
@@ -67,6 +70,15 @@ final class JsonLd
         $pana = trim((string) ($p['priceValidUntil'] ?? ''));
         if ($pana !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $pana) === 1) {
             $oferta['priceValidUntil'] = $pana;
+        }
+        $livrare = self::livrare((array) ($p['shipping'] ?? []));
+        if ($livrare !== []) {
+            // O opțiune: un obiect (ca în exemplele Google); mai multe: o listă.
+            $oferta['shippingDetails'] = count($livrare) === 1 ? $livrare[0] : $livrare;
+        }
+        $retur = (array) ($p['returnPolicy'] ?? []);
+        if ($retur !== []) {
+            $oferta['hasMerchantReturnPolicy'] = $retur;
         }
 
         $nod = ['@type' => 'Product', '@id' => $url . '#product', 'name' => $nume, 'url' => $url];
@@ -133,6 +145,65 @@ final class JsonLd
     }
 
     /**
+     * Câte un OfferShippingDetails pentru fiecare opțiune de livrare (din
+     * PoliticaLivrare::optiuni): costul în RON, destinația România și, doar
+     * când e hotărât, termenul de livrare.
+     *
+     * @param list<array{serviciu: string, pret: float}> $optiuni
+     * @return list<array<string, mixed>>
+     */
+    public static function livrare(array $optiuni): array
+    {
+        $termen = PoliticaLivrare::TERMEN_LIVRARE;
+        $lista = [];
+        foreach ($optiuni as $optiune) {
+            if (!is_array($optiune) || !isset($optiune['pret']) || (float) $optiune['pret'] < 0) {
+                continue;
+            }
+            $nod = [
+                '@type' => 'OfferShippingDetails',
+                'shippingRate' => [
+                    '@type' => 'MonetaryAmount',
+                    'value' => number_format((float) $optiune['pret'], 2, '.', ''),
+                    'currency' => 'RON',
+                ],
+                'shippingDestination' => ['@type' => 'DefinedRegion', 'addressCountry' => 'RO'],
+            ];
+            if (is_array($termen) && count($termen) === 4) {
+                $zile = static fn (int $min, int $max): array => [
+                    '@type' => 'QuantitativeValue', 'minValue' => $min, 'maxValue' => $max, 'unitCode' => 'DAY',
+                ];
+                $nod['deliveryTime'] = [
+                    '@type' => 'ShippingDeliveryTime',
+                    'handlingTime' => $zile((int) $termen[0], (int) $termen[1]),
+                    'transitTime' => $zile((int) $termen[2], (int) $termen[3]),
+                ];
+            }
+            $lista[] = $nod;
+        }
+        return $lista;
+    }
+
+    /**
+     * Politica de retur (aceeași pe produs și la firmă): România, 14 zile de la
+     * primire, prin curier, transportul înapoi plătit de client, cu linkul spre
+     * pagina în care e scrisă.
+     */
+    public static function politicaRetur(string $baseUrl): array
+    {
+        return [
+            '@type' => 'MerchantReturnPolicy',
+            'applicableCountry' => 'RO',
+            'returnPolicyCountry' => 'RO',
+            'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+            'merchantReturnDays' => PoliticaLivrare::ZILE_RETUR,
+            'returnMethod' => 'https://schema.org/ReturnByMail',
+            'returnFees' => 'https://schema.org/ReturnFeesCustomerResponsibility',
+            'merchantReturnLink' => PoliticaLivrare::linkRetur($baseUrl),
+        ];
+    }
+
+    /**
      * Firimiturile: [['name' => 'Acasă', 'url' => 'https://…/'], …]; ultimul
      * element poate fi fără adresă (pagina curentă).
      *
@@ -164,7 +235,7 @@ final class JsonLd
      * Firma, pe prima pagină. Doar ce e completat în setări; sameAs doar cu
      * profiluri reale (o adresă de rețea socială fără cont după domeniu nu intră).
      *
-     * @param array{name: string, url: string, logo?: string, email?: string, telephone?: string, sameAs?: list<string>} $f
+     * @param array{name: string, url: string, logo?: string, email?: string, telephone?: string, sameAs?: list<string>, returnPolicy?: array<string, mixed>} $f
      */
     public static function organizatie(array $f): array
     {
@@ -184,6 +255,12 @@ final class JsonLd
         $profiluri = array_values(array_unique(array_filter(array_map('strval', (array) ($f['sameAs'] ?? [])))));
         if ($profiluri !== []) {
             $nod['sameAs'] = $profiluri;
+        }
+        // Politica de retur a magazinului (Google o ia pentru toate produsele
+        // care n-au una proprie; produsele o au oricum și în Offer).
+        $retur = (array) ($f['returnPolicy'] ?? []);
+        if ($retur !== []) {
+            $nod['hasMerchantReturnPolicy'] = $retur;
         }
         return $nod;
     }
