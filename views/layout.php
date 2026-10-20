@@ -15,6 +15,15 @@ $designFooterCss = (string) ($designSettings['design_footer_css'] ?? '');
 $designFooterJs = (string) ($designSettings['design_footer_js'] ?? '');
 $designMenuCss = (string) ($designSettings['design_menu_css'] ?? '');
 $designMenuJs = (string) ($designSettings['design_menu_js'] ?? '');
+// Antetul, meniul și subsolul sunt HTML salvat în baza de date. La afișare,
+// linkurile de categorie /magazin?category=… devin /categorie/{slug} (adresele
+// din Google și din sitemap). Baza de date rămâne neatinsă. Paginile de coș, comandă, plată și
+// cont rămân exact ca înainte (vezi LinkuriCategorii::paginaCurentaExclusa).
+if (!\App\Support\LinkuriCategorii::paginaCurentaExclusa()) {
+    $designHeader = \App\Support\LinkuriCategorii::rescrie($designHeader, $db instanceof \PDO ? $db : null);
+    $designMenu = \App\Support\LinkuriCategorii::rescrie($designMenu, $db instanceof \PDO ? $db : null);
+    $designFooter = \App\Support\LinkuriCategorii::rescrie($designFooter, $db instanceof \PDO ? $db : null);
+}
 // Fără consimțământ, niciun script de analiză/marketing nu ajunge în pagină.
 $acceptaUrmarire = \App\Support\CookieConsent::permiteUrmarire();
 $chatActiv = \App\Support\ChatLive::activ($designSettings);

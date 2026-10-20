@@ -15,6 +15,14 @@ $baseUrl = trim((string) ($catalogPayload['baseUrl'] ?? ($baseUrl ?? '/magazin')
 if ($baseUrl === '') {
     $baseUrl = '/magazin';
 }
+// Adresa fiecărei categorii din filtru (/categorie/{slug}); fără ea, filtrul
+// rămâne pe /magazin?categorie=…, ca înainte.
+$categoryUrls = is_array($catalogPayload['categoryUrls'] ?? null)
+    ? $catalogPayload['categoryUrls']
+    : (is_array($categoryUrls ?? null) ? $categoryUrls : []);
+// Sortarea rămâne pe pagina curentă (categorie, marcă, etichetă); doar pe
+// /magazin filtrat ține categoria în adresă.
+$sortCategorySuffix = ($activeCategory !== '' && $baseUrl === '/magazin') ? '&categorie=' . rawurlencode($activeCategory) : '';
 if ($sortOptions === []) {
     $sortOptions = [
         'alpha_asc' => 'Alfabetică',
@@ -216,7 +224,7 @@ if ($sortOptions === []) {
       </button>
       <div class="shop-catalog-v2__sort-menu" data-shop-sort-menu>
         <?php foreach ($sortOptions as $key => $label): ?>
-          <a class="shop-catalog-v2__sort-option <?= (string) $key === (string) $sortKey ? 'is-active' : '' ?>" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>?sort=<?= rawurlencode((string) $key) ?><?= $activeCategory !== '' ? '&categorie=' . rawurlencode($activeCategory) : '' ?>">
+          <a class="shop-catalog-v2__sort-option <?= (string) $key === (string) $sortKey ? 'is-active' : '' ?>" href="<?= htmlspecialchars($baseUrl, ENT_QUOTES) ?>?sort=<?= rawurlencode((string) $key) ?><?= $sortCategorySuffix ?>">
             <?= htmlspecialchars((string) $label, ENT_QUOTES) ?>
           </a>
         <?php endforeach; ?>
@@ -233,7 +241,7 @@ if ($sortOptions === []) {
     <div class="shop-catalog-v2__filters-grid">
       <div class="shop-catalog-v2__filter-col">
         <h4>CATEGORII</h4>
-        <label><input type="radio" name="category" data-filter-value="" <?= $activeCategory === '' ? 'checked' : '' ?>> Toate</label>
+        <label><input type="radio" name="category" data-filter-value="" data-filter-url="/magazin" <?= $activeCategory === '' ? 'checked' : '' ?>> Toate</label>
         <?php foreach ($categories as $category): ?>
           <?php
           $value = trim((string) ($category['value'] ?? ''));
@@ -244,7 +252,7 @@ if ($sortOptions === []) {
           }
           ?>
           <label>
-            <input type="radio" name="category" data-filter-value="<?= htmlspecialchars($value, ENT_QUOTES) ?>" <?= $activeCategory === $value ? 'checked' : '' ?>>
+            <input type="radio" name="category" data-filter-value="<?= htmlspecialchars($value, ENT_QUOTES) ?>"<?= isset($categoryUrls[$value]) ? ' data-filter-url="' . htmlspecialchars((string) $categoryUrls[$value], ENT_QUOTES) . '"' : '' ?> <?= $activeCategory === $value ? 'checked' : '' ?>>
             <?= htmlspecialchars($label, ENT_QUOTES) ?><?= $count > 0 ? ' (' . $count . ')' : '' ?>
           </label>
         <?php endforeach; ?>
@@ -411,6 +419,17 @@ if ($sortOptions === []) {
   root.querySelectorAll('input[data-filter-value]').forEach((input) => {
     input.addEventListener('change', () => {
       const value = String(input.getAttribute('data-filter-value') || '');
+      // Categoria are pagina ei (/categorie/…); se păstrează doar sortarea aleasă.
+      const target = String(input.getAttribute('data-filter-url') || '');
+      if (target !== '') {
+        const next = new URL(target, window.location.origin);
+        const sort = new URL(window.location.href).searchParams.get('sort');
+        if (sort) {
+          next.searchParams.set('sort', sort);
+        }
+        window.location.href = next.toString();
+        return;
+      }
       const url = new URL(window.location.href);
       if (value === '') {
         url.searchParams.delete('categorie');

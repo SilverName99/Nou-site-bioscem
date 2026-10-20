@@ -332,8 +332,10 @@ final class SeoRedirects
      * 301 de la o variantă a adresei (litere mari, alt fel de scriere) la
      * adresa corectă a unei pagini care există. Doar la GET/HEAD și doar în
      * afara căilor excluse. Întoarce true dacă a trimis redirecționarea.
+     * Fără $query, parametrii din adresă se păstrează întocmai; cu $query
+     * (de exemplu fără ?category=, mutat în cale), pleacă exact acela.
      */
-    public static function redirectCanonic(string $caleCorecta): bool
+    public static function redirectCanonic(string $caleCorecta, ?string $query = null): bool
     {
         $metoda = strtoupper((string) ($_SERVER['SEO_REQUEST_METHOD_ORIGINAL'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET'));
         if ($metoda !== 'GET' && $metoda !== 'HEAD') {
@@ -345,7 +347,9 @@ final class SeoRedirects
         if ($caleCorecta === '' || self::eExclusa($caleCorecta)) {
             return false;
         }
-        [, $query] = self::imparteUri((string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        if ($query === null) {
+            [, $query] = self::imparteUri((string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        }
         self::$redirectCanonic = true;
         self::faraCookieuriPentruVizitatorNou();
         header('Location: ' . $caleCorecta . ($query !== '' ? '?' . $query : ''), true, 301);

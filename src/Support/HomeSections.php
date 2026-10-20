@@ -61,10 +61,10 @@ final class HomeSections
         return self::CATEGORY_ICONS['default'];
     }
 
-    private static function categoryUrl(string $name): string
+    /** Linkul categoriei: /categorie/{slug} (vezi LinkuriCategorii). */
+    private static function categoryUrl(string $name, ?PDO $db = null): string
     {
-        $name = trim($name);
-        return $name === '' ? '/magazin' : '/magazin?category=' . rawurlencode($name);
+        return LinkuriCategorii::url($db, $name);
     }
 
     // -----------------------------------------------------------------
@@ -255,7 +255,7 @@ final class HomeSections
                 continue;
             }
 
-            $tiles[] = '<a class="bs-need" href="' . self::e(self::categoryUrl($name)) . '">'
+            $tiles[] = '<a class="bs-need" href="' . self::e(self::categoryUrl($name, $db)) . '">'
                 . '<span class="bs-need__icon"><svg viewBox="0 0 24 24" aria-hidden="true">'
                 . self::iconFor($name)
                 . '</svg></span>'

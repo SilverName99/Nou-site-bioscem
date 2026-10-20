@@ -110,9 +110,14 @@ final class SiteController
             ])];
         }
 
-        // shop() citește filtrul din query string.
+        // Aceeași listă ca magazinul filtrat; filtrul vine din adresă, nu din query
+        // string. $_GET['categorie'] rămâne setat pentru codul care îl citește
+        // direct (de exemplu JavaScript-ul din pagina „magazin”).
         $_GET['categorie'] = $categoryName;
-        $this->shop();
+        $this->randeazaMagazin(
+            $categoryName,
+            $categoryName !== '' ? '/categorie/' . rawurlencode($slugCorect !== '' ? $slugCorect : $slug) : ''
+        );
     }
 
     /**
@@ -149,28 +154,9 @@ final class SiteController
      */
     private function slugCategoriePentruNume(string $numeCategorie): string
     {
-        $numeCategorie = trim($numeCategorie);
-        if ($numeCategorie === '') {
-            return '';
-        }
+        // Aceeași regulă și pentru linkurile din meniu, liste și pagini.
         $db = $this->db();
-        if ($db instanceof PDO) {
-            try {
-                $stmt = $db->prepare('SELECT slug FROM product_categories WHERE LOWER(TRIM(name)) = :nume AND TRIM(COALESCE(slug, "")) <> "" ORDER BY id ASC LIMIT 1');
-                $stmt->execute(['nume' => mb_strtolower($numeCategorie)]);
-                $salvat = $stmt->fetchColumn();
-                if (is_string($salvat) && trim($salvat) !== ''
-                    && mb_strtolower($this->resolveCategoryNameBySlug(trim($salvat))) === mb_strtolower($numeCategorie)) {
-                    return trim($salvat);
-                }
-            } catch (Throwable) {
-            }
-        }
-        $generat = $this->slugifyCategoryName($numeCategorie);
-        if ($generat !== '' && mb_strtolower($this->resolveCategoryNameBySlug($generat)) === mb_strtolower($numeCategorie)) {
-            return $generat;
-        }
-        return '';
+        return \App\Support\LinkuriCategorii::slugPentruNume($db instanceof PDO ? $db : null, $numeCategorie);
     }
 
     /** Slug simplu, pentru comparat branduri și etichete scrise oricum. */
@@ -321,7 +307,9 @@ final class SiteController
         $catalog = $this->renderShopCatalogSection(
             $db instanceof PDO ? $db : null,
             '',
-            ['tip' => $tip, 'slug' => $slug]
+            ['tip' => $tip, 'slug' => $slug],
+            // Sortarea rămâne pe pagina mărcii sau a etichetei.
+            $eticheta !== '' ? ($tip === 'brand' ? '/marca/' : '/eticheta/') . rawurlencode($slug) : '/magazin'
         );
 
         $shopPage = $this->findPublishedPageBySlug('magazin');
@@ -395,17 +383,52 @@ final class SiteController
 
     public function shop(): void
     {
+        // /magazin?category=X (sau ?categorie=X) e de fapt pagina categoriei: 301
+        // la /categorie/{slug}, cu sortarea și parametrii de reclamă păstrați.
+        // Doar când categoria e toată cererea (vezi LinkuriCategorii); altfel
+        // pagina se afișează ca înainte, cu canonical spre categorie.
+        $db = $this->db();
+        $query = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '');
+        $tinta = \App\Support\LinkuriCategorii::tintaPentruMagazin($db instanceof PDO ? $db : null, $query);
+        if ($tinta !== null && \App\Support\SeoRedirects::redirectCanonic($tinta['cale'], $tinta['query'])) {
+            return;
+        }
+        $this->randeazaMagazin($this->requestCategoryFilter(), '');
+    }
+
+    /**
+     * Magazinul: tot catalogul sau o categorie. $caleCategorie e adresa paginii
+     * de categorie când lista e afișată de /categorie/{slug} (atunci sortarea
+     * rămâne pe acea adresă); gol pentru /magazin.
+     */
+    private function randeazaMagazin(string $categoryFilter, string $caleCategorie): void
+    {
         $shopPage = $this->findPublishedPageBySlug('magazin');
-        $categoryFilter = $this->requestCategoryFilter();
+        $db = $this->db();
+        $pdo = $db instanceof PDO ? $db : null;
+        $shopCategoryLabel = $this->normalizeShopCategoryFilter(
+            $categoryFilter,
+            $this->loadShopCatalogCategories($pdo)
+        );
+        if ($shopCategoryLabel !== '' && $caleCategorie === '') {
+            $caleCategorie = \App\Support\LinkuriCategorii::cale($pdo, $shopCategoryLabel);
+        }
+        $catalogHtml = $this->renderShopCatalogSection(
+            $db,
+            $categoryFilter,
+            null,
+            $shopCategoryLabel !== '' && $caleCategorie !== '' ? $caleCategorie : '/magazin'
+        );
+        $seoLista = is_array($shopPage) ? $this->customPageSeoMeta($pdo, $shopPage) : [];
+        if ($shopCategoryLabel !== '' && $caleCategorie !== '') {
+            // /magazin?category=… rămas (alți parametri): canonical spre pagina categoriei.
+            $seoLista['metaCanonicalUrl'] = rtrim($this->appUrl(), '/') . $caleCategorie;
+        }
+
         if (is_array($shopPage)) {
-            $db = $this->db();
             $settings = $this->cachedSettings($db);
             // Categoria validată (goală dacă filtrul din URL nu există),
             // ca pagina să poată afișa titlul categoriei curente.
-            $shopCategoryLabel = $this->normalizeShopCategoryFilter(
-                $categoryFilter,
-                $this->loadShopCatalogCategories($db instanceof PDO ? $db : null)
-            );
             $pageTitle = $shopCategoryLabel !== ''
                 ? $shopCategoryLabel
                 : (string) ($shopPage['title'] ?? 'Magazin');
@@ -413,21 +436,21 @@ final class SiteController
                 'title' => $pageTitle,
                 'page' => $shopPage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
-                'shopCatalogHtml' => $this->renderShopCatalogSection($db, $categoryFilter),
+                'shopCatalogHtml' => $catalogHtml,
                 'shopCategoryLabel' => $shopCategoryLabel,
                 'shopPageTitle' => (string) ($shopPage['title'] ?? 'Magazin'),
                 'jsonLd' => $this->jsonLdPagina,
-            ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $shopPage)));
+            ], $seoLista));
             return;
         }
 
         [$products] = $this->loadProducts(categoryFilter: $categoryFilter);
-        View::render('site/shop', [
+        View::render('site/shop', array_merge([
             'products' => $products,
             'title' => 'Magazin',
             'activeCategory' => $categoryFilter,
             'jsonLd' => $this->jsonLdPagina,
-        ]);
+        ], $seoLista));
     }
 
     public function blog(): void
@@ -4229,7 +4252,8 @@ final class SiteController
     private function renderShopCatalogSection(
         ?PDO $db,
         string $categoryFilter = '',
-        ?array $filtruExtra = null
+        ?array $filtruExtra = null,
+        string $baseUrl = '/magazin'
     ): string {
         $categoryFilter = trim($categoryFilter);
         $sort = $this->requestShopCatalogSort();
@@ -4260,13 +4284,22 @@ final class SiteController
             ));
         }
         $products = $this->applyShopCatalogSort($products, $sort);
+        // Fiecare categorie din filtru duce la pagina ei, /categorie/{slug}.
+        $categoryUrls = [];
+        foreach ($categories as $category) {
+            $value = trim((string) ($category['value'] ?? ''));
+            if ($value !== '') {
+                $categoryUrls[$value] = \App\Support\LinkuriCategorii::url($db, $value);
+            }
+        }
         return $this->renderPhpView('site/components/shop-catalog', [
             'products' => $products,
             'categories' => $categories,
+            'categoryUrls' => $categoryUrls,
             'activeCategory' => $categoryFilter,
             'sort' => $sort,
             'sortOptions' => $this->shopCatalogSortOptions(),
-            'baseUrl' => '/magazin',
+            'baseUrl' => $baseUrl !== '' ? $baseUrl : '/magazin',
         ]);
     }
 
@@ -9624,10 +9657,9 @@ CSS;
         $productBasePrice = (float) ($product['base_price'] ?? $productPrice);
         $productSalePrice = (float) (($product['sale_price'] ?? 0) ?: 0);
         $productCategory = (string) (($product['category_name'] ?? $product['category']) ?? '');
-        $productCategoryUrl = '/magazin';
-        if (trim($productCategory) !== '') {
-            $productCategoryUrl .= '?category=' . rawurlencode(trim($productCategory));
-        }
+        // Firimiturile și eticheta de categorie duc la pagina categoriei.
+        $productCategoryDb = $this->db();
+        $productCategoryUrl = \App\Support\LinkuriCategorii::url($productCategoryDb instanceof PDO ? $productCategoryDb : null, $productCategory);
         $hasSaleForTemplate = $productSalePrice > 0
             && $productBasePrice > 0
             && $productPrice > 0
@@ -9807,6 +9839,8 @@ CSS;
             $css = str_replace($placeholder, $value, $css);
             $js = str_replace($placeholder, $value, $js);
         }
+        // Linkurile de categorie scrise în șablon sau în descriere duc la /categorie/{slug}.
+        $html = \App\Support\LinkuriCategorii::rescrie($html, $productCategoryDb instanceof PDO ? $productCategoryDb : null);
 
         return [
             'html' => $html,

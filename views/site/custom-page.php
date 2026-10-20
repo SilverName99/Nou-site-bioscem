@@ -115,6 +115,9 @@ $pageHtml = (string) preg_replace_callback(
     },
     $pageHtml
 );
+// Linkurile de categorie scrise în pagină (/magazin?category=…) duc la
+// /categorie/{slug}; textul paginii din baza de date rămâne neatins.
+$pageHtml = \App\Support\LinkuriCategorii::rescrieInPagina($pageHtml, $nextEventDb instanceof \PDO ? $nextEventDb : null);
 ?>
 <?php if (trim($pageCss) !== ''): ?>
     <style>

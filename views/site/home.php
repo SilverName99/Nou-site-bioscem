@@ -3,9 +3,14 @@ $products = is_array($products ?? null) ? $products : [];
 $categories = is_array($categories ?? null) ? $categories : [];
 $blogPosts = is_array($blogPosts ?? null) ? $blogPosts : [];
 
-$categoryUrl = static function (string $name): string {
-    $name = trim($name);
-    return $name === '' ? '/magazin' : '/magazin?category=' . rawurlencode($name);
+// Linkul categoriei: /categorie/{slug} (vezi LinkuriCategorii).
+$categoryUrlDb = (static function (): ?\PDO {
+    $config = require __DIR__ . '/../../config/app.php';
+    $db = \App\Support\Database::connection((array) ($config['db'] ?? []));
+    return $db instanceof \PDO ? $db : null;
+})();
+$categoryUrl = static function (string $name) use ($categoryUrlDb): string {
+    return \App\Support\LinkuriCategorii::url($categoryUrlDb, $name);
 };
 
 /**
