@@ -1377,7 +1377,7 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                     <details style="margin-top:6px;">
                         <summary style="cursor:pointer;color:#991b1b;">Textul confirmat</summary>
                         <div style="margin-top:6px;white-space:pre-line;color:#1f2937;overflow-wrap:anywhere;">${esc(a.text || '')}</div>
-                        <p style="margin:8px 0 0;color:#475569;">Bifa: „${esc(a.eticheta || '')}”</p>
+                        <p style="margin:8px 0 0;color:#475569;">${(Array.isArray(a.etichete) && a.etichete.length > 1) ? 'Bifele' : 'Bifa'}: ${(Array.isArray(a.etichete) ? a.etichete : []).map((e) => `„${esc(e)}”`).join(', ')}</p>
                     </details>
                 </div>`).join('');
 

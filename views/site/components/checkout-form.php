@@ -567,40 +567,27 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                     </div>
                 <?php endif; ?>
                 <?php if ($avertismente !== []): ?>
-                    <?php foreach ($avertismente as $grupAvertisment): ?>
-                        <?php foreach ($grupAvertisment['avertismente'] as $avertisment): ?>
-                            <div role="note" data-avertisment-produs
-                                 style="margin:0 0 10px;padding:13px 14px;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:8px;background:#fef2f2;color:#7f1d1d;font-size:13px;line-height:1.55;">
-                                <?php if (trim((string) $avertisment['titlu']) !== ''): ?>
-                                    <strong style="display:block;margin-bottom:2px;font-size:14px;line-height:1.35;"><?= htmlspecialchars((string) $avertisment['titlu'], ENT_QUOTES) ?></strong>
-                                <?php endif; ?>
-                                <span style="display:block;margin-bottom:8px;font-size:12px;color:#991b1b;">Pentru: <?= htmlspecialchars(implode(', ', $avertisment['produse']), ENT_QUOTES) ?></span>
-                                <div style="max-height:45vh;overflow-y:auto;overflow-wrap:anywhere;color:#450a0a;">
-                                    <?= \App\Support\AvertismentProduse::paragrafeHtml((string) $avertisment['text'], 'margin:0 0 8px;') ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                        <label class="bv-checkout-v3__terms" style="color:#7f1d1d;font-weight:700;">
-                            <input
-                                type="checkbox"
-                                name="<?= \App\Support\AvertismentProduse::CAMP_BIFA ?>[<?= htmlspecialchars((string) $grupAvertisment['cheie'], ENT_QUOTES) ?>]"
-                                value="1"
-                                form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form"
-                                <?= $previewMode ? '' : 'required' ?>
-                                data-avertisment-bifa
-                            >
-                            <span><?= htmlspecialchars((string) $grupAvertisment['eticheta'], ENT_QUOTES) ?></span>
-                        </label>
-                    <?php endforeach; ?>
+                    <div data-avertismente-checkout>
+                        <?php require __DIR__ . '/checkout-avertismente.php'; ?>
+                    </div>
                     <script>
-                        // Ca la bifa de termeni: arată DE CE nu pleacă formularul.
-                        document.querySelectorAll('[data-avertisment-bifa]').forEach((bifa) => {
-                            const rand = bifa.closest('.bv-checkout-v3__terms');
-                            bifa.addEventListener('invalid', () => rand && rand.classList.add('is-missing'));
-                            bifa.addEventListener('change', () => {
-                                if (bifa.checked && rand) rand.classList.remove('is-missing');
+                        (() => {
+                            const bloc = document.querySelector('[data-avertismente-checkout]');
+                            if (!bloc) {
+                                return;
+                            }
+                            // Ca la bifa de termeni: arată DE CE nu pleacă formularul.
+                            bloc.addEventListener('invalid', (e) => {
+                                const rand = e.target instanceof Element ? e.target.closest('.bv-checkout-v3__terms') : null;
+                                if (rand) rand.classList.add('is-missing');
+                            }, true);
+                            bloc.addEventListener('change', (e) => {
+                                const bifa = e.target;
+                                if (bifa instanceof HTMLInputElement && bifa.matches('[data-avertisment-bifa]') && bifa.checked) {
+                                    bifa.closest('.bv-checkout-v3__terms')?.classList.remove('is-missing');
+                                }
                             });
-                        });
+                        })();
                     </script>
                 <?php /* „endif” lipit de buton: fără avertismente, HTML-ul rămâne octet cu octet cel de dinainte. */ ?><?php endif; ?><button type="submit" class="bv-checkout-v3__submit" form="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-form" data-checkout-submit>
                     <?= $previewMode ? 'Preview checkout' : (\App\Support\PaymentMethods::esteCard($paymentMethod) ? 'Către plată' : 'Plasează comanda') ?>

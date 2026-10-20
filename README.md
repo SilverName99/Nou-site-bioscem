@@ -186,14 +186,17 @@ Actinovo Vitamina C lipozomala — „ATENȚIE – PRODUS REFRIGERAT”).
   JavaScript), deci paginile din cache raman aceleasi pentru toti.
 - **La finalizarea comenzii**, deasupra butonului de plasare: o caseta rosie pentru
   fiecare avertisment (cu numele produselor) si o bifa obligatorie cu textul ales.
-  Produsele cu acelasi text impart o caseta; cele cu aceeasi bifa impart o bifa.
+  Produsele cu acelasi titlu si text impart o caseta; cele cu aceeasi bifa impart o
+  bifa (acelasi text cu bife diferite = o caseta, sub ea cate o bifa pe fiecare text de
+  bifa).
   Serverul verifica bifa la plasare, pentru **orice metoda de plata**, pe cosul din
   acel moment: fara bifa (sau daca intre timp s-au schimbat avertismentele din cos:
-  alt produs cu avertisment, alt text, alta bifa) comanda
+  alt produs cu avertisment adaugat sau scos, alt text, alta bifa) comanda
   nu se plaseaza, clientul revine pe checkout cu mesajul in romana si cu datele
   completate.
 - **Pe comanda** ramane o copie a ce a confirmat clientul (titlul, textul exact,
-  bifa, produsele, data si ora Bucurestiului), in tabelul `order_product_warnings`.
+  bifa sau bifele, produsele din caseta, data si ora Bucurestiului), cate un rand pe
+  caseta, in tabelul `order_product_warnings`.
   O modificare ulterioara a textului din admin nu schimba comenzile vechi. In
   `Admin -> Comenzi`, fereastra comenzii arata sus, de exemplu:
   `Avertisment confirmat de client: «ATENȚIE – PRODUS REFRIGERAT» (Vivomixx Neo 115) — 20.10.2026 16:44`

@@ -110,7 +110,7 @@ final class AvertismentProduse
                     order_id INT UNSIGNED NOT NULL,
                     title VARCHAR(255) NOT NULL DEFAULT "",
                     body TEXT NOT NULL,
-                    checkbox_label VARCHAR(500) NOT NULL DEFAULT "",
+                    checkbox_label TEXT NOT NULL,
                     checkbox_ticked TINYINT(1) NOT NULL DEFAULT 1,
                     product_ids_json TEXT NOT NULL,
                     product_names_json TEXT NOT NULL,
@@ -143,6 +143,12 @@ final class AvertismentProduse
             $text = rtrim(mb_substr($text, 0, $maxim));
         }
         return $text;
+    }
+
+    /** Ca curata(), pe un singur rând (titlul și eticheta bifei). */
+    public static function curataRand(string $text, int $maxim): string
+    {
+        return self::curata((string) preg_replace('/[ \t]*[\r\n]+[ \t]*/', ' ', $text), $maxim);
     }
 
     /**
@@ -245,9 +251,9 @@ final class AvertismentProduse
         if ($productId <= 0) {
             return false;
         }
-        $titlu = self::curata($titlu, self::MAX_TITLU);
+        $titlu = self::curataRand($titlu, self::MAX_TITLU);
         $text = self::curata($text, self::MAX_TEXT);
-        $eticheta = self::curata($eticheta, self::MAX_ETICHETA);
+        $eticheta = self::curataRand($eticheta, self::MAX_ETICHETA);
         self::ensureSchema($db);
         try {
             if ($titlu === '' && $text === '' && $eticheta === '') {
@@ -345,17 +351,25 @@ final class AvertismentProduse
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Bifele de cerut pentru liniile coșului, în ordinea coșului. O bifă pe
-     * etichetă; sub ea, avertismentele (distincte după titlu + text), fiecare
-     * cu produsele lui. Ofertele BBD ale aceluiași produs contează o dată.
+     * Ce cere coșul la finalizarea comenzii, în ordinea coșului:
+     *  - `avertismente`: casetele, câte una pe avertisment distinct (titlu +
+     *    text), fiecare cu toate produsele lui și etichetele bifelor lor;
+     *  - `bife`: câte o bifă pe etichetă distinctă; `dupa` = indexul ultimei
+     *    casete pe care o confirmă (bifa se arată imediat sub ea).
+     * Ofertele BBD ale aceluiași produs contează o dată. Coș fără avertismente
+     * active = [].
      *
-     * `cheie` identifică bifa în formular și cuprinde eticheta ȘI textele de sub
-     * ea: dacă între afișare și trimitere se schimbă ceva (alt produs cu alt
-     * text adăugat din alt tab, text modificat din admin), bifa veche nu mai
-     * trece și clientul vede din nou caseta.
+     * `cheie` identifică bifa în formular și cuprinde eticheta, textele
+     * casetelor pe care le confirmă și produsele din ele: dacă între afișare
+     * și trimitere se schimbă ceva (alt produs adăugat din alt tab, unul scos,
+     * text modificat din admin), bifa veche nu mai trece și clientul vede din
+     * nou caseta. Așa, pe comandă rămân exact produsele din caseta bifată.
      *
      * @param list<array<string, mixed>> $linii liniile din CheckoutCalculator::buildSummary
-     * @return list<array{cheie: string, eticheta: string, avertismente: list<array{titlu: string, text: string, produse: list<string>, produse_ids: list<int>}>}>
+     * @return array{}|array{
+     *     avertismente: list<array{titlu: string, text: string, produse: list<string>, produse_ids: list<int>, etichete: list<string>}>,
+     *     bife: list<array{cheie: string, eticheta: string, dupa: int}>
+     * }
      */
     public static function pentruCos(?PDO $db, array $linii): array
     {
@@ -370,7 +384,7 @@ final class AvertismentProduse
             return [];
         }
 
-        $grupuri = [];
+        $avertismente = [];
         $vazute = [];
         foreach ($linii as $linie) {
             $id = is_array($linie) ? (int) ($linie['id'] ?? 0) : 0;
@@ -381,64 +395,86 @@ final class AvertismentProduse
             $a = $active[$id];
             $eticheta = trim($a['eticheta']) !== '' ? $a['eticheta'] : self::ETICHETA_IMPLICITA;
             $cheieText = sha1($a['titlu'] . "\0" . $a['text']);
-            $grupuri[$eticheta] ??= ['eticheta' => $eticheta, 'avertismente' => []];
-            $grupuri[$eticheta]['avertismente'][$cheieText] ??= [
+            $avertismente[$cheieText] ??= [
                 'titlu' => $a['titlu'],
                 'text' => $a['text'],
                 'produse' => [],
                 'produse_ids' => [],
+                'etichete' => [],
             ];
             $nume = trim((string) ($linie['name'] ?? ''));
-            $grupuri[$eticheta]['avertismente'][$cheieText]['produse'][] = $nume !== '' ? $nume : ('Produsul #' . $id);
-            $grupuri[$eticheta]['avertismente'][$cheieText]['produse_ids'][] = $id;
+            $avertismente[$cheieText]['produse'][] = $nume !== '' ? $nume : ('Produsul #' . $id);
+            $avertismente[$cheieText]['produse_ids'][] = $id;
+            if (!in_array($eticheta, $avertismente[$cheieText]['etichete'], true)) {
+                $avertismente[$cheieText]['etichete'][] = $eticheta;
+            }
         }
 
-        $rezultat = [];
-        foreach ($grupuri as $grup) {
-            $chei = array_keys($grup['avertismente']);
-            sort($chei);
-            $rezultat[] = [
-                'cheie' => substr(sha1($grup['eticheta'] . "\0" . implode('|', $chei)), 0, 16),
-                'eticheta' => $grup['eticheta'],
-                'avertismente' => array_values($grup['avertismente']),
+        // O bifă pe etichetă: ce casete confirmă și sub care se arată.
+        $bife = [];
+        foreach (array_values($avertismente) as $index => $a) {
+            $idsCaseta = $a['produse_ids'];
+            sort($idsCaseta);
+            $amprenta = sha1($a['titlu'] . "\0" . $a['text']) . ':' . implode(',', $idsCaseta);
+            foreach ($a['etichete'] as $eticheta) {
+                $bife[$eticheta] ??= ['eticheta' => $eticheta, 'casete' => []];
+                $bife[$eticheta]['casete'][] = $amprenta;
+                $bife[$eticheta]['dupa'] = $index;
+            }
+        }
+        $listaBife = [];
+        foreach ($bife as $bifa) {
+            $casete = $bifa['casete'];
+            sort($casete);
+            $listaBife[] = [
+                'cheie' => substr(sha1($bifa['eticheta'] . "\0" . implode('|', $casete)), 0, 16),
+                'eticheta' => $bifa['eticheta'],
+                'dupa' => $bifa['dupa'],
             ];
         }
-        return $rezultat;
+        return ['avertismente' => array_values($avertismente), 'bife' => $listaBife];
+    }
+
+    /** Cheile bifelor cerute (pentru sincronizarea casetei de pe /checkout). */
+    public static function cheiBife(array $cos): array
+    {
+        return array_values(array_column((array) ($cos['bife'] ?? []), 'cheie'));
     }
 
     /**
      * Verificarea de la trimiterea comenzii: fiecare bifă cerută de coșul de
      * ACUM trebuie să vină bifată. Întoarce mesajul de eroare sau null.
      */
-    public static function verificaBifele(array $grupuri, array $post): ?string
+    public static function verificaBifele(array $cos, array $post): ?string
     {
-        if ($grupuri === []) {
+        if ($cos === []) {
             return null;
         }
         $bife = is_array($post[self::CAMP_BIFA] ?? null) ? $post[self::CAMP_BIFA] : [];
-        $ceruteAcum = array_column($grupuri, 'cheie');
-        foreach ($grupuri as $grup) {
-            if ((string) ($bife[$grup['cheie']] ?? '') === '1') {
+        $ceruteAcum = self::cheiBife($cos);
+        foreach ($cos['bife'] as $bifa) {
+            if ((string) ($bife[$bifa['cheie']] ?? '') === '1') {
                 continue;
             }
             if (array_diff(array_map('strval', array_keys($bife)), $ceruteAcum) !== []) {
-                // A bifat o casetă pe care coșul de acum n-o mai are.
+                // A bifat o casetă pe care coșul de acum n-o mai are (sau o are altfel).
                 return 'Avertismentul pentru produsele din coș s-a schimbat între timp. '
-                    . 'Citește-l din nou, deasupra butonului de plasare, și bifează „' . $grup['eticheta'] . '”.';
+                    . 'Citește-l din nou, deasupra butonului de plasare, și bifează „' . $bifa['eticheta'] . '”.';
             }
             return 'Pentru a plasa comanda, citește avertismentul de deasupra butonului de plasare '
-                . 'și bifează „' . $grup['eticheta'] . '”.';
+                . 'și bifează „' . $bifa['eticheta'] . '”.';
         }
         return null;
     }
 
     /**
-     * Ce a confirmat clientul, pe comandă: câte un rând pe avertisment. Se
-     * cheamă în tranzacția comenzii (tabelul e creat înainte, cu ensureSchema).
+     * Ce a confirmat clientul, pe comandă: câte un rând pe avertisment (casetă),
+     * cu toate produsele lui și etichetele bifate (câte una pe rând). Se cheamă
+     * în tranzacția comenzii (tabelul e creat înainte, cu ensureSchema).
      */
-    public static function salveazaConfirmari(PDO $db, int $orderId, array $grupuri, ?DateTimeImmutable $moment = null): void
+    public static function salveazaConfirmari(PDO $db, int $orderId, array $cos, ?DateTimeImmutable $moment = null): void
     {
-        if ($orderId <= 0 || $grupuri === []) {
+        if ($orderId <= 0 || $cos === []) {
             return;
         }
         $momentul = ($moment ?? self::acum())->setTimezone(new DateTimeZone(self::FUS_ORAR))->format('Y-m-d H:i:s');
@@ -447,18 +483,16 @@ final class AvertismentProduse
                 (order_id, title, body, checkbox_label, checkbox_ticked, product_ids_json, product_names_json, confirmed_at)
              VALUES (?, ?, ?, ?, 1, ?, ?, ?)'
         );
-        foreach ($grupuri as $grup) {
-            foreach ($grup['avertismente'] as $a) {
-                $stmt->execute([
-                    $orderId,
-                    $a['titlu'],
-                    $a['text'],
-                    $grup['eticheta'],
-                    json_encode(array_values($a['produse_ids'])),
-                    json_encode(array_values($a['produse']), JSON_UNESCAPED_UNICODE),
-                    $momentul,
-                ]);
-            }
+        foreach ($cos['avertismente'] as $a) {
+            $stmt->execute([
+                $orderId,
+                $a['titlu'],
+                $a['text'],
+                implode("\n", $a['etichete']),
+                json_encode(array_values($a['produse_ids'])),
+                json_encode(array_values($a['produse']), JSON_UNESCAPED_UNICODE),
+                $momentul,
+            ]);
         }
     }
 
@@ -466,7 +500,7 @@ final class AvertismentProduse
      * Confirmările salvate pe comenzi, pe id de comandă.
      *
      * @param list<int> $orderIds
-     * @return array<int, list<array{titlu: string, text: string, eticheta: string, bifat: bool, produse: list<string>, confirmat_la: string}>>
+     * @return array<int, list<array{titlu: string, text: string, etichete: list<string>, bifat: bool, produse: list<string>, confirmat_la: string}>>
      */
     public static function confirmariComenzi(?PDO $db, array $orderIds): array
     {
@@ -493,7 +527,11 @@ final class AvertismentProduse
             $rezultat[(int) $rand['order_id']][] = [
                 'titlu' => (string) ($rand['title'] ?? ''),
                 'text' => (string) ($rand['body'] ?? ''),
-                'eticheta' => (string) ($rand['checkbox_label'] ?? ''),
+                // Una sau mai multe etichete, câte una pe rând.
+                'etichete' => array_values(array_filter(
+                    array_map('trim', explode("\n", (string) ($rand['checkbox_label'] ?? ''))),
+                    static fn (string $e): bool => $e !== ''
+                )),
                 'bifat' => (int) ($rand['checkbox_ticked'] ?? 0) === 1,
                 'produse' => is_array($produse) ? array_values(array_map('strval', $produse)) : [],
                 'confirmat_la' => (string) ($rand['confirmed_at'] ?? ''),
@@ -511,9 +549,9 @@ final class AvertismentProduse
 
     /**
      * Pentru fereastra comenzii din admin: rândul scurt („Avertisment confirmat
-     * de client: «…» (produse) — data”) plus textul și eticheta confirmate.
+     * de client: «…» (produse) — data”) plus textul și etichetele bifate.
      *
-     * @return list<array{linie: string, text: string, eticheta: string}>
+     * @return list<array{linie: string, text: string, etichete: list<string>}>
      */
     public static function pentruAdmin(array $confirmari): array
     {
@@ -526,7 +564,7 @@ final class AvertismentProduse
                     . ' — ' . self::dataAfisata($c['confirmat_la'])
                     . ($c['bifat'] ? '' : ' — NEBIFAT'),
                 'text' => $c['text'],
-                'eticheta' => $c['eticheta'],
+                'etichete' => $c['etichete'],
             ];
         }
         return $rezultat;
@@ -534,8 +572,9 @@ final class AvertismentProduse
 
     /**
      * Blocul din emailul de confirmare a comenzii: avertismentele confirmate,
-     * fiecare cu produsele lui, apoi bifa (o dată pe etichetă). Gol dacă
-     * comanda n-are avertismente sau dacă e oprit din .env.
+     * fiecare o dată, cu produsele lui; după ultima casetă a fiecărei bife,
+     * rândul cu ce a bifat clientul (o dată pe etichetă). Gol dacă comanda
+     * n-are avertismente sau dacă e oprit din .env.
      */
     public static function htmlEmail(array $confirmari): string
     {
@@ -543,26 +582,32 @@ final class AvertismentProduse
             return '';
         }
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $peEticheta = [];
-        foreach ($confirmari as $c) {
-            $peEticheta[$c['eticheta']][] = $c;
+        $confirmari = array_values($confirmari);
+        $ultimaCaseta = [];
+        foreach ($confirmari as $index => $c) {
+            foreach ($c['etichete'] as $eticheta) {
+                $ultimaCaseta[$eticheta] = $index;
+            }
         }
         $html = '';
-        foreach ($peEticheta as $eticheta => $lista) {
-            foreach ($lista as $c) {
-                $html .= '<div style="margin:16px 0 8px;padding:14px 16px;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:10px;background:#fef2f2;">';
-                if (trim($c['titlu']) !== '') {
-                    $html .= '<p style="margin:0 0 4px;color:#7f1d1d;font-size:16px;font-weight:700;line-height:1.35;">' . $e($c['titlu']) . '</p>';
-                }
-                if ($c['produse'] !== []) {
-                    $html .= '<p style="margin:0 0 10px;color:#991b1b;font-size:13px;line-height:1.4;">Pentru: ' . $e(implode(', ', $c['produse'])) . '</p>';
-                }
-                $html .= self::paragrafeHtml($c['text'], 'margin:0 0 8px;color:#1f2937;font-size:14px;line-height:1.55;');
-                $html .= '</div>';
+        foreach ($confirmari as $index => $c) {
+            $html .= '<div style="margin:16px 0 8px;padding:14px 16px;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:10px;background:#fef2f2;">';
+            if (trim($c['titlu']) !== '') {
+                $html .= '<p style="margin:0 0 4px;color:#7f1d1d;font-size:16px;font-weight:700;line-height:1.35;">' . $e($c['titlu']) . '</p>';
             }
-            $html .= '<p style="margin:0 0 16px;color:#475569;font-size:13px;line-height:1.5;">Ai confirmat la plasarea comenzii'
-                . ($lista[0]['confirmat_la'] !== '' ? ' (' . $e(self::dataAfisata($lista[0]['confirmat_la'])) . ')' : '')
-                . ': „' . $e((string) $eticheta) . '”.</p>';
+            if ($c['produse'] !== []) {
+                $html .= '<p style="margin:0 0 10px;color:#991b1b;font-size:13px;line-height:1.4;">Pentru: ' . $e(implode(', ', $c['produse'])) . '</p>';
+            }
+            $html .= self::paragrafeHtml($c['text'], 'margin:0 0 8px;color:#1f2937;font-size:14px;line-height:1.55;');
+            $html .= '</div>';
+            foreach ($ultimaCaseta as $eticheta => $ultima) {
+                if ($ultima !== $index) {
+                    continue;
+                }
+                $html .= '<p style="margin:0 0 16px;color:#475569;font-size:13px;line-height:1.5;">Ai confirmat la plasarea comenzii'
+                    . ($c['confirmat_la'] !== '' ? ' (' . $e(self::dataAfisata($c['confirmat_la'])) . ')' : '')
+                    . ': „' . $e((string) $eticheta) . '”.</p>';
+            }
         }
         return $html;
     }
