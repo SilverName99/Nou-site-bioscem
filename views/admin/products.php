@@ -334,6 +334,33 @@ $categoriiExtra = is_array($categoriiExtra ?? null) ? $categoriiExtra : [];
 
                     <section class="panel product-editor-card">
                         <div class="product-editor-card__head">
+                            <h4>Avertisment la coș și la finalizarea comenzii</h4>
+                            <p>De ex. pentru produsele refrigerate. Activ doar dacă „Text avertisment” e completat.</p>
+                        </div>
+                        <div class="product-editor-grid">
+                            <div class="field full">
+                                <label for="p_avertisment_titlu">Titlu avertisment</label>
+                                <input type="text" name="avertisment_titlu" id="p_avertisment_titlu" maxlength="<?= \App\Support\AvertismentProduse::MAX_TITLU ?>" placeholder="ex. ATENȚIE – PRODUS REFRIGERAT">
+                            </div>
+                            <div class="field full">
+                                <label for="p_avertisment_text">Text avertisment</label>
+                                <textarea name="avertisment_text" id="p_avertisment_text" rows="6" maxlength="<?= \App\Support\AvertismentProduse::MAX_TEXT ?>" placeholder="Textul pe care îl vede clientul. Un rând gol = paragraf nou."></textarea>
+                            </div>
+                            <div class="field full">
+                                <label for="p_avertisment_eticheta">Text bifă la finalizarea comenzii</label>
+                                <input type="text" name="avertisment_eticheta" id="p_avertisment_eticheta" maxlength="<?= \App\Support\AvertismentProduse::MAX_ETICHETA ?>" placeholder="ex. Am citit și am înțeles condițiile pentru produsul refrigerat">
+                                <small class="muted">
+                                    Text simplu, fără HTML (un rând gol în text = paragraf nou). Cu text completat: la adăugarea în coș
+                                    apare o fereastră cu titlul și textul, iar la finalizarea comenzii o casetă deasupra butonului și
+                                    bifa obligatorie cu acest text (gol = „<?= htmlspecialchars(\App\Support\AvertismentProduse::ETICHETA_IMPLICITA, ENT_QUOTES) ?>”).
+                                    Confirmarea rămâne pe comandă și apare în emailul de confirmare.
+                                </small>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="panel product-editor-card">
+                        <div class="product-editor-card__head">
                             <h4>Conținut produs</h4>
                             <p>Câmpuri suplimentare pentru template-ul produsului.</p>
                         </div>
@@ -1256,6 +1283,14 @@ $categoriiExtra = is_array($categoriiExtra ?? null) ? $categoriiExtra : [];
             if (postCartNoteTextInput instanceof HTMLTextAreaElement) {
                 postCartNoteTextInput.value = String(product.post_cart_note_text || '');
             }
+            // Avertismentul (fereastra din coș + bifa de la comandă).
+            [['p_avertisment_titlu', 'avertisment_titlu'], ['p_avertisment_text', 'avertisment_text'], ['p_avertisment_eticheta', 'avertisment_eticheta']]
+                .forEach(([idCamp, cheie]) => {
+                    const camp = document.getElementById(idCamp);
+                    if (camp instanceof HTMLInputElement || camp instanceof HTMLTextAreaElement) {
+                        camp.value = String(product[cheie] || '');
+                    }
+                });
             bbdStockUsage = (product.bbd_stock_usage && typeof product.bbd_stock_usage === 'object')
                 ? product.bbd_stock_usage
                 : {};

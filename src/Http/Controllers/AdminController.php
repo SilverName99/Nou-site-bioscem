@@ -1455,8 +1455,17 @@ final class AdminController
                 $db,
                 array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), array_filter($products, 'is_array'))
             );
+            // Avertismentul produsului (fereastra din coș + bifa de la comandă).
+            $avertismenteMap = \App\Support\AvertismentProduse::pentruProduse(
+                $db,
+                array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), array_filter($products, 'is_array'))
+            );
             foreach ($products as &$product) {
                 $product['extra_category_ids'] = $extraCategoryMap[(int) ($product['id'] ?? 0)] ?? [];
+                $avertismentProdus = $avertismenteMap[(int) ($product['id'] ?? 0)] ?? null;
+                $product['avertisment_titlu'] = (string) ($avertismentProdus['titlu'] ?? '');
+                $product['avertisment_text'] = (string) ($avertismentProdus['text'] ?? '');
+                $product['avertisment_eticheta'] = (string) ($avertismentProdus['eticheta'] ?? '');
             }
             unset($product);
 
@@ -4403,10 +4412,35 @@ final class AdminController
                 'image_url' => $seoImageUrl,
             ]);
         }
+        $avertismentSalvat = $this->saveProductWarningFromPost($db, $productId);
         $this->refreshCacheAfterPublicContentChange($db);
 
+        if (!$avertismentSalvat) {
+            Flash::set('error', 'Produsul a fost adăugat, dar avertismentul nu s-a putut salva. Încearcă din nou din editarea produsului.');
+            header('Location: /admin/products');
+            return;
+        }
         Flash::set('success', 'Produsul a fost adăugat.');
         header('Location: /admin/products');
+    }
+
+    /**
+     * Cele trei câmpuri ale avertismentului (titlu, text, eticheta bifei), doar
+     * dacă formularul le-a trimis: alt formular care salvează produsul nu le
+     * șterge din greșeală. Text simplu; se escapează la fiecare afișare.
+     */
+    private function saveProductWarningFromPost(PDO $db, int $productId): bool
+    {
+        if ($productId <= 0 || !array_key_exists('avertisment_text', $_POST)) {
+            return true;
+        }
+        return \App\Support\AvertismentProduse::salveaza(
+            $db,
+            $productId,
+            (string) ($_POST['avertisment_titlu'] ?? ''),
+            (string) $_POST['avertisment_text'],
+            (string) ($_POST['avertisment_eticheta'] ?? '')
+        );
     }
 
     public function updateProduct(array $params): void
@@ -4576,8 +4610,14 @@ final class AdminController
             'canonical_url' => $seoCanonicalUrl,
             'image_url' => $seoImageUrl,
         ]);
+        $avertismentSalvat = $this->saveProductWarningFromPost($db, $id);
         $this->refreshCacheAfterPublicContentChange($db);
 
+        if (!$avertismentSalvat) {
+            Flash::set('error', 'Produsul a fost actualizat, dar avertismentul nu s-a putut salva. Încearcă din nou.');
+            header('Location: /admin/products');
+            return;
+        }
         Flash::set('success', 'Produsul a fost actualizat.');
         header('Location: /admin/products');
     }
