@@ -44,23 +44,9 @@
   margin-top:0;
 }
 
-/* Textul importat foloseste paragrafe integral ingrosate pe post de
-   titluri („Utilizarea site-ului"); le facem sa arate ca atare. */
-.custom-page-content p > strong:only-child{
-  display:block;
-  margin:34px 0 6px;
-  padding-bottom:8px;
-  border-bottom:1px solid var(--bs-line);
-  font-family:Georgia, "Times New Roman", serif;
-  font-size:20px;
-  font-weight:500;
-  line-height:1.35;
-  color:var(--bs-teal-dark);
-}
-
-.custom-page-content p:first-child > strong:only-child{
-  margin-top:0;
-}
+/* Titlurile se scriu cu <h2>–<h4>. Un cuvant ingrosat in paragraf
+   (<strong>30 lei</strong>) ramane in text: CSS nu poate deosebi un
+   paragraf integral ingrosat de unul cu text in jurul ingrosarii. */
 
 /* ---------------- TEXT ---------------- */
 
@@ -170,9 +156,5 @@
 
   .custom-page-content h1{ font-size:25px; }
   .custom-page-content h2{ font-size:21px; }
-
-  .custom-page-content p > strong:only-child{
-    font-size:18px;
-  }
 
 }
