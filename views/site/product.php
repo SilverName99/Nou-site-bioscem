@@ -1425,6 +1425,26 @@ if ($galleryUrls === []) {
         button.disabled = button.dataset.templateCartWasDisabled === '1';
     };
 
+    // Produsul cu avertisment (ex. refrigerat): fereastra vine în răspunsul
+    // adăugării; scriptul ei se încarcă doar când e nevoie.
+    const arataAvertismentProdus = (avertisment, revino) => {
+        if (!avertisment || typeof avertisment !== 'object') {
+            return;
+        }
+        if (window.bvAvertismentProdus) {
+            window.bvAvertismentProdus.arata(avertisment, revino);
+            return;
+        }
+        const src = String(avertisment.script || '');
+        if (!src.startsWith('/assets/')) {
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => window.bvAvertismentProdus?.arata(avertisment, revino);
+        document.head.appendChild(script);
+    };
+
     document.querySelectorAll('[data-product-cart-button="1"]').forEach((button) => {
         if (!(button instanceof HTMLButtonElement)) {
             return;
@@ -1483,6 +1503,7 @@ if ($galleryUrls === []) {
                 });
 
                 addedToCart = true;
+                arataAvertismentProdus(payload?.avertisment, button);
                 // Ask floating cart to refresh summary and open panel.
                 window.dispatchEvent(new CustomEvent('floating-cart:added', {
                     detail: {

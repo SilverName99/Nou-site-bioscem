@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Support\Auth;
+use App\Support\AvertismentProduse;
 use App\Support\BtIpayGateway;
 use App\Support\BtIpayPayments;
 use App\Support\Cart;
@@ -1218,6 +1219,8 @@ final class SiteController
         $cartState = $this->buildCartRenderState($db);
         $summary = $cartState['summary'];
         $quantityUi = $cartState['quantity_ui'];
+        // Fereastra avertismentului pentru produsul abia adăugat pe drumul clasic.
+        $avertismenteDeAratat = AvertismentProduse::preiaDeAratat($db);
 
         $cartPage = $this->findPublishedPageBySlug('cos');
         if (is_array($cartPage)) {
@@ -1227,6 +1230,7 @@ final class SiteController
                 'page' => $cartPage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
                 'cartFormHtml' => $this->renderCartSection($summary, $quantityUi, (bool) ($cartState['is_logged_in'] ?? false)),
+                'avertismenteDeAratat' => $avertismenteDeAratat,
             ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $cartPage)));
             return;
         }
@@ -1235,6 +1239,7 @@ final class SiteController
             'title' => 'Coș',
             'summary' => $summary,
             'quantityUi' => $quantityUi,
+            'avertismenteDeAratat' => $avertismenteDeAratat,
         ]);
     }
 
@@ -2413,6 +2418,12 @@ final class SiteController
         $db = $this->db();
         $response = $this->buildFloatingCartPayload($db);
         $response['message'] = 'Produs adăugat în coș.';
+        // Produsul cu avertisment (ex. refrigerat): fereastra vine în acest
+        // răspuns (POST, necacheabil), nu în HTML-ul paginii.
+        $avertisment = AvertismentProduse::pentruFereastra($db, $productId);
+        if ($avertisment !== null) {
+            $response['avertisment'] = $avertisment;
+        }
         $this->jsonResponse($response);
     }
 
@@ -2564,6 +2575,11 @@ final class SiteController
 
         Cart::add($productId, $quantity, (string) ($selectedBbd['key'] ?? ''));
         Flash::set('success', 'Produs adăugat în coș.');
+        // Drumul fără JS-ul coșului: fereastra avertismentului apare pe /cos,
+        // pagină care nu intră niciodată în cache.
+        if (AvertismentProduse::pentruFereastra($this->db(), $productId) !== null) {
+            AvertismentProduse::tineMinteDeAratat($productId);
+        }
         header('Location: /cos');
     }
 

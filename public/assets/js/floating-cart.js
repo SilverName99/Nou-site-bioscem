@@ -365,6 +365,26 @@
         }, 1700);
     };
 
+    // Produsul cu avertisment (ex. refrigerat): fereastra vine în răspunsul
+    // adăugării; scriptul ei se încarcă doar când e nevoie.
+    const arataAvertisment = (avertisment, revino) => {
+        if (!avertisment || typeof avertisment !== "object") {
+            return;
+        }
+        if (window.bvAvertismentProdus) {
+            window.bvAvertismentProdus.arata(avertisment, revino);
+            return;
+        }
+        const src = String(avertisment.script || "");
+        if (!src.startsWith("/assets/")) {
+            return;
+        }
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = () => window.bvAvertismentProdus?.arata(avertisment, revino);
+        document.head.appendChild(script);
+    };
+
     const emitCartCount = (count) => {
         const safeCount = Math.max(0, Number.parseInt(String(count || 0), 10) || 0);
         window.dispatchEvent(new CustomEvent("cart:count-updated", {
@@ -732,6 +752,7 @@
                 bbd_key: bbdKey,
             });
             render();
+            arataAvertisment(state.summary.avertisment, submitter);
             if (config.openOnAdd) {
                 setOpen(true);
                 await waitForPanelOpenTransition();

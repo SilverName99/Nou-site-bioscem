@@ -1161,7 +1161,15 @@ foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
             })();
         </script>
     <?php endif; ?>
-    <script src="/assets/js/qty-stoc.js?v=<?= $qtyStocJsVersion ?><?= $assetVersionQuery ?>" defer></script>
+    <?php
+    // Avertismentul produsului abia adăugat pe drumul clasic (POST → /cos).
+    // Doar pe /cos, care nu intră în cache; în rest fereastra vine din JSON.
+    // „endif” lipit de <script>: fără avertisment, pagina rămâne octet cu octet aceeași.
+    $avertismenteDeAratat = is_array($avertismenteDeAratat ?? null) ? $avertismenteDeAratat : [];
+    if ($avertismenteDeAratat !== []): ?>
+        <script type="application/json" id="avertisment-produs-date"><?= json_encode($avertismenteDeAratat, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+        <script src="<?= htmlspecialchars(\App\Support\AvertismentProduse::urlScript(), ENT_QUOTES) ?>" defer></script>
+    <?php endif; ?><script src="/assets/js/qty-stoc.js?v=<?= $qtyStocJsVersion ?><?= $assetVersionQuery ?>" defer></script>
     <?php if ($floatingCartEnabled): ?>
         <script>
             window.floatingCartConfig = <?= json_encode($floatingCartConfig, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
