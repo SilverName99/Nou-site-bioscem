@@ -17,10 +17,11 @@ $designMenuCss = (string) ($designSettings['design_menu_css'] ?? '');
 $designMenuJs = (string) ($designSettings['design_menu_js'] ?? '');
 // Antetul, meniul și subsolul sunt HTML salvat în baza de date. La afișare,
 // linkurile de categorie /magazin?category=… devin /categorie/{slug} (adresele
-// din Google și din sitemap). Baza de date rămâne neatinsă. Paginile de coș, comandă, plată și
+// din Google și din sitemap), iar logo-ul din antet vine ca WebP mic, cu PNG-ul
+// ca rezervă. Baza de date rămâne neatinsă. Paginile de coș, comandă, plată și
 // cont rămân exact ca înainte (vezi LinkuriCategorii::paginaCurentaExclusa).
 if (!\App\Support\LinkuriCategorii::paginaCurentaExclusa()) {
-    $designHeader = \App\Support\LinkuriCategorii::rescrie($designHeader, $db instanceof \PDO ? $db : null);
+    $designHeader = \App\Support\LogoAntet::webp(\App\Support\LinkuriCategorii::rescrie($designHeader, $db instanceof \PDO ? $db : null));
     $designMenu = \App\Support\LinkuriCategorii::rescrie($designMenu, $db instanceof \PDO ? $db : null);
     $designFooter = \App\Support\LinkuriCategorii::rescrie($designFooter, $db instanceof \PDO ? $db : null);
 }
