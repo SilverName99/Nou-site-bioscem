@@ -1369,7 +1369,19 @@ window.orderProducts = <?= json_encode(array_map(static function (array $p): arr
                 </div>`;
             }
 
-            content.innerHTML = `${order.client_agresiv === true ? '<p class="client-agresiv-note"><span class="client-agresiv-badge">Client agresiv</span> În ERP, clientul acestei comenzi are semnul „Client agresiv” pe fișă.</p>' : ''}
+            // Avertismentele confirmate la plasare (ex. produs refrigerat): ce a
+            // văzut și a bifat clientul, exact cum era textul atunci.
+            const avertismenteConfirmate = Array.isArray(order.avertismente_confirmate) ? order.avertismente_confirmate : [];
+            const avertismenteHtml = avertismenteConfirmate.map((a) => `<div data-avertisment-confirmat style="margin:0 0 10px;padding:10px 12px;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:8px;background:#fef2f2;color:#7f1d1d;font-size:13px;">
+                    <strong>${esc(a.linie || '')}</strong>
+                    <details style="margin-top:6px;">
+                        <summary style="cursor:pointer;color:#991b1b;">Textul confirmat</summary>
+                        <div style="margin-top:6px;white-space:pre-line;color:#1f2937;overflow-wrap:anywhere;">${esc(a.text || '')}</div>
+                        <p style="margin:8px 0 0;color:#475569;">Bifa: „${esc(a.eticheta || '')}”</p>
+                    </details>
+                </div>`).join('');
+
+            content.innerHTML = `${order.client_agresiv === true ? '<p class="client-agresiv-note"><span class="client-agresiv-badge">Client agresiv</span> În ERP, clientul acestei comenzi are semnul „Client agresiv” pe fișă.</p>' : ''}${avertismenteHtml}
                 <div class="order-modal-grid">
                     <div><small>Client</small><p id="order-client-name-${order.id}">${esc(order.display_name || ((order.billing_first_name||'') + ' ' + (order.billing_last_name||'')).trim())}</p></div>
                     <div><small>Email</small><p id="order-client-email-${order.id}">${esc(order.billing_email)}</p></div>

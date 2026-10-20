@@ -1394,6 +1394,21 @@ final class SiteController
             }
         }
 
+        // Produsele cu avertisment (ex. refrigerate) cer bifa de sub casetă,
+        // verificată pe coșul de ACUM: între afișare și trimitere coșul se
+        // putea schimba din alt tab. Fără ea, comanda nu se creează.
+        $avertismente = AvertismentProduse::pentruCos($db, $summary['lines']);
+        $eroareAvertisment = AvertismentProduse::verificaBifele($avertismente, $_POST);
+        if ($eroareAvertisment !== null) {
+            Flash::set('error', $eroareAvertisment);
+            header('Location: /checkout');
+            return;
+        }
+        if ($avertismente !== []) {
+            // Înaintea tranzacției: un CREATE TABLE ar face commit implicit.
+            AvertismentProduse::ensureSchema($db);
+        }
+
         $orderNumber = $this->generateOrderNumber($db, $settings);
         // Cardul și OP-ul așteaptă banii înainte de procesare; doar rambursul
         // intră direct în lucru.
@@ -1551,6 +1566,9 @@ final class SiteController
                     'line_total' => $line['line_total'],
                 ]);
             }
+            // Ce a confirmat clientul rămâne pe comandă, chiar dacă textul
+            // produsului se schimbă mai târziu.
+            AvertismentProduse::salveazaConfirmari($db, $orderId, $avertismente, $now);
             if ($customerUserId > 0 && $pointsApplied > 0) {
                 $consumed = LoyaltyService::consumePointsForOrder(
                     $db,
@@ -5334,6 +5352,8 @@ HTML;
             'fanboxGratuit' => $this->fanboxGratuit($summary),
             'previewMode' => false,
             'checkoutInstanceId' => 'checkout-live',
+            // Caseta + bifa obligatorie pentru produsele cu avertisment; gol = nimic în pagină.
+            'avertismente' => AvertismentProduse::pentruCos($this->db(), (array) ($summary['lines'] ?? [])),
         ]);
     }
 

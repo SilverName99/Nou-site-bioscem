@@ -5126,6 +5126,19 @@ final class AdminController
             }
             unset($order);
 
+            // Avertismentele confirmate de client la plasare (ex. produs
+            // refrigerat). Doar comenzile cu confirmări primesc cheia.
+            $confirmariAvertisment = \App\Support\AvertismentProduse::confirmariComenzi($db, $orderIds);
+            if ($confirmariAvertisment !== []) {
+                foreach ($orders as &$order) {
+                    $confirmariComanda = $confirmariAvertisment[(int) ($order['id'] ?? 0)] ?? [];
+                    if ($confirmariComanda !== []) {
+                        $order['avertismente_confirmate'] = \App\Support\AvertismentProduse::pentruAdmin($confirmariComanda);
+                    }
+                }
+                unset($order);
+            }
+
             // Plățile Banca Transilvania: stare, sume și butoanele care au sens.
             // Primesc cheia `bt` comenzile plătite prin BT, iar `bt_linkuri`
             // cele cu o diferență plătită (sau începută) prin BT — oricare ar fi
