@@ -142,8 +142,8 @@ return [
         ['/produs/vitamina-c-actinovo-250',                  '/produs/actinovo-vitamina-c-lipozomala',           301, 'același produs (ActiNovo 250 ml), slug schimbat'],
         ['/produs/vivomixx-neo',                             '/produs/vivomixx-neo-460',                         301, 'același produs, slug schimbat (rând „da” în lista din plan)'],
         // Deciziile proprietarului din 19 oct 2026 („da la toate”): produse și etichete șterse -> înlocuitorul
-        // recomandat, verificat live în aceeași zi. Fără regulă încă: /author/adrian-vornicu (+ /page/2) și
-        // /retur-garantie, până există paginile Despre (C10) și Retur (C2). Clarkia rămâne 404 (fără înlocuitor).
+        // recomandat, verificat live în aceeași zi. /author/adrian-vornicu (+ /page/2) rămâne 404: nu va exista
+        // o pagină „Despre” (decizia din 20 oct). Clarkia rămâne 404 (fără înlocuitor).
         ['/produs/glutathione-lipozomal-300mg-liporom',       '/produs/glutathione-liposomal-quicksilver',        301, 'Glutathione Liporom (șters) -> același glutation lipozomal, de la Quicksilver'],
         ['/produs/casti-antiradiatii-aircall-sp21',           '/produs/casti-antiradiatii-aircall-sp21N',         301, 'modelul vechi SP21 -> varianta neagră SP21N (dacă slug-ul trece la litere mici, D5, se schimbă și ținta de aici)'],
         ['/produs/ascolip-vitamina-c-lipozomala-500mg-cirese', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
@@ -158,6 +158,9 @@ return [
         ['/eticheta/ascolip',                                 '/produs/vitamina-c-lipozomala-quicksilver',        301, 'eticheta Ascolip (marca nu mai există) -> vitamina C lipozomală Quicksilver'],
         ['/eticheta/oferte',                                  '/categorie/promotii',                              301, 'eticheta Oferte -> categoria PROMOTII (/categorie/promotii)'],
         ['/eticheta/sistem-respirator',                       '/categorie/respiro',                               301, 'eticheta sistem respirator -> categoria Respiro'],
+        // Decizia proprietarului din 20 oct 2026: returul e descris în termeni, deci linkul „Retur și Garanție”
+        // (azi 404, din pagina de termeni și din Google) duce acolo. Verificat live: /retur-garantie 404, /termeni-conditii 200.
+        ['/retur-garantie',                                   '/termeni-conditii',                                301, 'pagina Retur și Garanție nu există; dreptul de retragere de 14 zile e în termeni și condiții'],
         // Resturi tehnice WordPress: 410
         ['/*',                                               null,                                               410, 'rest tehnic WordPress'],
         ['/tag/icons',                                       null,                                               410, 'rest tehnic WordPress'],
