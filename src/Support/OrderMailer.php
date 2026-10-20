@@ -407,10 +407,33 @@ final class OrderMailer
             $subject = 'Notificare comanda';
         }
 
-        $bodyHtml = self::applyTemplate($bodyTemplate, $vars);
+        // Avertismentele confirmate (ex. produs refrigerat) stau unde le pune
+        // șablonul ({{avertismente_produse}}); altfel imediat sub produse, iar
+        // dacă șablonul n-are nici produsele, la final. Fără avertismente,
+        // șablonul rămâne exact cum e.
+        $blocAvertismente = trim((string) ($context['avertismente_produse_html'] ?? ''));
+        $avertismenteLaFinal = '';
+        $sablonCorp = $bodyTemplate;
+        if ($blocAvertismente !== '') {
+            $vars['{{avertismente_produse}}'] = $blocAvertismente;
+            if (!str_contains($sablonCorp, '{{avertismente_produse}}')) {
+                $avertismenteLaFinal = $blocAvertismente;
+                foreach (['{{order_items_html}}', '{{order_summary_rows}}'] as $ancora) {
+                    $pozitie = strpos($sablonCorp, $ancora);
+                    if ($pozitie !== false) {
+                        $sablonCorp = substr_replace($sablonCorp, $ancora . '{{avertismente_produse}}', $pozitie, strlen($ancora));
+                        $avertismenteLaFinal = '';
+                        break;
+                    }
+                }
+            }
+        }
+
+        $bodyHtml = self::applyTemplate($sablonCorp, $vars);
         if (!str_contains($bodyHtml, '<')) {
             $bodyHtml = nl2br(htmlspecialchars($bodyHtml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
         }
+        $bodyHtml .= $avertismenteLaFinal;
 
         // Datele de plată prin OP trebuie să ajungă la client chiar dacă
         // șablonul de email n-a fost editat să conțină {{payment_instructions}}:
@@ -1156,6 +1179,8 @@ HTML;
                 ENT_QUOTES | ENT_SUBSTITUTE,
                 'UTF-8',
             )),
+            // Avertismentele confirmate la plasare (vezi sendTemplate); gol la restul comenzilor.
+            '{{avertismente_produse}}' => '',
         ];
     }
 

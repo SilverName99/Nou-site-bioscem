@@ -264,6 +264,17 @@ final class EmailAutomation
                 . $instructiuni;
         }
 
+        // Produsele cu avertisment (ex. refrigerate): confirmarea comenzii
+        // repetă ce a confirmat clientul la plasare. Fără ele, nimic în plus.
+        if (in_array($templateType, ['new_order', 'new_order_op'], true)) {
+            $blocAvertismente = AvertismentProduse::htmlEmail(
+                AvertismentProduse::confirmariComenzi($db, [$orderId])[$orderId] ?? []
+            );
+            if ($blocAvertismente !== '') {
+                $context['avertismente_produse_html'] = $blocAvertismente;
+            }
+        }
+
         $sentCount = 0;
         $sentSubject = '';
         $sentRecipient = '';
