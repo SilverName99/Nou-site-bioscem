@@ -7541,10 +7541,8 @@ CSS;
             if ($baza === '') {
                 return [];
             }
-            $nume = trim((string) ($settings['store_name'] ?? ''));
-            if ($nume === '') {
-                $nume = 'Bioscem Shop';
-            }
+            // Același nume ca în titluri și în og:site_name (Admin → Setări magazin → SEO Google).
+            $nume = \App\Support\SeoMeta::numeMagazin($settings);
             $htmlDesign = (string) ($settings['design_header_html'] ?? '') . "\n"
                 . (string) ($settings['design_menu_html'] ?? '') . "\n"
                 . (string) ($settings['design_footer_html'] ?? '');

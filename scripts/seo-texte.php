@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 /**
  * Textele Google scrise pentru livrarea 2 SEO: titlul și descrierea pentru
- * prima pagină, cele 3 categorii și cele 20 de produse din planul SEO (§3.1).
+ * prima pagină, cele 3 categorii și cele 20 de produse din planul SEO (§3.1),
+ * plus numele magazinului din titluri („Bioscem”, ca titlul primei pagini).
  * Textele sunt în scripts/seo-texte.json (conținut public al site-ului).
  *
  * Unde ajung (aceleași câmpuri pe care le scrie adminul):
  *  - prima pagină: Setări magazin → SEO Google (store_seo_home_title /
  *    store_seo_home_description), care au întâietate pe prima pagină;
+ *  - numele magazinului: Setări magazin → SEO Google → Nume magazin
+ *    (store_name). Apare la finalul titlurilor automate („Produs | Bioscem”), în
+ *    og:site_name și în datele structurate (WebSite, Organization), ca Google să
+ *    vadă peste tot același nume ca în titlul primei pagini;
  *  - categoriile: câmpurile SEO ale categoriei (seo_pages, tip „category”);
  *  - produsele: câmpurile SEO ale produsului (seo_pages, tip „product”).
  * Nu se schimbă nimic altceva: numele produselor, codurile, adresele, prețurile
@@ -25,7 +30,9 @@ declare(strict_types=1);
  * Siguranță:
  *  - refuză să scrie ceva dacă baza nu e cea așteptată: lipsesc tabelele, o
  *    categorie sau un produs din listă, ori un titlu n-ar apărea în Google exact
- *    cum e scris (regula titlurilor din SeoMeta l-ar reface);
+ *    cum e scris (regula titlurilor din SeoMeta l-ar reface) — verificat cu
+ *    numele magazinului de acum, cu cel nou și cu cel implicit, ca o schimbare
+ *    ulterioară a numelui din admin să nu refacă pe ascuns un titlu scris;
  *  - se poate rula de oricâte ori: a doua oară nu mai are ce schimba și nu mai
  *    face o copie nouă;
  *  - restaurarea nu calcă peste ce s-a modificat de mână între timp (doar cu
@@ -48,6 +55,9 @@ const PREFIX_COPIE = 'seo-texte-copie-';
 
 /** Câte texte trebuie să fie în fișier (prima pagină, 3 categorii, 20 de produse). */
 const ASTEPTAT = ['home' => 1, 'categorie' => 3, 'produs' => 20];
+
+/** Numele magazinului din titluri, același ca titlul primei pagini (decizia din 20 oct). */
+const NUME_MAGAZIN = 'Bioscem';
 
 function iesire(string $mesaj, int $cod): never
 {
@@ -143,6 +153,17 @@ if ($probleme !== []) {
 /** Valoarea de acum a unei intrări: ['exista' => bool, 'titlu' => ?string, 'descriere' => ?string, 'rand' => array|null]. */
 function valoareaDeAcum(PDO $db, array $cheie): array
 {
+    if (($cheie['tip'] ?? '') === 'setare') {
+        // O singură setare (numele magazinului): valoarea ei e „titlul”.
+        $stmt = $db->prepare('SELECT `value` FROM settings WHERE `key` = ?');
+        $stmt->execute([$cheie['cheie']]);
+        $valoare = $stmt->fetchColumn();
+        return [
+            'exista' => $valoare !== false,
+            'titlu' => $valoare === false ? null : (string) $valoare,
+            'descriere' => null,
+        ];
+    }
     if (($cheie['tip'] ?? '') === 'setari') {
         $stmt = $db->prepare('SELECT `key`, `value` FROM settings WHERE `key` IN (?, ?)');
         $stmt->execute([$cheie['titlu'], $cheie['descriere']]);
@@ -210,11 +231,15 @@ if ($mod === 'restaureaza') {
             continue;
         }
         if ([(string) $acum['titlu'], (string) $acum['descriere']] !== $scris && !$forteaza) {
-            scrie("  {$eticheta}: SĂRIT — a fost modificat după aplicare (acum titlu " . arata($acum['titlu']) . '); folosiți --forteaza ca să-l suprascrieți');
+            scrie("  {$eticheta}: SĂRIT — a fost modificat după aplicare (acum " . arata($acum['titlu']) . '); folosiți --forteaza ca să-l suprascrieți');
             $sarite++;
             continue;
         }
         $operatii[] = [$intrare, $acum];
+        if (($cheie['tip'] ?? '') === 'setare') {
+            scrie("  {$eticheta}: " . arata($acum['titlu']) . ' → ' . arata($vechi[0]));
+            continue;
+        }
         scrie("  {$eticheta}: titlu " . arata($acum['titlu']) . ' → ' . arata($vechi[0]) . '; descriere ' . arata($acum['descriere']) . ' → ' . arata($vechi[1]));
     }
     if ($operatii === []) {
@@ -224,6 +249,16 @@ if ($mod === 'restaureaza') {
     try {
         foreach ($operatii as [$intrare, $acum]) {
             $cheie = (array) $intrare['cheie'];
+            if (($cheie['tip'] ?? '') === 'setare') {
+                $valoare = $intrare['titlu_vechi'] ?? null;
+                if ($valoare === null) {
+                    $db->prepare('DELETE FROM settings WHERE `key` = ?')->execute([$cheie['cheie']]);
+                } else {
+                    $db->prepare('INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)')
+                        ->execute([$cheie['cheie'], (string) $valoare]);
+                }
+                continue;
+            }
             if (($cheie['tip'] ?? '') === 'setari') {
                 foreach (['titlu' => 'titlu_vechi', 'descriere' => 'descriere_veche'] as $camp => $campVechi) {
                     $valoare = $intrare[$campVechi] ?? null;
@@ -296,9 +331,24 @@ if ($numar !== ASTEPTAT) {
 // ─────────────────────────────────────────────────────────────
 
 $setari = Settings::all($db);
-$magazin = SeoMeta::numeMagazin($setari);
+$magazinAcum = SeoMeta::numeMagazin($setari);
+// Un titlu scris trebuie să rămână exact cum e cu oricare dintre aceste nume
+// (acum, după aplicare, sau dacă cineva golește câmpul din admin).
+$numeVerificate = array_values(array_unique([$magazinAcum, NUME_MAGAZIN, SeoMeta::NUME_MAGAZIN_IMPLICIT]));
 $intrari = [];
 $probleme = [];
+
+$cheieMagazin = ['tip' => 'setare', 'cheie' => 'store_name'];
+$acumMagazin = valoareaDeAcum($db, $cheieMagazin);
+$intrari[] = [
+    'eticheta' => 'numele magazinului din titluri',
+    'cheie' => $cheieMagazin,
+    'acum' => $acumMagazin,
+    'titlu' => NUME_MAGAZIN,
+    'descriere' => '',
+    'schimba' => (string) $acumMagazin['titlu'] !== NUME_MAGAZIN,
+];
+
 foreach ($texte as $t) {
     $tip = (string) $t['tip'];
     $slug = (string) $t['slug'];
@@ -307,8 +357,10 @@ foreach ($texte as $t) {
     if ($tip === 'home') {
         $cheie = ['tip' => 'setari', 'titlu' => 'store_seo_home_title', 'descriere' => 'store_seo_home_description'];
         $eticheta = 'prima pagină';
-        if (SeoMeta::titluPagina($titlu, '', $magazin) !== $titlu) {
-            $probleme[] = "titlul primei pagini s-ar afișa altfel decât e scris";
+        foreach ($numeVerificate as $magazin) {
+            if (SeoMeta::titluPagina($titlu, '', $magazin) !== $titlu) {
+                $probleme[] = "titlul primei pagini s-ar afișa altfel decât e scris (magazin „{$magazin}”)";
+            }
         }
     } elseif ($tip === 'categorie') {
         $stmt = $db->prepare('SELECT id, name FROM product_categories WHERE slug = ?');
@@ -320,8 +372,10 @@ foreach ($texte as $t) {
         }
         $cheie = ['tip' => 'seo_pages', 'page_type' => 'category', 'page_ref' => (string) (int) $randuri[0]['id']];
         $eticheta = 'categoria ' . $slug;
-        if (SeoMeta::titluPagina($titlu, (string) $randuri[0]['name'], $magazin) !== $titlu) {
-            $probleme[] = "titlul categoriei {$slug} s-ar afișa altfel decât e scris";
+        foreach ($numeVerificate as $magazin) {
+            if (SeoMeta::titluPagina($titlu, (string) $randuri[0]['name'], $magazin) !== $titlu) {
+                $probleme[] = "titlul categoriei {$slug} s-ar afișa altfel decât e scris (magazin „{$magazin}”)";
+            }
         }
     } else {
         $stmt = $db->prepare('SELECT id, name, brand FROM products WHERE slug = ? AND deleted_at IS NULL');
@@ -333,11 +387,14 @@ foreach ($texte as $t) {
         }
         $cheie = ['tip' => 'seo_pages', 'page_type' => 'product', 'page_ref' => (string) (int) $randuri[0]['id']];
         $eticheta = 'produsul ' . $slug;
-        // Regula titlurilor reface un titlu care doar repetă numele și marca:
-        // textul scris trebuie să rămână exact cum e.
-        $afisat = SeoMeta::titluProdusDetaliat((string) $randuri[0]['name'], (string) ($randuri[0]['brand'] ?? ''), $titlu, $magazin);
-        if ($afisat['sursa'] !== 'scris' || $afisat['titlu'] !== $titlu) {
-            $probleme[] = "titlul produsului {$slug} s-ar afișa „{$afisat['titlu']}”, nu cum e scris";
+        // Regula titlurilor reface un titlu care doar repetă numele și marca
+        // (și numele magazinului): textul scris trebuie să rămână exact cum e,
+        // cu oricare dintre numele magazinului.
+        foreach ($numeVerificate as $magazin) {
+            $afisat = SeoMeta::titluProdusDetaliat((string) $randuri[0]['name'], (string) ($randuri[0]['brand'] ?? ''), $titlu, $magazin);
+            if ($afisat['sursa'] !== 'scris' || $afisat['titlu'] !== $titlu) {
+                $probleme[] = "titlul produsului {$slug} s-ar afișa „{$afisat['titlu']}”, nu cum e scris (magazin „{$magazin}”)";
+            }
         }
     }
     $acum = valoareaDeAcum($db, $cheie);
@@ -355,10 +412,14 @@ if ($probleme !== []) {
 }
 
 $deSchimbat = array_values(array_filter($intrari, static fn (array $x): bool => $x['schimba']));
-scrie(($mod === 'plan' ? 'PLAN (nu scriu nimic)' : 'APLIC') . ': ' . count($intrari) . ' texte, ' . count($deSchimbat) . ' de schimbat. Numele magazinului din titluri: ' . $magazin . '.');
+scrie(($mod === 'plan' ? 'PLAN (nu scriu nimic)' : 'APLIC') . ': ' . count($intrari) . ' valori (numele magazinului + ' . (count($intrari) - 1) . ' texte), ' . count($deSchimbat) . ' de schimbat.');
 foreach ($intrari as $x) {
     if (!$x['schimba']) {
         scrie("  {$x['eticheta']}: neschimbat (deja aplicat)");
+        continue;
+    }
+    if ($x['cheie']['tip'] === 'setare') {
+        scrie("  {$x['eticheta']}: " . arata($x['acum']['titlu']) . ($x['acum']['titlu'] === null || trim((string) $x['acum']['titlu']) === '' ? ' (adică „' . SeoMeta::NUME_MAGAZIN_IMPLICIT . '”)' : '') . ' → ' . arata($x['titlu']));
         continue;
     }
     scrie("  {$x['eticheta']}:");
@@ -390,7 +451,7 @@ $copie = [
             'titlu_scris' => $x['titlu'],
             'descriere_scrisa' => $x['descriere'],
         ];
-        if (($x['cheie']['tip'] ?? '') === 'seo_pages') {
+        if (in_array($x['cheie']['tip'] ?? '', ['seo_pages', 'setare'], true)) {
             $intrare['exista_inainte'] = (bool) $x['acum']['exista'];
         }
         return $intrare;
@@ -418,7 +479,9 @@ try {
     );
     foreach ($deSchimbat as $x) {
         $cheie = $x['cheie'];
-        if ($cheie['tip'] === 'setari') {
+        if ($cheie['tip'] === 'setare') {
+            $setare->execute([$cheie['cheie'], $x['titlu']]);
+        } elseif ($cheie['tip'] === 'setari') {
             $setare->execute([$cheie['titlu'], $x['titlu']]);
             $setare->execute([$cheie['descriere'], $x['descriere']]);
         } else {
@@ -430,5 +493,5 @@ try {
     $db->rollBack();
     iesire('Eroare la scriere; nu s-a schimbat nimic (copia rămâne, nu strică): ' . $e->getMessage(), 1);
 }
-scrie('Aplicat: ' . count($deSchimbat) . ' texte. Revenire: php scripts/seo-texte.php --restaureaza');
+scrie('Aplicat: ' . count($deSchimbat) . ' valori. Revenire: php scripts/seo-texte.php --restaureaza');
 golesteCache();
