@@ -146,6 +146,10 @@
             }
             a.paragrafe.forEach((text) => corp.appendChild(paragraf(text)));
         });
+        // Fără titlu deasupra, primul paragraf ține locul titlului lângă ×.
+        if (corp.firstElementChild && corp.firstElementChild.tagName === "P") {
+            corp.firstElementChild.style.paddingRight = "36px";
+        }
         cutie.appendChild(corp);
         if (primulTitlu) {
             cutie.setAttribute("aria-labelledby", primulTitlu.id);
