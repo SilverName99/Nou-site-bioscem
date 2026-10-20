@@ -169,9 +169,27 @@ $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
             $seoImageUrl = trim((string) ($settings['store_seo_default_image_url'] ?? ''));
             $seoImagePreview = $seoImageUrl !== '' ? $seoImageUrl : '/assets/img/product-placeholder.svg';
             ?>
+            <?php $storeNameTitle = \App\Support\SeoMeta::numeMagazin($settings); ?>
+            <h3 style="margin-top:0;">Numele magazinului în titluri</h3>
+            <p style="margin:0 0 10px;color:#64748b;">
+                Apare la finalul titlurilor din Google și din browser (ex. „Magazin | <?= htmlspecialchars($storeNameTitle, ENT_QUOTES) ?>”)
+                și ca nume al firmei în datele pentru Google. Gol = „<?= htmlspecialchars(\App\Support\SeoMeta::NUME_MAGAZIN_IMPLICIT, ENT_QUOTES) ?>”.
+            </p>
+            <form method="post" action="/admin/settings/store" style="margin-bottom:22px;">
+                <input type="hidden" name="action" value="save_store_name">
+                <div class="field" style="max-width:680px;">
+                    <label for="store_name">Nume magazin</label>
+                    <input id="store_name" type="text" name="store_name" maxlength="60" value="<?= htmlspecialchars($storeNameTitle, ENT_QUOTES) ?>" placeholder="<?= htmlspecialchars(\App\Support\SeoMeta::NUME_MAGAZIN_IMPLICIT, ENT_QUOTES) ?>">
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn" type="submit">Salvează numele</button>
+                </div>
+            </form>
+
             <h3 style="margin-top:0;">SEO Google (global)</h3>
             <p style="margin:0 0 10px;color:#64748b;">
                 Aceste valori sunt folosite ca fallback pentru paginile care nu au SEO specific.
+                Titlul și descrierea pentru Homepage au întâietate pe prima pagină.
             </p>
             <form method="post" action="/admin/settings/store">
                 <input type="hidden" name="action" value="save_seo_defaults">

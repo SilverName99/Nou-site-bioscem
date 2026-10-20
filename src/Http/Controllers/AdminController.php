@@ -2119,10 +2119,99 @@ final class AdminController
             )->fetchAll();
         }
 
+        // Titlul și descrierea pentru Google ale fiecărei categorii și mărci (seo_pages).
+        $categoriesSeo = [];
+        $brands = [];
+        $brandsSeo = [];
+        if ($db instanceof PDO) {
+            $categoriesSeo = $this->loadSeoSettingsMap(
+                $db,
+                'category',
+                array_map(static fn (array $c): string => (string) ((int) ($c['id'] ?? 0)), is_array($categories) ? $categories : [])
+            );
+            $brands = $this->brandsForSeo($db);
+            $brandsSeo = $this->loadSeoSettingsMap($db, 'brand', array_column($brands, 'slug'));
+        }
+
         View::render('admin/categories', [
             'title' => 'Categorii produse',
             'categories' => $categories,
+            'categoriesSeo' => $categoriesSeo,
+            'brands' => $brands,
+            'brandsSeo' => $brandsSeo,
         ], 'admin/layout');
+    }
+
+    /**
+     * Mărcile din produse (text liber în products.brand), cu slug-ul paginii lor
+     * (/marca/{slug}) și numărul de produse active.
+     *
+     * @return list<array{name: string, slug: string, products_count: int}>
+     */
+    private function brandsForSeo(PDO $db): array
+    {
+        $brands = [];
+        try {
+            $rows = $db->query(
+                'SELECT TRIM(brand) AS name, COUNT(*) AS products_count
+                 FROM products
+                 WHERE deleted_at IS NULL AND is_active = 1 AND TRIM(COALESCE(brand, "")) <> ""
+                 GROUP BY TRIM(brand)
+                 ORDER BY TRIM(brand) ASC'
+            )->fetchAll() ?: [];
+        } catch (Throwable) {
+            return [];
+        }
+        foreach ($rows as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $slug = \App\Support\Slug::simplu($name);
+            if ($name === '' || $slug === '') {
+                continue;
+            }
+            if (isset($brands[$slug])) {
+                $brands[$slug]['products_count'] += (int) ($row['products_count'] ?? 0);
+                continue;
+            }
+            $brands[$slug] = ['name' => $name, 'slug' => $slug, 'products_count' => (int) ($row['products_count'] ?? 0)];
+        }
+        return array_values($brands);
+    }
+
+    /** Salvează titlul și descrierea pentru Google ale unei mărci (pagina /marca/{slug}). */
+    public function brandSeoUpdate(): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        $slug = \App\Support\Slug::simplu((string) ($_POST['brand_slug'] ?? ''));
+        $db = $this->db();
+        if ($slug === '' || !$db instanceof PDO) {
+            Flash::set('error', 'Marcă invalidă.');
+            header('Location: /admin/categories#marci');
+            return;
+        }
+        $this->ensureOptionalSchema($db);
+        $this->saveListingSeo($db, 'brand', $slug);
+        Flash::set('success', 'SEO-ul mărcii a fost salvat.');
+        header('Location: /admin/categories#marci');
+    }
+
+    /**
+     * Titlul și descrierea Google ale unei categorii sau mărci, din formular
+     * (seo_title, seo_description). Celelalte câmpuri SEO ale rândului rămân.
+     * Fără câmpurile în formular (pagină veche din cache), nu se atinge nimic.
+     */
+    private function saveListingSeo(PDO $db, string $pageType, string $pageRef): void
+    {
+        if (!array_key_exists('seo_title', $_POST) && !array_key_exists('seo_description', $_POST)) {
+            return;
+        }
+        $seo = $this->loadSeoSettings($db, $pageType, $pageRef);
+        $seo['title'] = trim((string) preg_replace('/\s+/u', ' ', (string) ($_POST['seo_title'] ?? '')));
+        $seo['description'] = trim((string) preg_replace('/\s+/u', ' ', (string) ($_POST['seo_description'] ?? '')));
+        $this->saveSeoSettings($db, $pageType, $pageRef, $seo);
+        // Titlurile noi se văd imediat, nu după expirarea paginilor din cache.
+        ResponseCache::purgePageCache();
     }
 
     public function blogAuthors(): void
@@ -4089,6 +4178,9 @@ final class AdminController
             ]);
 
             $db->commit();
+            // Titlul și descrierea pentru Google (după tranzacție: un SEO nesalvat
+            // nu are voie să anuleze redenumirea).
+            $this->saveListingSeo($db, 'category', (string) $id);
             Flash::set('success', 'Categoria a fost actualizată.');
         } catch (Throwable) {
             if ($db->inTransaction()) {
@@ -4129,6 +4221,7 @@ final class AdminController
             $stmtDelete = $db->prepare('DELETE FROM product_categories WHERE id = :id');
             $stmtDelete->execute(['id' => $id]);
             $db->commit();
+            $this->saveSeoSettings($db, 'category', (string) $id, []);
             Flash::set('success', 'Categoria a fost ștearsă.');
         } catch (Throwable) {
             if ($db->inTransaction()) {
@@ -9438,6 +9531,17 @@ final class AdminController
             header('Location: /admin/settings/store');
             return;
         }
+        if ($action === 'save_store_name') {
+            // Numele din titlurile paginilor („Produs | Bioscem Shop”) și din datele
+            // pentru Google. Gol = „Bioscem Shop”, numele folosit de la lansare.
+            Settings::save($db, [
+                'store_name' => trim((string) preg_replace('/\s+/u', ' ', (string) ($_POST['store_name'] ?? ''))),
+            ]);
+            ResponseCache::purgePageCache();
+            Flash::set('success', 'Numele magazinului a fost salvat.');
+            header('Location: /admin/settings/store?tab=seo');
+            return;
+        }
         if ($action === 'save_seo_defaults') {
             $seoImageUrl = trim((string) ($_POST['seo_default_image_url'] ?? ''));
             if ($seoImageUrl !== '' && preg_match('/^https?:\/\//i', $seoImageUrl) !== 1 && !str_starts_with($seoImageUrl, '/')) {
@@ -9449,6 +9553,8 @@ final class AdminController
                 'store_seo_default_description' => trim((string) ($_POST['seo_default_description'] ?? '')),
                 'store_seo_default_image_url' => $seoImageUrl,
             ]);
+            // Titlul și descrierea primei pagini se văd imediat, nu după expirarea cache-ului.
+            ResponseCache::purgePageCache();
             Flash::set('success', 'Setările SEO globale au fost salvate.');
             header('Location: /admin/settings/store');
             return;
@@ -14276,7 +14382,7 @@ final class AdminController
     private function normalizeSeoPageType(string $pageType): string
     {
         $pageType = trim($pageType);
-        if (!in_array($pageType, ['custom_page', 'product', 'blog_post'], true)) {
+        if (!in_array($pageType, ['custom_page', 'product', 'blog_post', 'category', 'brand'], true)) {
             return '';
         }
         return $pageType;

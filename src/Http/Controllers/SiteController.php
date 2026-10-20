@@ -304,12 +304,14 @@ final class SiteController
         $titlu = $eticheta !== ''
             ? ($tip === 'brand' ? $eticheta : 'Produse: ' . $eticheta)
             : 'Nu am găsit produse';
+        $produseAfisate = [];
         $catalog = $this->renderShopCatalogSection(
             $db instanceof PDO ? $db : null,
             '',
             ['tip' => $tip, 'slug' => $slug],
             // Sortarea rămâne pe pagina mărcii sau a etichetei.
-            $eticheta !== '' ? ($tip === 'brand' ? '/marca/' : '/eticheta/') . rawurlencode($slug) : '/magazin'
+            $eticheta !== '' ? ($tip === 'brand' ? '/marca/' : '/eticheta/') . rawurlencode($slug) : '/magazin',
+            $produseAfisate
         );
 
         $shopPage = $this->findPublishedPageBySlug('magazin');
@@ -322,7 +324,7 @@ final class SiteController
                 'shopCatalogHtml' => $catalog,
                 'shopCategoryLabel' => $titlu,
                 'shopPageTitle' => $titlu,
-            ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $shopPage)));
+            ], $this->seoListaFiltrata($db instanceof PDO ? $db : null, $tip, $slug, $eticheta, $produseAfisate, $shopPage)));
             return;
         }
 
@@ -332,6 +334,40 @@ final class SiteController
             'activeCategory' => '',
             'shopCatalogHtml' => $catalog,
         ]);
+    }
+
+    /**
+     * SEO-ul paginii unei mărci sau etichete: titlul și descrierea scrise
+     * pentru marcă (Admin → Categorii → Mărci), altfel o descriere automată din
+     * produsele ei. Nu mai moștenește SEO-ul paginii „Magazin”. Etichetele cu
+     * nume de boli (D3, încă nedecis) nu primesc descriere automată.
+     *
+     * @param list<array<string, mixed>> $produseAfisate
+     */
+    private function seoListaFiltrata(?PDO $db, string $tip, string $slug, string $eticheta, array $produseAfisate, array $shopPage): array
+    {
+        if (!\App\Support\SeoMeta::activ()) {
+            // Ca înainte de livrarea 2.
+            return $this->customPageSeoMeta($db, $shopPage);
+        }
+        if ($eticheta === '') {
+            return [];
+        }
+        $seo = [];
+        if ($tip === 'brand' && $db instanceof PDO) {
+            $seo = $this->seoMetaFor($db, 'brand', $slug);
+            unset($seo['metaCanonicalUrl']);
+        }
+        if (trim((string) ($seo['metaDescription'] ?? '')) === ''
+            && !($tip !== 'brand' && in_array($slug, \App\Support\Sitemap::ETICHETE_BOLI, true))) {
+            $seo['metaDescription'] = \App\Support\SeoMeta::descriereLista(
+                $tip === 'brand' ? 'marca' : 'eticheta',
+                $eticheta,
+                $produseAfisate,
+                \App\Support\SeoMeta::numeMagazin($this->cachedSettings($db))
+            );
+        }
+        return $seo;
     }
 
     /**
@@ -413,17 +449,15 @@ final class SiteController
         if ($shopCategoryLabel !== '' && $caleCategorie === '') {
             $caleCategorie = \App\Support\LinkuriCategorii::cale($pdo, $shopCategoryLabel);
         }
+        $produseAfisate = [];
         $catalogHtml = $this->renderShopCatalogSection(
             $db,
             $categoryFilter,
             null,
-            $shopCategoryLabel !== '' && $caleCategorie !== '' ? $caleCategorie : '/magazin'
+            $shopCategoryLabel !== '' && $caleCategorie !== '' ? $caleCategorie : '/magazin',
+            $produseAfisate
         );
-        $seoLista = is_array($shopPage) ? $this->customPageSeoMeta($pdo, $shopPage) : [];
-        if ($shopCategoryLabel !== '' && $caleCategorie !== '') {
-            // /magazin?category=… rămas (alți parametri): canonical spre pagina categoriei.
-            $seoLista['metaCanonicalUrl'] = rtrim($this->appUrl(), '/') . $caleCategorie;
-        }
+        $seoLista = $this->seoListaMagazin($pdo, $shopCategoryLabel, $caleCategorie, $produseAfisate, $shopPage);
 
         if (is_array($shopPage)) {
             $settings = $this->cachedSettings($db);
@@ -451,6 +485,79 @@ final class SiteController
             'activeCategory' => $categoryFilter,
             'jsonLd' => $this->jsonLdPagina,
         ], $seoLista));
+    }
+
+    /**
+     * Titlul, descrierea și canonicalul magazinului sau ale unei categorii.
+     *
+     * Categoria are câmpurile ei (Admin → Categorii → SEO Google) și o
+     * descriere automată din produsele ei; nu mai moștenește SEO-ul paginii
+     * „Magazin” (un titlu sau un canonical pus pe Magazin s-ar fi copiat pe
+     * toate categoriile). Magazinul fără filtru păstrează SEO-ul paginii lui.
+     *
+     * @param list<array<string, mixed>> $produseAfisate
+     */
+    private function seoListaMagazin(?PDO $db, string $categorie, string $caleCategorie, array $produseAfisate, ?array $shopPage): array
+    {
+        $activ = \App\Support\SeoMeta::activ();
+        if ($categorie === '') {
+            $seo = is_array($shopPage) ? $this->customPageSeoMeta($db, $shopPage) : [];
+            if ($activ && trim((string) ($seo['metaDescription'] ?? '')) === '') {
+                $seo['metaDescription'] = \App\Support\SeoMeta::descriereLista(
+                    'magazin',
+                    'Magazinul ' . \App\Support\SeoMeta::numeMagazin($this->cachedSettings($db)),
+                    $produseAfisate,
+                    \App\Support\SeoMeta::numeMagazin($this->cachedSettings($db))
+                );
+            }
+            return $seo;
+        }
+        if (!$activ) {
+            // Ca înainte de livrarea 2: categoria primea SEO-ul paginii „Magazin”.
+            return is_array($shopPage) ? $this->customPageSeoMeta($db, $shopPage) : [];
+        }
+        $seo = [];
+        $idCategorie = $this->idCategoriePentruNume($db, $categorie);
+        if ($db instanceof PDO && $idCategorie > 0) {
+            $seo = $this->seoMetaFor($db, 'category', (string) $idCategorie);
+            unset($seo['metaCanonicalUrl']);
+        }
+        if (trim((string) ($seo['metaDescription'] ?? '')) === '') {
+            $seo['metaDescription'] = \App\Support\SeoMeta::descriereLista(
+                'categorie',
+                $categorie,
+                $produseAfisate,
+                \App\Support\SeoMeta::numeMagazin($this->cachedSettings($db))
+            );
+        }
+        if ($caleCategorie !== '') {
+            $seo['metaCanonicalUrl'] = rtrim($this->appUrl(), '/') . $caleCategorie;
+        }
+        return $seo;
+    }
+
+    /** ID-ul din product_categories al categoriei cu numele dat (0 dacă nu are rând). */
+    private function idCategoriePentruNume(?PDO $db, string $nume): int
+    {
+        if (!$db instanceof PDO || trim($nume) === '') {
+            return 0;
+        }
+        try {
+            $slug = \App\Support\LinkuriCategorii::slugPentruNume($db, $nume);
+            if ($slug !== '') {
+                $stmt = $db->prepare('SELECT id FROM product_categories WHERE LOWER(slug) = :slug ORDER BY id ASC LIMIT 1');
+                $stmt->execute(['slug' => mb_strtolower($slug)]);
+                $id = (int) ($stmt->fetchColumn() ?: 0);
+                if ($id > 0) {
+                    return $id;
+                }
+            }
+            $stmt = $db->prepare('SELECT id FROM product_categories WHERE LOWER(TRIM(name)) = :nume ORDER BY id ASC LIMIT 1');
+            $stmt->execute(['nume' => mb_strtolower(trim($nume))]);
+            return (int) ($stmt->fetchColumn() ?: 0);
+        } catch (Throwable) {
+            return 0;
+        }
     }
 
     public function blog(): void
@@ -637,6 +744,23 @@ final class SiteController
         $productSeoMeta = [];
         if ($db instanceof PDO) {
             $productSeoMeta = $this->seoMetaFor($db, 'product', (string) ((int) ($product['id'] ?? 0)));
+        }
+        if (\App\Support\SeoMeta::activ()) {
+            // O singură regulă pentru titlul de produs (vezi SeoMeta::titluProdus):
+            // titlul scris rămâne, cel care doar repetă numele se face din nume și
+            // marcă. Fără descriere scrisă: descrierea scurtă a produsului.
+            $productSeoMeta['metaTitle'] = \App\Support\SeoMeta::titluProdus(
+                (string) ($product['name'] ?? ''),
+                (string) ($product['brand'] ?? ''),
+                (string) ($productSeoMeta['metaTitle'] ?? ''),
+                \App\Support\SeoMeta::numeMagazin($settings !== [] ? $settings : $this->cachedSettings($db))
+            );
+            if (trim((string) ($productSeoMeta['metaDescription'] ?? '')) === '') {
+                $productSeoMeta['metaDescription'] = \App\Support\SeoMeta::descriereProdus(
+                    (string) ($product['short_description'] ?? ''),
+                    (string) ($product['description'] ?? '')
+                );
+            }
         }
         $jsonLd = [];
         try {
@@ -3859,7 +3983,30 @@ final class SiteController
             'productReviewFormHtml' => $productReviewFormHtml,
             'gdprAgreementsFormHtml' => $gdprAgreementsFormHtml,
             'checkoutSuccessOrderInfoHtml' => $checkoutSuccessOrderInfoHtml,
-        ], $this->customPageSeoMeta($db, $page)));
+        ], $this->seoPagina($db, $page, $slug)));
+    }
+
+    /**
+     * SEO-ul unei pagini din constructor: cel scris în editor; fără descriere
+     * scrisă, primul paragraf al paginii. Paginile de sistem (coș, comandă,
+     * cont, login) și cele blocate în robots.txt rămân exact ca înainte.
+     */
+    private function seoPagina(PDO $db, array $page, string $slug): array
+    {
+        $seo = $this->customPageSeoMeta($db, $page);
+        $slugMic = mb_strtolower(trim($slug, '/'));
+        if (!\App\Support\SeoMeta::activ()
+            || trim((string) ($seo['metaDescription'] ?? '')) !== ''
+            || in_array($slugMic, \App\Support\Sitemap::PAGINI_SISTEM, true)
+            || str_contains($slugMic, '/')
+            || \App\Support\Robots::blocheaza('/' . $slugMic)) {
+            return $seo;
+        }
+        $descriere = \App\Support\SeoMeta::descrierePagina((string) ($page['html_content'] ?? ''));
+        if ($descriere !== '') {
+            $seo['metaDescription'] = $descriere;
+        }
+        return $seo;
     }
 
     /**
@@ -4193,7 +4340,7 @@ final class SiteController
     private function normalizeSeoPageType(string $pageType): string
     {
         $pageType = trim($pageType);
-        if (!in_array($pageType, ['custom_page', 'product', 'blog_post'], true)) {
+        if (!in_array($pageType, ['custom_page', 'product', 'blog_post', 'category', 'brand'], true)) {
             return '';
         }
         return $pageType;
@@ -4253,7 +4400,8 @@ final class SiteController
         ?PDO $db,
         string $categoryFilter = '',
         ?array $filtruExtra = null,
-        string $baseUrl = '/magazin'
+        string $baseUrl = '/magazin',
+        ?array &$produseAfisate = null
     ): string {
         $categoryFilter = trim($categoryFilter);
         $sort = $this->requestShopCatalogSort();
@@ -4284,6 +4432,7 @@ final class SiteController
             ));
         }
         $products = $this->applyShopCatalogSort($products, $sort);
+        $produseAfisate = $products;
         // Fiecare categorie din filtru duce la pagina ei, /categorie/{slug}.
         $categoryUrls = [];
         foreach ($categories as $category) {

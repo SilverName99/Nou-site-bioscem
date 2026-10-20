@@ -249,6 +249,7 @@ $router->post('/admin/products/reviews/import', [AdminController::class, 'produc
 $router->get('/admin/categories', [AdminController::class, 'categories']);
 $router->post('/admin/categories', [AdminController::class, 'createCategory']);
 $router->post('/admin/categories/{id}/update', [AdminController::class, 'updateCategory']);
+$router->post('/admin/categories/brand-seo', [AdminController::class, 'brandSeoUpdate']);
 $router->post('/admin/categories/{id}/delete', [AdminController::class, 'deleteCategory']);
 $router->get('/admin/coupons', [AdminController::class, 'coupons']);
 $router->post('/admin/coupons', [AdminController::class, 'couponsSave']);

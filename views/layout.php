@@ -165,14 +165,26 @@ $requestPath = rtrim($requestPath, '/');
 if ($requestPath === '') {
     $requestPath = '/';
 }
-$siteBaseTitle = trim((string) ($designSettings['store_name'] ?? 'Bioscem Shop'));
-if ($siteBaseTitle === '') {
-    $siteBaseTitle = 'Bioscem Shop';
-}
+// Numele magazinului din titluri: Admin → Setări magazin → SEO Google (implicit „Bioscem Shop”).
+$siteBaseTitle = \App\Support\SeoMeta::numeMagazin($designSettings);
 $pageTitle = trim((string) ($title ?? ''));
 $homeSeoTitle = trim((string) ($designSettings['store_seo_home_title'] ?? ''));
+$homeSeoDescription = trim((string) ($designSettings['store_seo_home_description'] ?? ''));
 $metaTitleFinal = trim((string) ($metaTitle ?? ''));
-if ($metaTitleFinal === '') {
+$metaDescriptionFinal = trim((string) ($metaDescription ?? ''));
+if (\App\Support\SeoMeta::activ()) {
+    // Prima pagină: titlul și descrierea din Setări magazin → SEO Google au
+    // întâietate (acolo le caută proprietarul); apoi cele din pagina „Acasă”.
+    if ($requestPath === '/' && $homeSeoTitle !== '') {
+        $metaTitleFinal = $homeSeoTitle;
+    }
+    if ($requestPath === '/' && $homeSeoDescription !== '') {
+        $metaDescriptionFinal = $homeSeoDescription;
+    }
+    // Aceeași regulă peste tot: titlul scris, altfel „{titlul paginii} | {magazin}”,
+    // fără „|”, „–” sau „-” rămase la final.
+    $metaTitleFinal = \App\Support\SeoMeta::titluPagina($metaTitleFinal, $pageTitle, $siteBaseTitle);
+} elseif ($metaTitleFinal === '') {
     if ($requestPath === '/' && $homeSeoTitle !== '') {
         $metaTitleFinal = $homeSeoTitle;
     } elseif ($pageTitle === '' || strcasecmp($pageTitle, $siteBaseTitle) === 0) {
@@ -181,10 +193,9 @@ if ($metaTitleFinal === '') {
         $metaTitleFinal = $pageTitle . ' | ' . $siteBaseTitle;
     }
 }
-$metaDescriptionFinal = trim((string) ($metaDescription ?? ''));
 if ($metaDescriptionFinal === '') {
     if ($requestPath === '/') {
-        $metaDescriptionFinal = trim((string) ($designSettings['store_seo_home_description'] ?? ''));
+        $metaDescriptionFinal = $homeSeoDescription;
     }
     if ($metaDescriptionFinal === '') {
         $metaDescriptionFinal = trim((string) ($designSettings['store_seo_default_description'] ?? ''));
@@ -292,6 +303,12 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     <?php if ($canonicalUrlFinal !== ''): ?>
         <link rel="canonical" href="<?= htmlspecialchars($canonicalUrlFinal, ENT_QUOTES) ?>">
     <?php endif; ?>
+<?php /* Loc pregătit pentru „noindex” (deciziile D2 etichete mici, D3 etichete cu nume de boli
+și D7 /blog gol nu sunt încă luate): un controller poate trimite $metaRobots, de exemplu
+„noindex,follow”. Azi niciun controller nu o trimite, deci nu apare nimic în pagină. */
+if (isset($metaRobots) && preg_match('/^[a-z ,-]+$/i', trim((string) $metaRobots)) === 1) {
+    echo '    <meta name="robots" content="', htmlspecialchars(trim((string) $metaRobots), ENT_QUOTES), '">', "\n";
+} ?>
 <?php /* Date structurate (produs, firimituri, firmă, site): un bloc <script> pentru fiecare tip. */
 foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
     $jsonLdScript = is_array($jsonLdNod) ? \App\Support\JsonLd::script($jsonLdNod) : '';

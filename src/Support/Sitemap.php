@@ -56,7 +56,7 @@ final class Sitemap
     }
 
     /** Pagini de sistem: există ca rânduri în `pages`, dar n-au ce căuta în Google. */
-    private const PAGINI_SISTEM = [
+    public const PAGINI_SISTEM = [
         '', 'acasa', 'home', '404', 'cos', 'cos-cumparaturi', 'checkout', 'contul-meu',
         'login', 'register', 'acorduri-gdpr',
     ];
