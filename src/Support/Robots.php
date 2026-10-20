@@ -17,6 +17,17 @@ namespace App\Support;
  */
 final class Robots
 {
+    /**
+     * Adrese spuse explicit „voie” (nimic nu le blochează, dar Merchant Center
+     * verifică robots.txt înainte să preia fluxul de produse). Fluxul nu e
+     * legat din nicio pagină și nu intră în sitemap.
+     *
+     * @var list<string>
+     */
+    public const ALLOW = [
+        '/feed/google-merchant.xml',
+    ];
+
     /** @var list<string> */
     public const DISALLOW = [
         '/admin',
@@ -40,6 +51,9 @@ final class Robots
     public static function text(string $baseUrl): string
     {
         $linii = ['User-agent: *'];
+        foreach (self::ALLOW as $regula) {
+            $linii[] = 'Allow: ' . $regula;
+        }
         foreach (self::DISALLOW as $regula) {
             $linii[] = 'Disallow: ' . $regula;
         }

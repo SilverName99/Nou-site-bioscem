@@ -7226,6 +7226,163 @@ CSS;
     }
 
     /**
+     * /feed/google-merchant.xml: produsele active pentru Google Merchant Center
+     * (vezi FluxGoogleMerchant). Doar citire, fără sesiune, ținut 15 minute în
+     * cache. Nu e legat din site și nu intră în sitemap.
+     */
+    public function fluxGoogleMerchant(): void
+    {
+        $xml = \App\Support\FluxGoogleMerchant::dinCache();
+        if ($xml === null) {
+            $db = $this->db();
+            if (!$db instanceof PDO) {
+                http_response_code(503);
+                header('Retry-After: 600');
+                header('Content-Type: text/plain; charset=utf-8');
+                header('Cache-Control: no-store');
+                echo 'Fluxul de produse e indisponibil momentan.';
+                return;
+            }
+            $settings = $this->cachedSettings($db);
+            $xml = \App\Support\FluxGoogleMerchant::xml(
+                $this->produsePentruFlux($db, $settings),
+                rtrim($this->appUrl(), '/'),
+                \App\Support\SeoMeta::numeMagazin($settings)
+            );
+            \App\Support\FluxGoogleMerchant::salveaza($xml);
+        }
+        header('Content-Type: application/xml; charset=utf-8');
+        header('Cache-Control: public, max-age=' . \App\Support\FluxGoogleMerchant::DURATA_CACHE);
+        header('X-Robots-Tag: noindex');
+        echo $xml;
+    }
+
+    /**
+     * Produsele active pentru flux, cu aceleași reguli ca pagina produsului și
+     * datele ei structurate: prețul cu reducerea activă, disponibilitatea după
+     * ERP (o singură cerere pentru toate, ca în /magazin), precomanda, pozele
+     * reale (fără poza goală), livrarea din PoliticaLivrare.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function produsePentruFlux(PDO $db, array $settings): array
+    {
+        try {
+            $rows = $db->query('SELECT * FROM products WHERE is_active = 1 AND deleted_at IS NULL ORDER BY id ASC')->fetchAll() ?: [];
+        } catch (Throwable) {
+            return [];
+        }
+        \App\Support\ErpStock::applyToProducts($db, $rows);
+
+        $baza = rtrim($this->appUrl(), '/');
+        $absolut = static function (string $adresa) use ($baza): string {
+            $adresa = trim($adresa);
+            if ($adresa === '') {
+                return '';
+            }
+            if (str_starts_with($adresa, '//')) {
+                return 'https:' . $adresa;
+            }
+            if (preg_match('#^https?://#i', $adresa) === 1) {
+                return $adresa;
+            }
+            // Calea, codată bucată cu bucată (spațiile și diacriticele din numele fișierelor).
+            $cale = implode('/', array_map(
+                static fn (string $bucata): string => rawurlencode(rawurldecode($bucata)),
+                explode('/', '/' . ltrim($adresa, '/'))
+            ));
+            return $baza . $cale;
+        };
+
+        $skuVazute = [];
+        foreach ($rows as $row) {
+            $sku = strtoupper(trim((string) ($row['sku'] ?? '')));
+            if ($sku !== '') {
+                $skuVazute[$sku] = ($skuVazute[$sku] ?? 0) + 1;
+            }
+        }
+
+        $produse = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $product = $this->normalizeProduct($row);
+            $slug = trim((string) ($product['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+            $imagini = [];
+            foreach ($this->extractProductImageUrls($product, true) as $imagine) {
+                if (!str_contains((string) $imagine, 'product-placeholder')) {
+                    $imagini[] = $absolut((string) $imagine);
+                }
+            }
+            $imagini = array_values(array_unique(array_filter($imagini)));
+
+            if (\App\Support\Precomanda::estePrecomanda($product)) {
+                $disponibil = 'PreOrder';
+            } elseif ((int) ($product['out_of_stock'] ?? 0) === 1) {
+                $disponibil = 'OutOfStock';
+            } else {
+                $disponibil = 'InStock';
+            }
+
+            // Reducerea: prețul redus și perioada lui (doar perioada activă acum,
+            // ca priceValidUntil din datele structurate).
+            $redusa = (bool) ($product['has_sale_price'] ?? false);
+            $deLa = '';
+            $panaLa = '';
+            if ($redusa) {
+                $acum = date('Y-m-d H:i:s');
+                foreach ((array) ($product['sale_price_periods'] ?? []) as $perioada) {
+                    if (!is_array($perioada)) {
+                        continue;
+                    }
+                    $start = (string) ($perioada['start_date'] ?? '');
+                    $final = (string) ($perioada['end_date'] ?? '');
+                    if ($start !== '' && $final !== '' && $start <= $acum && $acum <= $final
+                        && abs((float) ($perioada['sale_price'] ?? 0) - (float) ($product['price'] ?? 0)) < 0.005) {
+                        $deLa = $start;
+                        $panaLa = $final;
+                        break;
+                    }
+                }
+            }
+
+            $sku = trim((string) ($product['sku'] ?? ''));
+            $id = ($sku !== '' && ($skuVazute[strtoupper($sku)] ?? 0) === 1 && mb_strlen($sku) <= 50)
+                ? $sku
+                : 'BS-' . (int) ($product['id'] ?? 0);
+            $descriere = trim(strip_tags((string) ($product['short_description'] ?? ''))) !== ''
+                ? (string) $product['short_description']
+                : (string) ($product['description'] ?? '');
+            $descriere = (string) preg_replace('/\{\{.*?\}\}/s', ' ', $descriere);
+            $pretAfisat = (float) ($product['price'] ?? 0);
+
+            $produse[] = [
+                'id' => $id,
+                'titlu' => (string) ($product['name'] ?? ''),
+                'descriere' => $descriere,
+                'link' => $baza . '/produs/' . rawurlencode($slug),
+                'imagine' => $imagini[0] ?? '',
+                'imagini_extra' => array_slice($imagini, 1),
+                'disponibilitate' => $disponibil,
+                'pret' => $redusa ? (float) ($product['base_price'] ?? $pretAfisat) : $pretAfisat,
+                'pret_redus' => $redusa ? $pretAfisat : null,
+                'reducere_de_la' => $deLa,
+                'reducere_pana_la' => $panaLa,
+                'marca' => (string) ($product['brand'] ?? ''),
+                'categorie' => trim((string) (($product['category_name'] ?? $product['category']) ?? '')),
+                // Coloana EAN nu există încă; când apare (B4), intră singură.
+                'gtin' => (string) ($product['gtin'] ?? $product['ean'] ?? ''),
+                'livrare' => \App\Support\PoliticaLivrare::optiuni($settings, $db, $pretAfisat, $redusa),
+            ];
+        }
+        return $produse;
+    }
+
+    /**
      * JSON-LD pentru pagina unui produs: Product + Offer și firimiturile.
      * Prețul e cel afișat (cu reducerea activă), stocul vine după ERP,
      * precomanda devine PreOrder. Produsele inactive (nu se pot cumpăra) nu

@@ -16,7 +16,14 @@ declare(strict_types=1);
  * Partea de administrare are limita ei de nemișcare, în `Auth` — altfel o
  * sesiune de 30 de zile ar ține un admin logat o lună.
  */
-if (session_status() === PHP_SESSION_NONE) {
+// Fluxul de produse pentru Google (/feed/google-merchant.xml) e doar citire și
+// îl cere un robot o dată pe zi: fără sesiune, deci fără cookie și fără un
+// fișier de sesiune nou la fiecare preluare. Doar calea exactă, doar GET/HEAD.
+$faraSesiune = PHP_SAPI !== 'cli'
+    && in_array(strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')), ['GET', 'HEAD'], true)
+    && (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?? '') === '/feed/google-merchant.xml';
+
+if (session_status() === PHP_SESSION_NONE && !$faraSesiune) {
     $viataSesiune = 60 * 60 * 24 * 30; // 30 de zile
 
     $dosarSesiuni = __DIR__ . '/storage/sessions';

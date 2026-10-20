@@ -122,6 +122,10 @@ $router->get('/robots\.txt', [SiteController::class, 'robots']);
 // sitemap.xml e construit din baza de date la fiecare cerere (public/.htaccess
 // îl trimite mereu aici, chiar dacă pe server a rămas un fișier vechi).
 $router->get('/sitemap\.xml', [SiteController::class, 'sitemap']);
+// Fluxul de produse pentru Google Merchant Center (doar citire, fără sesiune:
+// excepția e în bootstrap.php). Nu e legat din nicio pagină; îl adaugă
+// proprietarul în Merchant Center.
+$router->get('/feed/google-merchant\.xml', [SiteController::class, 'fluxGoogleMerchant']);
 
 $router->get('/', [SiteController::class, 'home']);
 $router->get('/magazin', [SiteController::class, 'shop']);
