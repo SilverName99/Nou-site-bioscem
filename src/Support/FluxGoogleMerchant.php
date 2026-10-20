@@ -16,8 +16,17 @@ use Throwable;
  * descriere, adresa produsului (cea canonică), poza principală și celelalte,
  * prețul de bază și, când e o reducere, prețul redus cu perioada lui,
  * disponibilitatea (aceeași ca în datele structurate ale paginii), marca,
- * starea „nou”, identifier_exists=no cât timp nu avem coduri EAN și livrarea
- * (aceleași reguli ca în pagină, vezi PoliticaLivrare).
+ * starea „nou”, codul EAN când există și livrarea la adresă (aceleași reguli ca
+ * în pagină, vezi PoliticaLivrare).
+ *
+ * Ce lipsește intenționat:
+ *  - identifier_exists=no: Merchant Center îl permite doar dacă produsul chiar
+ *    n-are cod de bare de la producător („altfel produsul poate fi respins”), iar
+ *    aproape toate produsele de aici sunt de marcă și au EAN. Fără atribut,
+ *    Merchant Center doar avertizează „lipsește GTIN” până se completează codurile;
+ *  - produsele în precomandă: Merchant Center cere data de disponibilitate
+ *    (availability_date), pe care site-ul n-o are încă. Fără ea produsul ar fi
+ *    respins, deci nu-l trimitem; intră singur când apare câmpul pentru dată.
  *
  * Fluxul se construiește din baza de date și se ține 15 minute în
  * storage/cache/, deci o preluare nu încarcă baza de fiecare dată. Stocul vine
@@ -29,10 +38,14 @@ final class FluxGoogleMerchant
     /** Cât stă fluxul în cache (secunde). */
     public const DURATA_CACHE = 900;
 
+    /**
+     * Disponibilitatea din pagină → valoarea din flux. Precomanda („preorder”)
+     * lipsește până avem data de disponibilitate (vezi sus): fără ea, produsul
+     * nu intră în flux.
+     */
     private const DISPONIBILITATE = [
         'InStock' => 'in_stock',
         'OutOfStock' => 'out_of_stock',
-        'PreOrder' => 'preorder',
     ];
 
     public static function fisierCache(): string
@@ -102,7 +115,7 @@ final class FluxGoogleMerchant
         return implode("\n", $linii) . "\n";
     }
 
-    /** Un <item>; gol dacă produsului îi lipsește ceva obligatoriu (preț, poză, adresă). */
+    /** Un <item>; gol dacă produsului îi lipsește ceva obligatoriu (preț, poză, adresă, data unei precomenzi). */
     public static function element(array $p): string
     {
         $id = mb_substr(trim((string) ($p['id'] ?? '')), 0, 50);
@@ -149,10 +162,10 @@ final class FluxGoogleMerchant
         $gtin = preg_replace('/\D+/', '', (string) ($p['gtin'] ?? '')) ?? '';
         if (self::gtinValid($gtin)) {
             $c[] = self::camp('gtin', $gtin);
-        } else {
-            // Nu avem încă coduri EAN (câmp nou în ANDAXI-CMS, B4).
-            $c[] = self::camp('identifier_exists', 'no');
         }
+        // Fără EAN încă (câmp nou în ANDAXI-CMS, B4): nu trimitem identifier_exists=no
+        // (vezi sus). Când va exista o bifă „produs fără cod de bare” (produse
+        // proprii, nemarcate), doar pentru acelea se trimite aici „no”.
         $c[] = self::camp('condition', 'new');
         $categorie = self::textSimplu((string) ($p['categorie'] ?? ''));
         if ($categorie !== '') {

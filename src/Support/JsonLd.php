@@ -145,9 +145,9 @@ final class JsonLd
     }
 
     /**
-     * Câte un OfferShippingDetails pentru fiecare opțiune de livrare (din
-     * PoliticaLivrare::optiuni): costul în RON, destinația România și, doar
-     * când e hotărât, termenul de livrare.
+     * Câte un OfferShippingDetails pentru fiecare opțiune de livrare din
+     * PoliticaLivrare::optiuni (azi una singură, livrarea la adresă): costul în
+     * RON, destinația România și, doar când e hotărât, termenul de livrare.
      *
      * @param list<array{serviciu: string, pret: float}> $optiuni
      * @return list<array<string, mixed>>

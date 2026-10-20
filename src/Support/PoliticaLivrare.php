@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace App\Support;
 
-use PDO;
-use Throwable;
-
 /**
  * Livrarea și returul, așa cum le spunem lui Google: în datele structurate ale
  * produsului (Offer.shippingDetails, Offer.hasMerchantReturnPolicy), la firmă
@@ -15,9 +12,15 @@ use Throwable;
  * contrazică.
  *
  * Livrarea vine din Setări livrare → prețuri fixe, adică exact din ce încasează
- * checkout-ul (azi, după /livrare-transport: 19 lei la adresă, 17 lei la
- * FANbox). Fără prețuri fixe active nu spunem nimic (tariful curierului se
- * calculează abia la comandă).
+ * checkout-ul. Spunem DOAR tariful livrării la adresă (azi 19 lei, după
+ * /livrare-transport). Tariful FANbox (17 lei) nu intră: Merchant Center cere
+ * „tariful livrării direct la client, nu alte tarife, de exemplu ridicarea din
+ * magazin”, iar pentru România punctele de ridicare (lockere ca FANbox) se
+ * declară doar în cont, nu pe produs. Cu ambele tarife, Google ar fi afișat
+ * „livrare 17 lei” la toate produsele (alege cel mai mic). FANbox se poate
+ * adăuga în Merchant Center → Livrare, ca livrare la punct de ridicare.
+ * Fără prețuri fixe active nu spunem nimic (tariful curierului se calculează
+ * abia la comandă).
  *
  * Transportul gratuit (pragul din setări, azi 500 lei): pagina /livrare-transport
  * spune că e gratuit doar pentru comenzile FĂRĂ reduceri. Google nu are cum să
@@ -29,8 +32,13 @@ use Throwable;
  *    dar calculul din coș dă azi gratuit (nu verifică reducerea) → tăcem;
  *  - pragurile pentru București și provincie diferite, iar prețul e între ele
  *    → depinde de județ, iar Google nu primește regiuni pentru România → tăcem.
- * Taxa pentru kilometri suplimentari (în afara ariei FAN, până la 30 lei) nu
- * intră: e o excepție pe localitate, pe care Google n-o poate primi pentru RO.
+ *
+ * Taxa pentru kilometri suplimentari (localitățile din afara ariei FAN, total
+ * până la 30 lei, plătită și la comenzile cu transport gratuit) NU intră. Regula
+ * Merchant Center e „costul declarat egal sau mai mare decât cel plătit”, deci
+ * pentru acele localități suntem sub cost. E o decizie a proprietarului (vezi
+ * nota livrării 2): fie declarăm cazul cel mai scump, fie lăsăm așa, fie se
+ * setează în Merchant Center tarife pe coduri poștale, dacă le acceptă pentru RO.
  *
  * Termenul de livrare (deliveryTime / handling_time / transit_time) nu e încă
  * hotărât de proprietar, deci nu apare nicăieri. Google îl trece la „necesar”
@@ -61,12 +69,8 @@ final class PoliticaLivrare
     /** Pagina în care sunt scrise condițiile de retur (linkul „Retur și Garanție” duce aici). */
     public const PAGINA_RETUR = '/termeni-conditii';
 
-    /** Serviciile, cu nume fără diacritice (Merchant Center le cere ASCII). */
+    /** Serviciul livrării la adresă, fără diacritice (Merchant Center îl cere ASCII). */
     public const SERVICIU_ADRESA = 'FAN Courier';
-    public const SERVICIU_FANBOX = 'FANbox';
-
-    /** @var array<string, bool> FANbox are puncte active? (o singură întrebare pe cerere) */
-    private static array $areFanbox = [];
 
     /** Livrarea și returul apar în datele pentru Google? (oprire: SEO_LIVRARE_RETUR=0) */
     public static function activ(): bool
@@ -76,14 +80,15 @@ final class PoliticaLivrare
     }
 
     /**
-     * Opțiunile de livrare pentru un produs comandat singur, la prețul afișat.
-     * Listă goală când nu putem spune sigur cât costă transportul.
+     * Livrarea pentru un produs comandat singur, la prețul afișat: o singură
+     * opțiune, livrarea la adresă (vezi sus de ce nu și FANbox). Listă goală
+     * când nu putem spune sigur cât costă transportul.
      *
      * @param float $pretAfisat prețul din pagină (cu reducerea, dacă e)
      * @param bool  $redus      produsul e la reducere (preț redus, perioadă de reducere)
      * @return list<array{serviciu: string, pret: float}>
      */
-    public static function optiuni(array $setari, ?PDO $db, float $pretAfisat, bool $redus): array
+    public static function optiuni(array $setari, float $pretAfisat, bool $redus): array
     {
         if (!self::activ() || !ShippingPricing::esteActiv($setari)) {
             return [];
@@ -92,13 +97,6 @@ final class PoliticaLivrare
         if ($adresa === null || $adresa <= 0.0) {
             // Un preț fix de 0 lei e mai degrabă o setare necompletată decât o promisiune.
             return [];
-        }
-        $fanbox = null;
-        if (ShippingPricing::ofertaFanbox($setari) && self::fanboxAreLocuri($db)) {
-            $pret = ShippingPricing::pretDeBaza($setari, true);
-            if ($pret !== null && $pret > 0.0) {
-                $fanbox = $pret;
-            }
         }
 
         // Pragul de gratuitate e pe județ (București / provincie), ca în coș; un
@@ -114,38 +112,12 @@ final class PoliticaLivrare
             return [];
         }
 
-        if ($gratuitPeste) {
-            // Gratuit și la adresă, și la FANbox: o singură opțiune, la 0 lei.
-            return [['serviciu' => self::SERVICIU_ADRESA, 'pret' => 0.0]];
-        }
-        $optiuni = [['serviciu' => self::SERVICIU_ADRESA, 'pret' => round($adresa, 2)]];
-        if ($fanbox !== null) {
-            $optiuni[] = ['serviciu' => self::SERVICIU_FANBOX, 'pret' => round($fanbox, 2)];
-        }
-        return $optiuni;
+        return [['serviciu' => self::SERVICIU_ADRESA, 'pret' => $gratuitPeste ? 0.0 : round($adresa, 2)]];
     }
 
     /** Linkul absolut spre condițiile de retur. */
     public static function linkRetur(string $baseUrl): string
     {
         return rtrim($baseUrl, '/') . self::PAGINA_RETUR;
-    }
-
-    /** Există cel puțin un punct FANbox activ (checkout-ul arată opțiunea doar atunci)? */
-    private static function fanboxAreLocuri(?PDO $db): bool
-    {
-        if (!$db instanceof PDO) {
-            return false;
-        }
-        $cheie = spl_object_hash($db);
-        if (!array_key_exists($cheie, self::$areFanbox)) {
-            try {
-                $rand = $db->query('SELECT 1 FROM fan_lockers WHERE active = 1 LIMIT 1');
-                self::$areFanbox[$cheie] = $rand !== false && $rand->fetchColumn() !== false;
-            } catch (Throwable) {
-                self::$areFanbox[$cheie] = false;
-            }
-        }
-        return self::$areFanbox[$cheie];
     }
 }

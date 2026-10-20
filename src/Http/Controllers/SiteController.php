@@ -7391,7 +7391,7 @@ CSS;
                 'categorie' => trim((string) (($product['category_name'] ?? $product['category']) ?? '')),
                 // Coloana EAN nu există încă; când apare (B4), intră singură.
                 'gtin' => (string) ($product['gtin'] ?? $product['ean'] ?? ''),
-                'livrare' => \App\Support\PoliticaLivrare::optiuni($settings, $db, $pretAfisat, $redusa),
+                'livrare' => \App\Support\PoliticaLivrare::optiuni($settings, $pretAfisat, $redusa),
             ];
         }
         return $produse;
@@ -7484,10 +7484,8 @@ CSS;
             // Livrarea și returul (A5 din planul SEO): costul transportului pentru
             // produsul comandat singur, din prețurile fixe ale checkout-ului, și
             // politica de retur din termeni. Vezi PoliticaLivrare.
-            $db = $this->db();
             $livrare = \App\Support\PoliticaLivrare::optiuni(
-                $this->cachedSettings($db),
-                $db,
+                $this->cachedSettings($this->db()),
                 (float) ($product['price'] ?? 0),
                 (bool) ($product['has_sale_price'] ?? false)
             );
