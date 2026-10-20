@@ -214,6 +214,23 @@ if ($canonicalUrlFinal === '') {
     $canonicalUrlFinal = $appUrl . ($requestPath === '/' ? '/' : $requestPath);
 }
 $metaImageUrlFinal = trim((string) ($metaImageUrl ?? ''));
+// Poza de distribuire (Facebook, WhatsApp, X): varianta 1200×630 a pozei
+// paginii (produsul: poza lui principală), altfel cea implicită din Setări
+// magazin → SEO Google, altfel logo-ul. Vezi App\Support\ImagineDistribuire.
+// Paginile de coș, comandă, plată și cont rămân exact ca înainte.
+$distribuireNoua = !\App\Support\LinkuriCategorii::paginaCurentaExclusa();
+$imagineDistribuire = null;
+if ($distribuireNoua) {
+    if ($metaImageUrlFinal !== '') {
+        $imagineDistribuire = \App\Support\ImagineDistribuire::pentru($metaImageUrlFinal, $appUrl);
+    }
+    $imagineDistribuire ??= \App\Support\ImagineDistribuire::implicita($designSettings, $appUrl);
+    $metaImageUrlFinal = (string) ($imagineDistribuire['url'] ?? '');
+    $imagineDistribuireAlt = trim((string) ($metaImageAlt ?? ''));
+    if ($imagineDistribuireAlt === '') {
+        $imagineDistribuireAlt = $pageTitle !== '' ? $pageTitle : $siteBaseTitle;
+    }
+}
 if ($metaImageUrlFinal === '') {
     $metaImageUrlFinal = trim((string) ($designSettings['store_seo_default_image_url'] ?? ''));
 }
@@ -318,6 +335,10 @@ foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
     }
 } ?>
     <meta property="og:type" content="website">
+<?php if ($distribuireNoua): ?>
+    <meta property="og:site_name" content="<?= htmlspecialchars($siteBaseTitle, ENT_QUOTES) ?>">
+    <meta property="og:locale" content="ro_RO">
+<?php endif; ?>
     <meta property="og:title" content="<?= htmlspecialchars($metaTitleFinal, ENT_QUOTES) ?>">
     <?php if ($metaDescriptionFinal !== ''): ?>
         <meta property="og:description" content="<?= htmlspecialchars($metaDescriptionFinal, ENT_QUOTES) ?>">
@@ -327,8 +348,21 @@ foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
     <?php endif; ?>
     <?php if ($metaImageUrlFinal !== ''): ?>
         <meta property="og:image" content="<?= htmlspecialchars($metaImageUrlFinal, ENT_QUOTES) ?>">
+<?php if ($distribuireNoua && is_array($imagineDistribuire)): ?>
+<?php if ((string) ($imagineDistribuire['tip'] ?? '') !== ''): ?>
+        <meta property="og:image:type" content="<?= htmlspecialchars((string) $imagineDistribuire['tip'], ENT_QUOTES) ?>">
+<?php endif; ?>
+<?php if ((int) ($imagineDistribuire['latime'] ?? 0) > 0 && (int) ($imagineDistribuire['inaltime'] ?? 0) > 0): ?>
+        <meta property="og:image:width" content="<?= (int) $imagineDistribuire['latime'] ?>">
+        <meta property="og:image:height" content="<?= (int) $imagineDistribuire['inaltime'] ?>">
+<?php endif; ?>
+        <meta property="og:image:alt" content="<?= htmlspecialchars($imagineDistribuireAlt, ENT_QUOTES) ?>">
+<?php endif; ?>
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:image" content="<?= htmlspecialchars($metaImageUrlFinal, ENT_QUOTES) ?>">
+<?php if ($distribuireNoua && is_array($imagineDistribuire)): ?>
+        <meta name="twitter:image:alt" content="<?= htmlspecialchars($imagineDistribuireAlt, ENT_QUOTES) ?>">
+<?php endif; ?>
     <?php else: ?>
         <meta name="twitter:card" content="summary">
     <?php endif; ?>

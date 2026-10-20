@@ -33,6 +33,14 @@ declare(strict_types=1);
     exit;
 })();
 
+// Poza pentru distribuire pe Facebook / WhatsApp (og:image, 1200×630):
+// /og/{versiune}/uploads/… . Înaintea sesiunii și a redirecționărilor, ca o poză
+// să nu trimită cookie-uri; vezi App\Support\ImagineDistribuire.
+if (str_starts_with((string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?? ''), '/og/')) {
+    require_once __DIR__ . '/../src/Support/ImagineDistribuire.php';
+    \App\Support\ImagineDistribuire::raspunde(dirname(__DIR__));
+}
+
 // O singură adresă pentru fiecare pagină (https://bioscem.ro, fără www, fără „/”
 // final) și redirecționările adreselor vechi din config/redirecturi.php.
 // Doar GET/HEAD; niciodată pe coș, plată, cont, admin, API, confirmările de

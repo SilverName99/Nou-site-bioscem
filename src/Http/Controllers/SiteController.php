@@ -762,6 +762,17 @@ final class SiteController
                 );
             }
         }
+        // Poza la distribuire (og:image): poza scrisă la SEO, altfel poza
+        // principală a produsului; layout-ul face din ea varianta 1200×630.
+        if (trim((string) ($productSeoMeta['metaImageUrl'] ?? '')) === '') {
+            foreach ($this->extractProductImageUrls($product, true) as $imagineProdus) {
+                if (!str_contains((string) $imagineProdus, 'product-placeholder')) {
+                    $productSeoMeta['metaImageUrl'] = (string) $imagineProdus;
+                    break;
+                }
+            }
+        }
+        $productSeoMeta['metaImageAlt'] = (string) ($product['name'] ?? '');
         $jsonLd = [];
         try {
             $jsonLd = $this->jsonLdProdus($product, $productReviews, is_array($template) ? (string) ($template['html_content'] ?? '') : null);
