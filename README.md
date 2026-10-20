@@ -188,7 +188,10 @@ Actinovo Vitamina C lipozomala — „ATENȚIE – PRODUS REFRIGERAT”).
   fiecare avertisment (cu numele produselor) si o bifa obligatorie cu textul ales.
   Produsele cu acelasi titlu si text impart o caseta; cele cu aceeasi bifa impart o
   bifa (acelasi text cu bife diferite = o caseta, sub ea cate o bifa pe fiecare text de
-  bifa).
+  bifa). Daca, pe pagina de checkout, clientul scoate un produs din cosul plutitor
+  sau schimba cosul din alt tab si revine, casetele si bifele se refac singure, fara
+  reincarcarea paginii si fara sa se piarda ce a completat (cerere `GET
+  /api/cart/avertismente`, doar cand pagina are deja o caseta).
   Serverul verifica bifa la plasare, pentru **orice metoda de plata**, pe cosul din
   acel moment: fara bifa (sau daca intre timp s-au schimbat avertismentele din cos:
   alt produs cu avertisment adaugat sau scos, alt text, alta bifa) comanda

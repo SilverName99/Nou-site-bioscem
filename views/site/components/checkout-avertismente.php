@@ -1,8 +1,9 @@
 <?php
 /**
  * Casetele avertismentelor (ex. produs refrigerat) și bifele obligatorii, deasupra
- * butonului de plasare (inclus de checkout-form.php). O casetă pe avertisment
- * distinct (titlu + text); fiecare bifă stă sub ultima casetă pe care o confirmă.
+ * butonului de plasare. O casetă pe avertisment distinct (titlu + text); fiecare
+ * bifă stă sub ultima casetă pe care o confirmă. Inclus de checkout-form.php și
+ * dat de /api/cart/avertismente (sincronizarea după o schimbare a coșului pe /checkout).
  *
  * @var array $avertismente  App\Support\AvertismentProduse::pentruCos (nevid)
  * @var string $instanceId

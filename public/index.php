@@ -156,6 +156,8 @@ $router->post('/cos/puncte/sterge', [SiteController::class, 'cartClearPoints']);
 $router->post('/cos/judet', [SiteController::class, 'cartSetCounty']);
 $router->post('/api/cart/heartbeat', [SiteController::class, 'cartHeartbeat']);
 $router->get('/api/cart/summary', [SiteController::class, 'cartSummaryApi']);
+// Casetele avertismentelor (ex. produs refrigerat) pentru coșul de acum; pagina /checkout le reface după o schimbare a coșului.
+$router->get('/api/cart/avertismente', [SiteController::class, 'cartAvertismenteApi']);
 $router->get('/api/products/best-sellers', [SiteController::class, 'bestSellersApi']);
 $router->get('/api/search/products', [SiteController::class, 'productSearchApi']);
 $router->get('/api/shop/catalog', [SiteController::class, 'shopCatalogApi']);

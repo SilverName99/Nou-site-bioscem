@@ -2224,6 +2224,33 @@ final class SiteController
         $this->jsonResponse($payload);
     }
 
+    /**
+     * Casetele și bifele avertismentelor (ex. produs refrigerat) pentru coșul de
+     * ACUM, ca HTML gata de pus deasupra butonului de plasare. Pagina /checkout
+     * le cere când coșul se schimbă fără reîncărcare (coșul plutitor, alt tab):
+     * produsul scos nu mai cere bifă. Coș fără avertismente = html gol.
+     */
+    public function cartAvertismenteApi(): void
+    {
+        $db = $this->db();
+        $summary = CheckoutCalculator::buildSummary($db, Settings::all($db));
+        $avertismente = AvertismentProduse::pentruCos($db, (array) ($summary['lines'] ?? []));
+        $instanta = is_string($_GET['instanta'] ?? null) ? $_GET['instanta'] : '';
+        if (preg_match('/^[a-z0-9_-]{1,40}$/', $instanta) !== 1) {
+            $instanta = 'checkout-live';
+        }
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        $this->jsonResponse([
+            'ok' => true,
+            'chei' => AvertismentProduse::cheiBife($avertismente),
+            'html' => $avertismente === [] ? '' : $this->renderPhpView('site/components/checkout-avertismente', [
+                'avertismente' => $avertismente,
+                'instanceId' => $instanta,
+                'previewMode' => false,
+            ]),
+        ]);
+    }
+
     public function bestSellersApi(): void
     {
         $limit = (int) ($_GET['limit'] ?? 4);
