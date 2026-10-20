@@ -165,6 +165,71 @@ php /home/USER/domains/bioscem.ro/public_html/scripts/test-precomanda.php
 
 Testul nu trimite nimic in ERP si sterge in urma lui tot ce a creat.
 
+### Avertisment pe produs (ex. produse refrigerate)
+
+Pentru produsele care cer o atentionare (acum: Vivomixx Neo 115, Vivomixx Neo 460,
+Actinovo Vitamina C lipozomala — „ATENȚIE – PRODUS REFRIGERAT”).
+
+- **Unde se scrie:** `Admin -> Produse`, in fereastra produsului, cardul
+  **„Avertisment la coș și la finalizarea comenzii”**, cu trei campuri de text simplu
+  (fara HTML; un rand gol incepe un paragraf nou):
+  - **Titlu avertisment**;
+  - **Text avertisment** — avertismentul e activ **doar daca acest camp e completat**;
+  - **Text bifă la finalizarea comenzii** — gol = „Am citit și am înțeles avertismentul de mai sus.”
+  Toate trei golite = produsul nu mai are avertisment.
+- **La adaugarea in cos** (din orice loc: fisa produsului, oferta pe lot, magazin,
+  categorie, marca, eticheta, cautare, produse similare, blocurile de produse din
+  paginile construite, manechinul) produsul intra in cos ca de obicei si apare o
+  fereastra cu titlul si textul (acelasi aspect ca popup-ul „Bine ati venit”), care
+  se inchide cu „Am înțeles”, × sau Esc. Fereastra vine doar in raspunsul adaugarii
+  (sau o singura data pe `/cos`, cand adaugarea a mers pe drumul clasic, fara
+  JavaScript), deci paginile din cache raman aceleasi pentru toti.
+- **La finalizarea comenzii**, deasupra butonului de plasare: o caseta rosie pentru
+  fiecare avertisment (cu numele produselor) si o bifa obligatorie cu textul ales.
+  Produsele cu acelasi text impart o caseta; cele cu aceeasi bifa impart o bifa.
+  Serverul verifica bifa la plasare, pentru **orice metoda de plata**, pe cosul din
+  acel moment: fara bifa (sau daca intre timp s-au schimbat avertismentele din cos:
+  alt produs cu avertisment, alt text, alta bifa) comanda
+  nu se plaseaza, clientul revine pe checkout cu mesajul in romana si cu datele
+  completate.
+- **Pe comanda** ramane o copie a ce a confirmat clientul (titlul, textul exact,
+  bifa, produsele, data si ora Bucurestiului), in tabelul `order_product_warnings`.
+  O modificare ulterioara a textului din admin nu schimba comenzile vechi. In
+  `Admin -> Comenzi`, fereastra comenzii arata sus, de exemplu:
+  `Avertisment confirmat de client: «ATENȚIE – PRODUS REFRIGERAT» (Vivomixx Neo 115) — 20.10.2026 16:44`
+  („Textul confirmat” se desface pentru textul complet).
+- **Emailul de confirmare** catre client (orice metoda; la card, cel trimis dupa
+  plata) are blocul cu avertismentul si bifa confirmata, sub lista de produse.
+  In sabloanele din `Admin -> Email-uri` se poate pune explicit locul cu
+  `{{avertismente_produse}}`. Emailurile comenzilor fara avertisment raman exact ca
+  inainte.
+- **ERP-ul nu primeste nimic nou**: datele trimise la ERP sunt aceleasi.
+- **Oprire de urgenta:** `AVERTISMENT_PRODUSE=0` in `.env` opreste tot (fereastra,
+  caseta, bifa si verificarea ei, blocul din email). Textele din admin si
+  confirmarile de pe comenzile vechi raman; se porneste la loc stergand linia
+  (sau `AVERTISMENT_PRODUSE=1`).
+- **Tabele noi** (create singure la prima salvare, versiunea sta in `settings`, cheia
+  `product_warnings_schema_version`): `product_warnings` (cele trei campuri pe
+  produs) si `order_product_warnings` (confirmarile de pe comenzi).
+
+Completarea celor trei produse cu textele aprobate, prin SSH, din folderul site-ului:
+
+```bash
+# 1. ce s-ar schimba (nu scrie nimic)
+php scripts/avertisment-produse.php --plan
+# 2. scrierea; inainte salveaza valorile de acum in storage/avertisment-produse-copie-<data>.json
+php scripts/avertisment-produse.php --aplica
+# 3. daca trebuie dat inapoi: pune valorile din cea mai noua copie
+php scripts/avertisment-produse.php --restaureaza
+#    sau dintr-o copie anume:  --restaureaza --fisier=storage/avertisment-produse-copie-....json
+```
+
+Scriptul refuza (fara sa scrie nimic) daca lipseste un produs sau daca un produs are
+deja alt avertisment (`--forteaza` il inlocuieste, iar vechiul text ramane in copie).
+Rulat a doua oara spune „Nimic de schimbat”. La restaurare, un avertisment schimbat de
+mana intre timp e „SĂRIT” (tot `--forteaza` il suprascrie). Dupa scriere goleste cache-ul
+de pagini; CDN-ul din hPanel se goleste de mana.
+
 ### ERP ANDAXI: „Client agresiv” pe comenzi
 
 Cand in ERP e pornita setarea „Bifa „Client agresiv” pe fisa clientului” (Setari →
