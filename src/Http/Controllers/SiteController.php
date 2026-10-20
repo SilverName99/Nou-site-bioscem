@@ -3895,9 +3895,24 @@ final class SiteController
 
         // Aceeași pagină scrisă altfel (litere mari): 301 la adresa ei.
         $slugSalvat = is_array($page) ? (string) ($page['slug'] ?? '') : '';
-        if ($slugSalvat !== '' && $slugSalvat !== $slug
-            && \App\Support\SeoRedirects::redirectCanonic('/' . implode('/', array_map('rawurlencode', explode('/', $slugSalvat))))) {
-            return;
+        if ($slugSalvat !== '' && $slugSalvat !== $slug) {
+            $caleCorecta = '/' . implode('/', array_map('rawurlencode', explode('/', $slugSalvat)));
+            $queryCorect = null;
+            if ($slugSalvat === 'magazin') {
+                // /Magazin?category=X: direct la /categorie/{slug}, într-un singur
+                // salt (nu prin /magazin?category=X), după aceeași regulă ca shop().
+                $tinta = \App\Support\LinkuriCategorii::tintaPentruMagazin(
+                    $db,
+                    (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?? '')
+                );
+                if ($tinta !== null) {
+                    $caleCorecta = $tinta['cale'];
+                    $queryCorect = $tinta['query'];
+                }
+            }
+            if (\App\Support\SeoRedirects::redirectCanonic($caleCorecta, $queryCorect)) {
+                return;
+            }
         }
 
         if ($page === null) {
