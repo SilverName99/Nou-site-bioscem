@@ -69,9 +69,10 @@ final class ImagineDistribuire
 
     /**
      * Poza pentru paginile fără poză proprie: cea din Admin → Setări magazin →
-     * SEO Google, altfel logo-ul magazinului.
+     * SEO Google, altfel logo-ul magazinului. „sursa” spune care dintre ele
+     * („setari” sau „logo”), ca textul alternativ să descrie poza, nu pagina.
      *
-     * @return array{url: string, latime: ?int, inaltime: ?int, tip: string}|null
+     * @return array{url: string, latime: ?int, inaltime: ?int, tip: string, sursa: string}|null
      */
     public static function implicita(array $setari, string $baseUrl, ?string $radacina = null): ?array
     {
@@ -79,10 +80,20 @@ final class ImagineDistribuire
         if ($setata !== '') {
             $poza = self::pentru($setata, $baseUrl, $radacina);
             if ($poza !== null) {
-                return $poza;
+                return $poza + ['sursa' => 'setari'];
             }
         }
-        return self::pentru(self::LOGO_IMPLICIT, $baseUrl, $radacina);
+        $logo = self::pentru(self::LOGO_IMPLICIT, $baseUrl, $radacina);
+        return $logo !== null ? $logo + ['sursa' => 'logo'] : null;
+    }
+
+    /**
+     * Textul alternativ al pozei implicite: „Logo {magazin}” pentru logo, numele
+     * magazinului pentru poza aleasă în setări (o poză a magazinului, nu a paginii).
+     */
+    public static function altImplicit(array $poza, string $numeMagazin): string
+    {
+        return ($poza['sursa'] ?? '') === 'logo' ? 'Logo ' . $numeMagazin : $numeMagazin;
     }
 
     private static function pentruIntern(string $imagine, string $baza, string $radacina): ?array

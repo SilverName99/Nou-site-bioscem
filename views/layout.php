@@ -224,12 +224,21 @@ if ($distribuireNoua) {
     if ($metaImageUrlFinal !== '') {
         $imagineDistribuire = \App\Support\ImagineDistribuire::pentru($metaImageUrlFinal, $appUrl);
     }
-    $imagineDistribuire ??= \App\Support\ImagineDistribuire::implicita($designSettings, $appUrl);
-    $metaImageUrlFinal = (string) ($imagineDistribuire['url'] ?? '');
-    $imagineDistribuireAlt = trim((string) ($metaImageAlt ?? ''));
-    if ($imagineDistribuireAlt === '') {
-        $imagineDistribuireAlt = $pageTitle !== '' ? $pageTitle : $siteBaseTitle;
+    if ($imagineDistribuire !== null) {
+        // Poza paginii (produsul: numele lui; altfel titlul paginii).
+        $imagineDistribuireAlt = trim((string) ($metaImageAlt ?? ''));
+        if ($imagineDistribuireAlt === '') {
+            $imagineDistribuireAlt = $pageTitle !== '' ? $pageTitle : $siteBaseTitle;
+        }
+    } else {
+        // Poza implicită (logo-ul sau cea din setări) nu arată pagina: textul
+        // alternativ o descrie pe ea („Logo Bioscem”), nu titlul paginii.
+        $imagineDistribuire = \App\Support\ImagineDistribuire::implicita($designSettings, $appUrl);
+        $imagineDistribuireAlt = is_array($imagineDistribuire)
+            ? \App\Support\ImagineDistribuire::altImplicit($imagineDistribuire, $siteBaseTitle)
+            : $siteBaseTitle;
     }
+    $metaImageUrlFinal = (string) ($imagineDistribuire['url'] ?? '');
 }
 if ($metaImageUrlFinal === '') {
     $metaImageUrlFinal = trim((string) ($designSettings['store_seo_default_image_url'] ?? ''));
