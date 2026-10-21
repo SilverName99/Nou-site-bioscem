@@ -213,6 +213,11 @@ $canonicalUrlFinal = trim((string) ($metaCanonicalUrl ?? ''));
 if ($canonicalUrlFinal === '') {
     $canonicalUrlFinal = $appUrl . ($requestPath === '/' ? '/' : $requestPath);
 }
+// Fără canonical (și fără og:url) pe pagina „nu există” (404/410) și unde
+// controllerul o cere (căutarea internă cu noindex). Vezi App\Support\SeoIndexare.
+if (!empty($faraCanonical) || \App\Support\SeoIndexare::faraCanonicalPentruCod((int) http_response_code())) {
+    $canonicalUrlFinal = '';
+}
 $metaImageUrlFinal = trim((string) ($metaImageUrl ?? ''));
 // Poza de distribuire (Facebook, WhatsApp, X): varianta 1200×630 a pozei
 // paginii (produsul: poza lui principală), altfel cea implicită din Setări
@@ -330,9 +335,8 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
     <?php if ($canonicalUrlFinal !== ''): ?>
         <link rel="canonical" href="<?= htmlspecialchars($canonicalUrlFinal, ENT_QUOTES) ?>">
     <?php endif; ?>
-<?php /* Loc pregătit pentru „noindex” (deciziile D2 etichete mici, D3 etichete cu nume de boli
-și D7 /blog gol nu sunt încă luate): un controller poate trimite $metaRobots, de exemplu
-„noindex,follow”. Azi niciun controller nu o trimite, deci nu apare nimic în pagină. */
+<?php /* „noindex,follow” trimis de controller în $metaRobots: căutarea internă (/magazin?q=…)
+și /blog fără articole publicate (vezi App\Support\SeoIndexare). Celelalte pagini nu au etichetă. */
 if (isset($metaRobots) && preg_match('/^[a-z ,-]+$/i', trim((string) $metaRobots)) === 1) {
     echo '    <meta name="robots" content="', htmlspecialchars(trim((string) $metaRobots), ENT_QUOTES), '">', "\n";
 } ?>

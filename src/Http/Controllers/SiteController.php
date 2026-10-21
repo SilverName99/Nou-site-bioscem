@@ -430,15 +430,19 @@ final class SiteController
         if ($tinta !== null && \App\Support\SeoRedirects::redirectCanonic($tinta['cale'], $tinta['query'])) {
             return;
         }
-        $this->randeazaMagazin($this->requestCategoryFilter(), '');
+        // Căutarea internă (/magazin?q=…): noindex,follow, fără canonical (A10).
+        $this->randeazaMagazin($this->requestCategoryFilter(), '', \App\Support\SeoIndexare::pentruMagazin($_GET));
     }
 
     /**
      * Magazinul: tot catalogul sau o categorie. $caleCategorie e adresa paginii
      * de categorie când lista e afișată de /categorie/{slug} (atunci sortarea
-     * rămâne pe acea adresă); gol pentru /magazin.
+     * rămâne pe acea adresă); gol pentru /magazin. $robots: meta robots și
+     * „fără canonical” pentru căutare (vezi SeoIndexare::pentruMagazin).
+     *
+     * @param array{metaRobots?: string, faraCanonical?: bool} $robots
      */
-    private function randeazaMagazin(string $categoryFilter, string $caleCategorie): void
+    private function randeazaMagazin(string $categoryFilter, string $caleCategorie, array $robots = []): void
     {
         $shopPage = $this->findPublishedPageBySlug('magazin');
         $db = $this->db();
@@ -475,7 +479,7 @@ final class SiteController
                 'shopCategoryLabel' => $shopCategoryLabel,
                 'shopPageTitle' => (string) ($shopPage['title'] ?? 'Magazin'),
                 'jsonLd' => $this->jsonLdPagina,
-            ], $seoLista));
+            ], $seoLista, $robots));
             return;
         }
 
@@ -485,7 +489,7 @@ final class SiteController
             'title' => 'Magazin',
             'activeCategory' => $categoryFilter,
             'jsonLd' => $this->jsonLdPagina,
-        ], $seoLista));
+        ], $seoLista, $robots));
     }
 
     /**
@@ -565,19 +569,22 @@ final class SiteController
     {
         $db = $this->db();
         $blogPostsHtml = $this->renderBlogPostsSection($db instanceof PDO ? $db : null);
+        // /blog fără niciun articol publicat: noindex,follow (decizia D7, A10).
+        $robots = \App\Support\SeoIndexare::pentruBlog(count($this->loadPublishedBlogPosts($db instanceof PDO ? $db : null, 1)));
         $blogPage = $this->findPublishedPageBySlug('blog');
         if (is_array($blogPage)) {
             $settings = $this->cachedSettings($db instanceof PDO ? $db : null);
+            $titlu = (string) ($blogPage['title'] ?? 'Blog');
             View::render('site/custom-page', array_merge([
-                'title' => (string) ($blogPage['title'] ?? 'Blog'),
+                'title' => $titlu,
                 'page' => $blogPage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db instanceof PDO ? $db : null, $settings),
                 'blogPostsHtml' => $blogPostsHtml,
-            ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $blogPage)));
+            ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $blogPage), $robots));
             return;
         }
 
-        View::render('site/custom-page', [
+        View::render('site/custom-page', array_merge([
             'title' => 'Blog',
             'page' => [
                 'html_content' => '{{blog_posts}}',
@@ -586,7 +593,7 @@ final class SiteController
             ],
             'blogPostsHtml' => $blogPostsHtml,
             'mannequinSectionHtml' => '',
-        ]);
+        ], $robots));
     }
 
     public function blogPostsApi(): void
