@@ -133,8 +133,13 @@ final class SeoRedirects
         }
         $caleGresita = $caleCurata !== $caleBruta;
         $regula = self::regulaPentru($caleCurata);
+        // HEAD pe o adresă cu litere mari (de exemplu /produs/…-sp21A, adresa
+        // veche a căștilor AIRCALL): routerul n-are rute HEAD, deci răspunsul ar
+        // fi 404 în loc de 301-ul pe care îl primește GET. Cererea merge ca GET
+        // (mai jos), iar răspunsul aplicației pleacă neschimbat.
+        $headCuMajuscule = $metoda === 'HEAD' && preg_match('/[A-Z]/', $caleCurata) === 1;
 
-        if (!$gazdaGresita && !$caleGresita && $regula === null) {
+        if (!$gazdaGresita && !$caleGresita && $regula === null && !$headCuMajuscule) {
             return;
         }
 
