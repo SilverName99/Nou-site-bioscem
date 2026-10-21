@@ -10998,79 +10998,29 @@ CSS;
 
     private function buildSimilarProductsForSite(array $products, array $currentProduct): array
     {
+        // A14: 4–8 produse din aceeași categorie, scrise și în HTML (vezi
+        // App\Support\ProduseSimilare); fără baza de date sau cu
+        // SEO_PRODUSE_SIMILARE=0 rămâne secțiunea de dinainte (doar alegerea din admin).
+        if (\App\Support\ProduseSimilare::activ()) {
+            $alese = $this->produseSimilareDinCategorie($products, $currentProduct);
+            if ($alese !== null) {
+                return $alese;
+            }
+        }
         $items = [];
         $currentId = (int) ($currentProduct['id'] ?? 0);
-        $selectedIds = [];
-        $rawSelected = $currentProduct['similar_products_json'] ?? [];
-        if (is_string($rawSelected) && trim($rawSelected) !== '') {
-            $decoded = json_decode($rawSelected, true);
-            if (is_array($decoded)) {
-                $rawSelected = $decoded;
-            } else {
-                $rawSelected = [];
-            }
-        }
-        if (is_array($rawSelected)) {
-            foreach ($rawSelected as $value) {
-                $id = (int) $value;
-                if ($id <= 0 || $id === $currentId || in_array($id, $selectedIds, true)) {
-                    continue;
-                }
-                $selectedIds[] = $id;
-                if (count($selectedIds) >= 12) {
-                    break;
-                }
-            }
-        }
+        $selectedIds = $this->produseSimilareAleseInAdmin($currentProduct);
 
         $itemById = [];
         foreach ($products as $candidate) {
             if (!is_array($candidate)) {
                 continue;
             }
-            // Products from loadProducts() are already normalized. Re-normalizing would
-            // recompute base_price from the already-discounted price, collapsing
-            // base_price to price and hiding the discount badge + old price.
-            if (!isset($candidate['base_price'])) {
-                $candidate = $this->normalizeProduct($candidate);
-            }
-            $id = (int) ($candidate['id'] ?? 0);
-            $name = trim((string) ($candidate['name'] ?? ''));
-            $slug = trim((string) ($candidate['slug'] ?? ''));
-            if ($id <= 0 || $name === '' || $slug === '' || $id === $currentId) {
+            $item = $this->elementProdusSimilar($candidate);
+            if ($item === null || $item['id'] === $currentId) {
                 continue;
             }
-            $currentPrice = (float) ($candidate['price'] ?? 0);
-            $regularPrice = (float) ($candidate['base_price'] ?? $currentPrice);
-            // Use the normalized has_sale_price (accounts for scheduled sale periods),
-            // not just the raw sale_price field — otherwise a period-based discount shows
-            // the reduced price but no discount badge.
-            $hasSalePrice = (bool) ($candidate['has_sale_price'] ?? false)
-                && $regularPrice > $currentPrice
-                && $currentPrice > 0;
-            $item = [
-                'id' => $id,
-                'name' => $name,
-                'slug' => $slug,
-                'url' => '/produs/' . rawurlencode($slug),
-                'category' => (string) (($candidate['category_name'] ?? $candidate['category']) ?? ''),
-                'image_url' => (string) ($candidate['image_url'] ?? '/assets/img/product-placeholder.svg'),
-                'price' => $currentPrice,
-                'regular_price' => $regularPrice,
-                'has_sale_price' => $hasSalePrice ? 1 : 0,
-                'discount_badge_mode' => (string) ($candidate['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent',
-                'discount_value_label' => $hasSalePrice ? rtrim(rtrim(number_format($regularPrice - $currentPrice, 2, '.', ''), '0'), '.') : '',
-                'price_label' => number_format($currentPrice, 2) . ' lei',
-                'regular_price_label' => $hasSalePrice ? number_format($regularPrice, 2) . ' lei' : '',
-                'short_description' => (string) ($candidate['short_description'] ?? ''),
-                'reviews_count' => max(0, (int) ($candidate['reviews_count'] ?? 0)),
-                'reviews_average' => max(0.0, min(5.0, (float) ($candidate['reviews_average'] ?? 0))),
-                // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără
-                // asta, produsul bifat apărea fără buton și în carusel.
-                'preorder' => \App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
-                'out_of_stock' => (int) ($candidate['out_of_stock'] ?? 0) === 1
-                    && !\App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
-            ];
+            $id = $item['id'];
             $items[] = $item;
             $itemById[$id] = $item;
             if (count($items) >= 40) {
@@ -11113,6 +11063,164 @@ CSS;
         return array_slice($ordered, 0, 24);
     }
 
+    /**
+     * Produsele alese în admin pentru un produs (similar_products_json), în
+     * ordinea lor, fără duplicate și fără produsul însuși; cel mult 12.
+     *
+     * @return list<int>
+     */
+    private function produseSimilareAleseInAdmin(array $currentProduct): array
+    {
+        $currentId = (int) ($currentProduct['id'] ?? 0);
+        $selectedIds = [];
+        $rawSelected = $currentProduct['similar_products_json'] ?? [];
+        if (is_string($rawSelected) && trim($rawSelected) !== '') {
+            $decoded = json_decode($rawSelected, true);
+            $rawSelected = is_array($decoded) ? $decoded : [];
+        }
+        if (is_array($rawSelected)) {
+            foreach ($rawSelected as $value) {
+                $id = (int) $value;
+                if ($id <= 0 || $id === $currentId || in_array($id, $selectedIds, true)) {
+                    continue;
+                }
+                $selectedIds[] = $id;
+                if (count($selectedIds) >= 12) {
+                    break;
+                }
+            }
+        }
+        return $selectedIds;
+    }
+
+    /**
+     * A14: produsele similare din aceeași categorie (regula e în
+     * App\Support\ProduseSimilare::ordine). Doar produse active și nesterse.
+     * Null dacă baza nu răspunde: atunci rămâne secțiunea de dinainte.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function produseSimilareDinCategorie(array $products, array $currentProduct): ?array
+    {
+        $db = $this->db();
+        if (!$db instanceof PDO) {
+            return null;
+        }
+        $meta = [];
+        try {
+            foreach ($db->query('SELECT id, category_id, is_active FROM products WHERE deleted_at IS NULL')->fetchAll(PDO::FETCH_ASSOC) ?: [] as $rand) {
+                $meta[(int) $rand['id']] = [(int) ($rand['category_id'] ?? 0), (int) ($rand['is_active'] ?? 1) === 1];
+            }
+        } catch (Throwable) {
+            return null;
+        }
+        $currentId = (int) ($currentProduct['id'] ?? 0);
+        $candidati = [];
+        $elemente = [];
+        foreach ($products as $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+            if (!isset($candidate['base_price'])) {
+                $candidate = $this->normalizeProduct($candidate);
+            }
+            $item = $this->elementProdusSimilar($candidate);
+            if ($item === null) {
+                continue;
+            }
+            $id = $item['id'];
+            if ($id === $currentId || !isset($meta[$id]) || !$meta[$id][1]) {
+                continue;
+            }
+            $candidati[$id] = [
+                'categorie_id' => $meta[$id][0],
+                'categorie' => (string) ($candidate['category'] ?? ''),
+                'disponibil' => $item['out_of_stock'] !== 1,
+                // Cu ofertă de ales (lot cu dată de expirare): butonul din card n-o poate alege.
+                'alegere' => \App\Support\BbdOferte::cereAlegere($candidate),
+            ];
+            $elemente[$id] = $item;
+        }
+        $ids = \App\Support\ProduseSimilare::ordine(
+            $currentId,
+            [
+                'categorie_id' => (int) ($currentProduct['category_id'] ?? ($meta[$currentId][0] ?? 0)),
+                'categorie' => (string) ($currentProduct['category'] ?? ''),
+            ],
+            $this->produseSimilareAleseInAdmin($currentProduct),
+            $candidati
+        );
+        if ($ids === []) {
+            return [];
+        }
+        $reviewMap = $this->loadShopCatalogReviewMap($db, $ids);
+        $ordonate = [];
+        foreach ($ids as $id) {
+            $item = $elemente[$id];
+            $stats = $reviewMap[$id] ?? null;
+            if (is_array($stats)) {
+                $item['reviews_count'] = max(0, (int) ($stats['count'] ?? 0));
+                $item['reviews_average'] = max(0.0, min(5.0, (float) ($stats['average'] ?? 0.0)));
+            }
+            // Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic.
+            $item['image_url'] = \App\Support\PozeOptimizate::src((string) $item['image_url']);
+            $ordonate[] = $item;
+        }
+        return $ordonate;
+    }
+
+    /**
+     * Elementul unui produs pentru caruselul „Produse similare” (datele din care
+     * JavaScript-ul desenează cardul), sau null dacă produsul n-are id, nume sau adresă.
+     */
+    private function elementProdusSimilar(array $candidate): ?array
+    {
+        // Products from loadProducts() are already normalized. Re-normalizing would
+        // recompute base_price from the already-discounted price, collapsing
+        // base_price to price and hiding the discount badge + old price.
+        if (!isset($candidate['base_price'])) {
+            $candidate = $this->normalizeProduct($candidate);
+        }
+        $id = (int) ($candidate['id'] ?? 0);
+        $name = trim((string) ($candidate['name'] ?? ''));
+        $slug = trim((string) ($candidate['slug'] ?? ''));
+        if ($id <= 0 || $name === '' || $slug === '') {
+            return null;
+        }
+        $currentPrice = (float) ($candidate['price'] ?? 0);
+        $regularPrice = (float) ($candidate['base_price'] ?? $currentPrice);
+        // Use the normalized has_sale_price (accounts for scheduled sale periods),
+        // not just the raw sale_price field — otherwise a period-based discount shows
+        // the reduced price but no discount badge.
+        $hasSalePrice = (bool) ($candidate['has_sale_price'] ?? false)
+            && $regularPrice > $currentPrice
+            && $currentPrice > 0;
+        $item = [
+            'id' => $id,
+            'name' => $name,
+            'slug' => $slug,
+            'url' => '/produs/' . rawurlencode($slug),
+            'category' => (string) (($candidate['category_name'] ?? $candidate['category']) ?? ''),
+            'image_url' => (string) ($candidate['image_url'] ?? '/assets/img/product-placeholder.svg'),
+            'price' => $currentPrice,
+            'regular_price' => $regularPrice,
+            'has_sale_price' => $hasSalePrice ? 1 : 0,
+            'discount_badge_mode' => (string) ($candidate['discount_badge_mode'] ?? 'percent') === 'value' ? 'value' : 'percent',
+            'discount_value_label' => $hasSalePrice ? rtrim(rtrim(number_format($regularPrice - $currentPrice, 2, '.', ''), '0'), '.') : '',
+            'price_label' => number_format($currentPrice, 2) . ' lei',
+            'regular_price_label' => $hasSalePrice ? number_format($regularPrice, 2) . ' lei' : '',
+            'short_description' => (string) ($candidate['short_description'] ?? ''),
+            'reviews_count' => max(0, (int) ($candidate['reviews_count'] ?? 0)),
+            'reviews_average' => max(0.0, min(5.0, (float) ($candidate['reviews_average'] ?? 0))),
+            // Precomanda nu e „epuizat": marfa vine, doar mai târziu. Fără
+            // asta, produsul bifat apărea fără buton și în carusel.
+            'preorder' => \App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
+            'out_of_stock' => (int) ($candidate['out_of_stock'] ?? 0) === 1
+                && !\App\Support\Precomanda::estePrecomanda($candidate) ? 1 : 0,
+        ];
+        return $item;
+    }
+
     private function buildSimilarProductsSectionHtml(array $similarProducts): string
     {
         if ($similarProducts === []) {
@@ -11131,7 +11239,10 @@ CSS;
             . '<div class="similar-products__head"><h3>Produse similare</h3></div>'
             . '<div class="similar-products__carousel">'
             . '<button type="button" class="similar-products__nav" data-action="prev" aria-label="Produse anterioare">‹</button>'
-            . '<div class="similar-products__viewport"><div class="similar-products__track" data-similar-track="1"></div></div>'
+            // A14: cardurile sunt și în HTML (linkuri reale); JavaScript-ul le rearanjează ca înainte.
+            . '<div class="similar-products__viewport"><div class="similar-products__track" data-similar-track="1">'
+            . (\App\Support\ProduseSimilare::activ() ? \App\Support\ProduseSimilare::cardurileHtml(array_values($similarProducts)) : '')
+            . '</div></div>'
             . '<button type="button" class="similar-products__nav" data-action="next" aria-label="Produse următoare">›</button>'
             . '</div>'
             . '<div class="similar-products__dots" data-similar-dots="1" aria-label="Paginare produse similare"></div>'
