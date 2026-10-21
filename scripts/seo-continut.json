@@ -1,0 +1,560 @@
+{
+ "versiune": 1,
+ "generat": "2026-10-21",
+ "sursa": "crawl politicos bioscem.ro, 21.10.2026 (GET, 1,15 s între cereri, UA ANDAXI-audit/1.0): 244 de pagini din sitemap + /acorduri-gdpr + /blog; codul live 4254ca4",
+ "reguli_pentru_script": {
+  "potrivire": "Text exact, sensibil la majuscule, în câmpul indicat al rândului indicat (pages.slug; products.slug; product_extra_field_values prin products.slug + product_extra_fields.field_key, coloana value). Slug-urile și field_key se compară fără majuscule (pagina arată field_key cu litere mici, în data-pane=\"field-<cheie>\"); textul „vechi” se compară exact.",
+  "aplicare": "Dacă „nou” nu e gol și apare deja în câmp → rând deja aplicat (nimic de făcut). Altfel, dacă „vechi” apare exact de „aparitii” ori → se înlocuiesc toate aparițiile. Altfel → refuz pentru tot scriptul (nimic scris).",
+  "stergeri": "Rândurile cu „nou” gol sunt aplicate când „vechi” nu mai apare.",
+  "aircall": "Pentru D5: produsul se caută după sku (exact) și slug (fără majuscule); slug-ul și numele trebuie să fie cele „vechi” (sau deja cele „noi”), altfel refuz; sku-ul nu se schimbă niciodată. seo_pages (page_type=product, page_ref=id) primește titlul și descrierea noi. seo_titlu_vechi e titlul afișat azi: se compară cu valoarea salvată trecută prin SeoMeta::curataTitlu; seo_descriere_veche e valoarea salvată (azi apare exact așa în pagină). Dacă nu se potrivesc (schimbate de mână între timp) → refuz.",
+  "restaurare": "Copia JSON din storage/ ține valoarea întreagă a fiecărui câmp atins (înainte), plus slug/nume/seo AIRCALL."
+ },
+ "aircall": [
+  {
+   "id": "D5-SP21A",
+   "sku": "SP21A",
+   "slug_vechi": "casti-antiradiatii-aircall-sp21A",
+   "slug_nou": "casti-antiradiatii-aircall-sp21a",
+   "nume_vechi": "Căști antiradiații AIRCALL ALB",
+   "nume_nou": "Căști antiradiații AIRCALL – alb",
+   "descriere_scurta": "culoare: alb",
+   "seo_titlu_vechi": "Căști antiradiații AIRCALL | COMOSYSTEMS",
+   "seo_titlu_nou": "Căști antiradiații Comosystems AIRCALL – alb | Bioscem",
+   "seo_descriere_veche": "culoare: alb",
+   "seo_descriere_noua": "Căști AIRCALL de la Comosystems în culoarea albă (cod SP21A), cu traductoarele de sunet așezate în două camere mici (cavități sonore). Există și în negru.",
+   "descriere": {
+    "camp": "description",
+    "vechi": "<p>Difuzoarele miniaturale",
+    "nou": "<p>Aceasta este varianta albă a căștilor AIRCALL de la Comosystems (cod produs SP21A). Același model se găsește și în negru: <a href=\"/produs/casti-antiradiatii-aircall-sp21n\">Căști antiradiații AIRCALL – negru</a>.</p>\n<p>Difuzoarele miniaturale",
+    "aparitii": 1
+   }
+  },
+  {
+   "id": "D5-SP21N",
+   "sku": "SP21N",
+   "slug_vechi": "casti-antiradiatii-aircall-sp21N",
+   "slug_nou": "casti-antiradiatii-aircall-sp21n",
+   "nume_vechi": "Căști antiradiații AIRCALL NEGRU",
+   "nume_nou": "Căști antiradiații AIRCALL – negru",
+   "descriere_scurta": "culoare: negru",
+   "seo_titlu_vechi": "Căști antiradiații AIRCALL | COMOSYSTEMS",
+   "seo_titlu_nou": "Căști antiradiații Comosystems AIRCALL – negru | Bioscem",
+   "seo_descriere_veche": "culoare: negru",
+   "seo_descriere_noua": "Căști AIRCALL de la Comosystems în culoarea neagră (cod SP21N), cu traductoarele de sunet așezate în două camere mici (cavități sonore). Există și în alb.",
+   "descriere": {
+    "camp": "description",
+    "vechi": "<p>Difuzoarele miniaturale",
+    "nou": "<p>Aceasta este varianta neagră a căștilor AIRCALL de la Comosystems (cod produs SP21N). Același model se găsește și în alb: <a href=\"/produs/casti-antiradiatii-aircall-sp21a\">Căști antiradiații AIRCALL – alb</a>.</p>\n<p>Difuzoarele miniaturale",
+    "aparitii": 1
+   }
+  }
+ ],
+ "inlocuiri": [
+  {
+   "id": "A9-01",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "termeni-conditii"
+   },
+   "camp": "html_content",
+   "vechi": "<p>Mai multe detalii despre dreptul la retur se găsesc în pagina: <a href=\"https://bioscem.ro/retur-garantie/\" target=\"_blank\"><strong>Retur și Garanție</strong></a></p>\n",
+   "nou": "",
+   "aparitii": 1,
+   "tip": "stergere",
+   "motiv": "Decizie proprietar: paragraful trimite la /retur-garantie/, care azi face 301 înapoi la /termeni-conditii (pagina însăși).",
+   "pagina_live": "/termeni-conditii"
+  },
+  {
+   "id": "A9-02",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "termeni-conditii"
+   },
+   "camp": "html_content",
+   "vechi": "```html\n",
+   "nou": "",
+   "aparitii": 1,
+   "tip": "stergere",
+   "motiv": "Decizie proprietar: rândul „```html” rămas din copiere apare ca text pe pagină (singura apariție). Titlul de după rămâne.",
+   "pagina_live": "/termeni-conditii"
+  },
+  {
+   "id": "A9-03",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "termeni-conditii"
+   },
+   "camp": "html_content",
+   "vechi": "href=\"https://bioscem.ro/produs/vivomixx-neo-460/#livrare\"",
+   "nou": "href=\"/produs/vivomixx-neo-460#livrare\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi). Se schimbă doar adresa; textul linkului și al paragrafului rămân.",
+   "pagina_live": "/termeni-conditii"
+  },
+  {
+   "id": "A9-04",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "livrare-transport"
+   },
+   "camp": "html_content",
+   "vechi": "href=\"https://bioscem.ro/produs/vivomixx-neo-460/#livrare\"",
+   "nou": "href=\"/produs/vivomixx-neo-460#livrare\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi). Se schimbă doar adresa.",
+   "pagina_live": "/livrare-transport"
+  },
+  {
+   "id": "A9-05",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "program-sarbatori"
+   },
+   "camp": "html_content",
+   "vechi": "<a href=\"https://www.fancourier.ro/program-de-sarbatori-2/\" target=\"_blank\"><img loading=\"lazy\" decoding=\"async\" src=\"https://bioscem.ro/wp-content/uploads/site-romana.png\" alt=\"\" width=\"768\" height=\"580\" class=\"alignnone size-full wp-image-184534\" /></a>",
+   "nou": "<a href=\"https://www.fancourier.ro/program-de-sarbatori-2/\" target=\"_blank\">programul FAN Courier de sărbători</a>",
+   "aparitii": 1,
+   "tip": "wp-content",
+   "motiv": "Decizie proprietar: poza /wp-content/uploads/site-romana.png dă 404; linkul spre FAN rămâne, ca text.",
+   "pagina_live": "/program-sarbatori"
+  },
+  {
+   "id": "A9-06",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "politica-cookies"
+   },
+   "camp": "html_content",
+   "vechi": "http://www.youronlinechoices.com/ro/",
+   "nou": "https://www.youronlinechoices.com/ro/",
+   "aparitii": 4,
+   "tip": "http-extern",
+   "motiv": "Același site pe https (200, verificat azi). 2 linkuri; textul vizibil al linkurilor e chiar adresa, deci se schimbă și el.",
+   "pagina_live": "/politica-cookies"
+  },
+  {
+   "id": "A9-07",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "politica-cookies"
+   },
+   "camp": "html_content",
+   "vechi": "http://www.legi-internet.ro/",
+   "nou": "https://www.legi-internet.ro/",
+   "aparitii": 2,
+   "tip": "http-extern",
+   "motiv": "Aceeași pagină (OUG 13/2012) pe https (200, verificat azi); adresa apare în link și ca text vizibil.",
+   "pagina_live": "/politica-cookies"
+  },
+  {
+   "id": "A9-08",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "politica-cookies"
+   },
+   "camp": "html_content",
+   "vechi": "href=\"http://support.apple.com/kb/PH5042\"",
+   "nou": "href=\"https://support.apple.com/guide/safari/manage-cookies-sfri11471/mac\"",
+   "aparitii": 1,
+   "tip": "http-extern",
+   "motiv": "Adresa veche duce, prin 4 redirecționări, la ghidul Apple „Manage cookies” pentru Safari (200, verificat azi). Textul „Cookie settings in Safari” rămâne.",
+   "pagina_live": "/politica-cookies"
+  },
+  {
+   "id": "A9-09",
+   "tabel": "pages",
+   "cheie": {
+    "slug": "politica-cookies"
+   },
+   "camp": "html_content",
+   "vechi": "href=\"http://www.allaboutcookies.org/\"",
+   "nou": "href=\"https://allaboutcookies.org/\"",
+   "aparitii": 1,
+   "tip": "http-extern",
+   "motiv": "Site-ul răspunde pe https și trimite www la https://allaboutcookies.org/ (verificat azi; pagina refuză roboții cu 403). Textul „All About Cookies” rămâne.",
+   "pagina_live": "/politica-cookies"
+  },
+  {
+   "id": "A9-10",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-nazal-daily",
+    "field_key": "indicatii"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://bioscem.ro/plasma-quinton/quinton-nazal-plus/\"",
+   "nou": "href=\"/produs/quinton-nazal-plus\"",
+   "aparitii": 1,
+   "tip": "http-intern",
+   "motiv": "Link intern pe http, adresă WordPress veche: azi 2 redirecționări până la /produs/quinton-nazal-plus.",
+   "pagina_live": "/produs/quinton-nazal-daily"
+  },
+  {
+   "id": "A9-11",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-nazal-pediatric",
+    "field_key": "indicatii"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://bioscem.ro/produs/quinton-nazal-plus//\"",
+   "nou": "href=\"/produs/quinton-nazal-plus\"",
+   "aparitii": 1,
+   "tip": "http-intern",
+   "motiv": "Link intern pe http, cu „//” la final: azi 2 redirecționări.",
+   "pagina_live": "/produs/quinton-nazal-pediatric"
+  },
+  {
+   "id": "A9-12",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-dermo-action",
+    "field_key": "mod_de_pastrare"
+   },
+   "camp": "value",
+   "vechi": "<p>Află mai multe despre QUINTON DERMO ACTION în articolul de pe blogul nostru: <a href=\"https://bioscem.ro/plasma-quinton-sanatatea-pielii/\" target=\"_blank\">Plasma Quinton pentru sănătatea pielii</a></p>\n",
+   "nou": "",
+   "aparitii": 1,
+   "tip": "articol-vechi",
+   "motiv": "Articolul nu mai există (blogul are 0 articole); adresa veche face 301 înapoi la acest produs, deci linkul duce la pagina însăși. Se scoate fraza.",
+   "pagina_live": "/produs/quinton-dermo-action"
+  },
+  {
+   "id": "A9-13",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-ocular",
+    "field_key": "mod_de_pastrare"
+   },
+   "camp": "value",
+   "vechi": "<p>Află mai multe despre QUINTON OCULAR în articolul de pe blogul nostru: <strong><a href=\"https://bioscem.ro/plasma-quinton-sanatatea-ochilor/\" target=\"_blank\">Plasma Quinton pentru sănătatea ochilor</a></strong></p>\n",
+   "nou": "",
+   "aparitii": 1,
+   "tip": "articol-vechi",
+   "motiv": "Articolul nu mai există; adresa veche face 301 înapoi la acest produs (linkul duce la pagina însăși). Se scoate fraza.",
+   "pagina_live": "/produs/quinton-ocular"
+  },
+  {
+   "id": "A9-14",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-ocular",
+    "field_key": "beneficii"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/protocolul-quinton/\"",
+   "nou": "href=\"/categorie/plasma-quinton\"",
+   "aparitii": 1,
+   "tip": "articol-vechi",
+   "motiv": "Articolul nu mai există; adresa veche face 301 la /categorie/plasma-quinton. Linkul merge direct acolo; textul „Protocolului Quinton” rămâne.",
+   "pagina_live": "/produs/quinton-ocular"
+  },
+  {
+   "id": "A9-15",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "silicium-g7-gel-500ml",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "<a href=\"https://bioscem.ro/produs/silicium-g5-gel-150ml/\" rel=\"noopener noreferrer\" target=\"_blank\">SILICIUM G5 Gel cu siliciu organic și vitamina E – 150 ml</a>",
+   "nou": "<a href=\"/produs/silicium-g7-gel-150ml\" rel=\"noopener noreferrer\" target=\"_blank\">SILICIUM G7 Gel cu siliciu organic și vitamina E – 150 ml</a>",
+   "aparitii": 1,
+   "tip": "link-404",
+   "motiv": "Adresa /produs/silicium-g5-gel-150ml dă 404 azi. Varianta de 150 ml din magazin e /produs/silicium-g7-gel-150ml; textul linkului ia numele acelui produs.",
+   "pagina_live": "/produs/silicium-g7-gel-500ml"
+  },
+  {
+   "id": "A9-16",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "silicium-soriaskin-gel",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "<a href=\"https://bioscem.ro/produs/silicium-g5-siliplant/\" rel=\"noopener noreferrer\" target=\"_blank\">Silicium G5 Siliplant</a>",
+   "nou": "<a href=\"/produs/silicium-g7-siliplant-dinamizat\" rel=\"noopener noreferrer\" target=\"_blank\">Silicium G7 Siliplant Dinamizat</a>",
+   "aparitii": 1,
+   "tip": "link-404",
+   "motiv": "Adresa /produs/silicium-g5-siliplant dă 404 azi. Singurul Siliplant din magazin e /produs/silicium-g7-siliplant-dinamizat; textul linkului ia numele lui.",
+   "pagina_live": "/produs/silicium-soriaskin-gel"
+  },
+  {
+   "id": "A9-17",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "silicium-g7-gel-150ml",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/silicium-g7-gel-500ml/\"",
+   "nou": "href=\"/produs/silicium-g7-gel-500ml\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/silicium-g7-gel-150ml"
+  },
+  {
+   "id": "A9-18",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "silicium-g7-gel-50ml",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/silicium-g7-gel-500ml/\"",
+   "nou": "href=\"/produs/silicium-g7-gel-500ml\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/silicium-g7-gel-50ml"
+  },
+  {
+   "id": "A9-19",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "quinton-totum-sport",
+    "field_key": "ingrediente"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/quinton-hipertonic/\"",
+   "nou": "href=\"/produs/quinton-hipertonic\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/quinton-totum-sport"
+  },
+  {
+   "id": "A9-20",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "vitamina-c-acid-ascorbic-500g",
+    "field_key": "doza_recomandata"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/vitamina-c-ascorbat-sodiu/\"",
+   "nou": "href=\"/produs/vitamina-c-ascorbat-sodiu\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/vitamina-c-acid-ascorbic-500g"
+  },
+  {
+   "id": "A9-21",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-easycall",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/cmo-traveller/\"",
+   "nou": "href=\"/produs/cmo-traveller\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/cmo-easycall"
+  },
+  {
+   "id": "A9-22",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-harmony",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/cmo-traveller/\"",
+   "nou": "href=\"/produs/cmo-traveller\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/cmo-harmony"
+  },
+  {
+   "id": "A9-23",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-traveller",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/cmo-harmony/\"",
+   "nou": "href=\"/produs/cmo-harmony\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/cmo-traveller"
+  },
+  {
+   "id": "A9-24",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "orgono-g7-sport-recovery-crema",
+    "field_key": "ambalare"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/produs/orgono-g7-sport-recovery/\"",
+   "nou": "href=\"/produs/orgono-g7-sport-recovery\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/orgono-g7-sport-recovery-crema"
+  },
+  {
+   "id": "A9-25",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "magneziu-chelat-bisglicinat-hsn",
+    "field_key": "beneficii"
+   },
+   "camp": "value",
+   "vechi": "href=\"https://bioscem.ro/eticheta/essentialseries/\"",
+   "nou": "href=\"/eticheta/essentialseries\"",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Link cu „/” la final (301 azi).",
+   "pagina_live": "/produs/magneziu-chelat-bisglicinat-hsn"
+  },
+  {
+   "id": "A9-26",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cicoare-instant-pudra-bondi-100g",
+    "field_key": "mod_de_pastrare"
+   },
+   "camp": "value",
+   "vechi": "<a href=\"https://bioscem.ro/produs/cicoare-instant-pudra-bondi-100g/\" target=\"_blank\">Cicoare Bio Bondi 500g</a>",
+   "nou": "<a href=\"/produs/cicoare-bondi-500g\" target=\"_blank\">Cicoare Bondi 500g</a>",
+   "aparitii": 1,
+   "tip": "bara-finala",
+   "motiv": "Linkul „Cicoare Bio Bondi 500g” trimite la produsul însuși (100 g), cu „/” la final. Ținta corectă e /produs/cicoare-bondi-500g (același producător, Marzotto); textul ia numele de pe pagina lui.",
+   "pagina_live": "/produs/cicoare-instant-pudra-bondi-100g"
+  },
+  {
+   "id": "A9-27",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-harmony",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://protectie-electromagnetica.ro/cercetatori-cmo/marie-claire-cammaerts/\"",
+   "nou": "href=\"https://protectie-electromagnetica.ro/cmo/cercetatori-cmo/marie-claire-cammaerts/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche dă 404 (și pe https); pagina e acum sub /cmo/ (200, verificat azi).",
+   "pagina_live": "/produs/cmo-harmony"
+  },
+  {
+   "id": "A9-28",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-harmony-xl",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://protectie-electromagnetica.ro/cercetatori-cmo/marie-claire-cammaerts/\"",
+   "nou": "href=\"https://protectie-electromagnetica.ro/cmo/cercetatori-cmo/marie-claire-cammaerts/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche dă 404; pagina e acum sub /cmo/ (200, verificat azi).",
+   "pagina_live": "/produs/cmo-harmony-xl"
+  },
+  {
+   "id": "A9-29",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-traveller",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://protectie-electromagnetica.ro/melatonina-antioxidant-hormoni/\"",
+   "nou": "href=\"https://protectie-electromagnetica.ro/cmo/melatonina-antioxidant-hormoni/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche dă 404; pagina e acum sub /cmo/ (200, verificat azi).",
+   "pagina_live": "/produs/cmo-traveller"
+  },
+  {
+   "id": "A9-30",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "cmo-traveller",
+    "field_key": "mod_de_utilizare"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://protectie-electromagnetica.ro/cercetatori-cmo/madeleine-bastide/\"",
+   "nou": "href=\"https://protectie-electromagnetica.ro/cmo/cercetatori-cmo/madeleine-bastide/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche dă 404; pagina e acum sub /cmo/ (200, verificat azi).",
+   "pagina_live": "/produs/cmo-traveller"
+  },
+  {
+   "id": "A9-31",
+   "tabel": "product_extra_field_values",
+   "cheie": {
+    "produs_slug": "em-x-gold-probiotic",
+    "field_key": "atentionari"
+   },
+   "camp": "value",
+   "vechi": "href=\"http://vitalitatesiprotectie.ro/un-cockteil-natural-de-enzime-probiotice-si-antioxidanti/\"",
+   "nou": "href=\"https://vitalitatesiprotectie.ro/em-x-gold-probiotic/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche face 301 la https://vitalitatesiprotectie.ro/em-x-gold-probiotic/ (200, verificat azi).",
+   "pagina_live": "/produs/em-x-gold-probiotic"
+  },
+  {
+   "id": "A9-32",
+   "tabel": "products",
+   "cheie": {
+    "slug": "em-white-refresh-1"
+   },
+   "camp": "description",
+   "vechi": "href=\"http://vitalitatesiprotectie.ro/un-cockteil-natural-de-enzime-probiotice-si-antioxidanti/\"",
+   "nou": "href=\"https://vitalitatesiprotectie.ro/em-x-gold-probiotic/\"",
+   "aparitii": 1,
+   "tip": "http-sora",
+   "motiv": "Site soră: adresa veche face 301 la https://vitalitatesiprotectie.ro/em-x-gold-probiotic/ (200, verificat azi).",
+   "pagina_live": "/produs/em-white-refresh-1"
+  }
+ ],
+ "neatinse": [
+  {
+   "pagina": "/politica-cookies",
+   "ce": "href=\"http://support.microsoft.com/kb/196955\" (text „Cookie settings in Internet Explorer”)",
+   "de_ce": "Pagina Microsoft nu mai există (404 după 2 redirecționări). Înlocuirea cere alt text (Internet Explorer nu mai există; ar fi Microsoft Edge), deci o schimbare de formulare într-o pagină juridică: de decis de proprietar."
+  },
+  {
+   "pagina": "/politica-cookies",
+   "ce": "href=\"http://www.microsoft.com/info/cookies.mspx\" (text „Microsoft Cookies guide”)",
+   "de_ce": "Nu răspunde azi (403 pe http, fără răspuns pe https); nu putem verifica o adresă nouă echivalentă. De decis de proprietar (păstrat sau scos)."
+  },
+  {
+   "pagina": "/produs/cmo-easycall",
+   "ce": "https://protectie-electromagnetica.ro/cmo/wp-content/uploads/Blank-Goodman-CMO-HSP70-DNA.pdf",
+   "de_ce": "wp-content al site-ului soră, pe https, răspunde 200: nu e o adresă WordPress a Bioscem."
+  },
+  {
+   "pagina": "/produs/quinton-totum-sport",
+   "ce": "http://www.elmundo.es/economia/2015/03/09/54f9ebc6268e3e64528b456c.html",
+   "de_ce": "Link extern pe http, în afara listei din PLAN-SEO §8.8 (răspunde 403 roboților)."
+  },
+  {
+   "pagina": "/produs/inulina-agave-ecologica",
+   "ce": "http://www.pronat.ro",
+   "de_ce": "Link extern pe http, în afara listei din PLAN-SEO §8.8 (merge, 301 la https://pronat.ro/)."
+  }
+ ],
+ "de_stiut_pentru_cod": [
+  "Slug-urile AIRCALL trec la litere mici în tabelul products (rândurile D5-SP21A/D5-SP21N, în aceeași tranzacție cu restul). Colația bazei nu ține cont de majuscule, deci forma veche /produs/casti-antiradiatii-aircall-sp21A găsește în continuare produsul: 301-ul de la forma veche la cea nouă trebuie dat de regula de majuscule din SeoRedirects (calea cerută ≠ slug-ul produsului), doar la GET/HEAD. Azi /produs/…sp21a face 301 la …sp21A (verificat 21.10).",
+  "config/redirecturi.php: ținta rândului /produs/casti-antiradiatii-aircall-sp21 devine /produs/casti-antiradiatii-aircall-sp21n (azi …sp21N), ca să rămână un singur salt.",
+  "SKU-urile SP21A și SP21N nu se schimbă. ErpSync trimite liniile comenzii după products.sku (ErpSync::buildLines), iar stocul se citește tot după SKU (ErpStock); numele produsului ajunge în ERP doar ca „denumire” pe comenzile noi (order_items.product_name, copiat la comandă). Comenzile vechi își păstrează numele de atunci.",
+  "seo_pages se leagă de produs prin id (page_type=product, page_ref=id), nu prin slug: schimbarea slug-ului nu-i afectează.",
+  "Descrierea scurtă a AIRCALL („culoare: alb” / „culoare: negru”) rămâne: apare ca text simplu în coș și în listări, unde un link sau HTML n-are ce căuta. Paragraful cu linkul spre cealaltă culoare intră la începutul descrierii lungi (products.description).",
+  "product_extra_field_values: se schimbă coloana `value` (cea citită de site și scrisă de admin); value_text e doar o rămășiță veche.",
+  "Ordinea în script: întâi AIRCALL (slug), apoi înlocuirile; totul într-o singură tranzacție, apoi golirea cache-ului de pagini (ResponseCache::purgePageCache) și CDN-ul din hPanel."
+ ]
+}

@@ -145,7 +145,7 @@ return [
         // recomandat, verificat live în aceeași zi. /author/adrian-vornicu (+ /page/2) rămâne 404: nu va exista
         // o pagină „Despre” (decizia din 20 oct). Clarkia rămâne 404 (fără înlocuitor).
         ['/produs/glutathione-lipozomal-300mg-liporom',       '/produs/glutathione-liposomal-quicksilver',        301, 'Glutathione Liporom (șters) -> același glutation lipozomal, de la Quicksilver'],
-        ['/produs/casti-antiradiatii-aircall-sp21',           '/produs/casti-antiradiatii-aircall-sp21N',         301, 'modelul vechi SP21 -> varianta neagră SP21N (dacă slug-ul trece la litere mici, D5, se schimbă și ținta de aici)'],
+        ['/produs/casti-antiradiatii-aircall-sp21',           '/produs/casti-antiradiatii-aircall-sp21n',         301, 'modelul vechi SP21 -> varianta neagră SP21N (adresa cu litere mici, D5: scripts/seo-continut.php)'],
         ['/produs/ascolip-vitamina-c-lipozomala-500mg-cirese', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
         ['/produs/ascolip-vitamina-c-lipozomala-1000mg-lamaie', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
         ['/produs/ascolip-vitamina-c-lipozomala-1000mg-coacaze', '/produs/actinovo-vitamina-c-lipozomala',           301, 'Ascolip, vitamina C lipozomală (produs șters) -> vitamina C lipozomală ActiNovo'],
