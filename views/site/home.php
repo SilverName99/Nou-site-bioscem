@@ -836,7 +836,7 @@ $whyItems = [
       </div>
 
       <div class="bs-hero-media">
-        <img src="/uploads/gallery/hero-homepage.png" alt="Produse Bioscem" loading="eager" decoding="async">
+        <img src="<?= htmlspecialchars(\App\Support\PozeOptimizate::src('/uploads/gallery/hero-homepage.png'), ENT_QUOTES) ?>" alt="Produse Bioscem"<?= \App\Support\PozeOptimizate::dimensiuni(\App\Support\PozeOptimizate::src('/uploads/gallery/hero-homepage.png')) ?> loading="eager" decoding="async">
       </div>
 
     </div>
@@ -895,8 +895,8 @@ $whyItems = [
         <a class="bs-range" href="<?= htmlspecialchars($categoryUrl($range['category']), ENT_QUOTES) ?>">
           <img
             class="bs-range__image"
-            src="<?= htmlspecialchars($range['image'], ENT_QUOTES) ?>"
-            alt="<?= htmlspecialchars($range['title'], ENT_QUOTES) ?>"
+            src="<?= htmlspecialchars(\App\Support\PozeOptimizate::src($range['image']), ENT_QUOTES) ?>"
+            alt="<?= htmlspecialchars($range['title'], ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni(\App\Support\PozeOptimizate::src($range['image'])) . "\n" ?>
             loading="lazy"
             decoding="async"
             onerror="this.style.display='none';"
@@ -938,7 +938,7 @@ $whyItems = [
 
             <a class="bs-product-card__media" href="/produs/<?= rawurlencode($slug) ?>">
               <img
-                src="<?= htmlspecialchars((string) ($product['image_url'] ?? '/assets/img/product-placeholder.svg'), ENT_QUOTES) ?>"
+                src="<?= htmlspecialchars(\App\Support\PozeOptimizate::src((string) ($product['image_url'] ?? '/assets/img/product-placeholder.svg')), ENT_QUOTES) ?>"
                 alt="<?= htmlspecialchars($name, ENT_QUOTES) ?>"
                 loading="lazy"
                 decoding="async"
@@ -1014,7 +1014,7 @@ $whyItems = [
             <a class="bs-post__media" href="<?= htmlspecialchars($postUrl, ENT_QUOTES) ?>">
               <img
                 src="<?= htmlspecialchars((string) ($post['cover_image_url'] ?? '/assets/img/product-placeholder.svg'), ENT_QUOTES) ?>"
-                alt="<?= htmlspecialchars((string) ($post['title'] ?? ''), ENT_QUOTES) ?>"
+                alt="<?= htmlspecialchars((string) ($post['title'] ?? ''), ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni((string) ($post['cover_image_url'] ?? '')) . "\n" ?>
                 loading="lazy"
                 decoding="async"
                 onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';"

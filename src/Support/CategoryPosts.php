@@ -77,7 +77,7 @@ final class CategoryPosts
 
             $cards .= '<article class="vtcs__card">'
                 . '<a class="vtcs__media" href="' . htmlspecialchars($url, ENT_QUOTES) . '">'
-                . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '" loading="lazy">'
+                . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '"' . PozeOptimizate::dimensiuni($img) . ' loading="lazy">'
                 . '</a>'
                 . '<div class="vtcs__body">'
                 . ($catLabel !== '' ? '<span class="vtcs__cat">' . htmlspecialchars($catLabel, ENT_QUOTES) . '</span>' : '')
@@ -306,7 +306,7 @@ final class CategoryPosts
 
         return '<article class="' . $cardClass . '">'
             . '<a class="vtcg__media" href="' . htmlspecialchars($url, ENT_QUOTES) . '">'
-            . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '" loading="lazy">'
+            . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '"' . PozeOptimizate::dimensiuni($img) . ' loading="lazy">'
             . $badge . $pastTag
             . '</a>'
             . '<div class="vtcg__body">'
@@ -341,7 +341,7 @@ final class CategoryPosts
 
         return '<section class="vte__hero">'
             . '<a class="vte__hero-media" href="' . htmlspecialchars($url, ENT_QUOTES) . '">'
-            . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '">'
+            . '<img src="' . htmlspecialchars($img, ENT_QUOTES) . '" alt="' . htmlspecialchars($title, ENT_QUOTES) . '"' . PozeOptimizate::dimensiuni($img) . '>'
             . '</a>'
             . '<div class="vte__hero-body">'
             . '<span class="vte__hero-flag">Următorul eveniment</span>'

@@ -274,7 +274,7 @@ if (trim($designHeaderOutput) !== '' && preg_match($mobileMenuTokenPattern, $des
         . '<aside class="bv-mobile-menu-token__drawer" data-bv-mobile-menu-drawer aria-hidden="true">'
         . '<div class="bv-mobile-menu-token__drawer-head">'
         . '<a href="/" class="bv-mobile-menu-token__brand" aria-label="Acasă">'
-        . '<img src="' . htmlspecialchars($mobileMenuLogoPath, ENT_QUOTES) . '" alt="Bioscem" loading="lazy">'
+        . '<img src="' . htmlspecialchars($mobileMenuLogoPath, ENT_QUOTES) . '" alt="Bioscem"' . \App\Support\PozeOptimizate::dimensiuni($mobileMenuLogoPath) . ' loading="lazy">'
         . '</a>'
         . '<button class="bv-mobile-menu-token__close" type="button" aria-label="Închide meniul" data-bv-mobile-menu-close>&times;</button>'
         . '</div>'
@@ -994,14 +994,14 @@ foreach ((isset($jsonLd) && is_array($jsonLd) ? $jsonLd : []) as $jsonLdNod) {
                         <?php
                         $offerName = trim((string) ($offer['name'] ?? 'Produs'));
                         $offerUrl = trim((string) ($offer['url'] ?? '/magazin'));
-                        $offerImage = trim((string) ($offer['image_url'] ?? '/assets/img/product-placeholder.svg'));
+                        $offerImage = \App\Support\PozeOptimizate::src(trim((string) ($offer['image_url'] ?? '/assets/img/product-placeholder.svg')));
                         $offerCount = max(1, (int) ($offer['offer_count'] ?? 1));
                         $offerPrice = max(0.0, (float) ($offer['price'] ?? 0.0));
                         $offerComparePrice = isset($offer['compare_at_price']) ? max(0.0, (float) ($offer['compare_at_price'] ?? 0.0)) : 0.0;
                         ?>
                         <li>
                             <a class="bv-bbd-sidebar__item" href="<?= htmlspecialchars($offerUrl, ENT_QUOTES) ?>">
-                                <img src="<?= htmlspecialchars($offerImage, ENT_QUOTES) ?>" alt="<?= htmlspecialchars($offerName, ENT_QUOTES) ?>" loading="lazy">
+                                <img src="<?= htmlspecialchars($offerImage, ENT_QUOTES) ?>" alt="<?= htmlspecialchars($offerName, ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni($offerImage) ?> loading="lazy">
                                 <div>
                                     <h4 class="bv-bbd-sidebar__item-name"><?= htmlspecialchars($offerName, ENT_QUOTES) ?></h4>
                                     <p class="bv-bbd-sidebar__item-label">

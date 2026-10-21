@@ -276,6 +276,8 @@ if ($sortOptions === []) {
         if ($image === '') {
             $image = '/assets/img/product-placeholder.svg';
         }
+        // Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic.
+        $image = \App\Support\PozeOptimizate::src($image);
         $reviewsCount = max(0, (int) ($product['reviews_count'] ?? 0));
         $reviewsAverage = max(0.0, min(5.0, (float) ($product['reviews_average'] ?? 0)));
         $roundedStars = (int) round($reviewsAverage);

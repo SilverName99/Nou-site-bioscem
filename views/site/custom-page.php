@@ -8,6 +8,9 @@ $registerAntiBot = is_array($registerAntiBot ?? null) ? $registerAntiBot : [];
 ?>
 <?php
 $pageHtml = (string) ($page['html_content'] ?? '');
+// Pozele mari refăcute (A8, de exemplu cea din capul primei pagini) se afișează
+// din fișierul nou, mai mic; doar src-ul lor, în textul paginii din baza de date.
+$pageHtml = \App\Support\PozeOptimizate::inHtml($pageHtml);
 $mannequinSectionHtml = (string) ($mannequinSectionHtml ?? '');
 $shopCatalogHtml = (string) ($shopCatalogHtml ?? '');
 $blogPostsHtml = (string) ($blogPostsHtml ?? '');

@@ -23,6 +23,8 @@ $singleFormGap = $requiresBbdSelection ? 'display:grid;gap:10px;max-width:520px;
 if ($galleryUrls === []) {
     $galleryUrls = [(string) ($product['image_url'] ?? '/assets/img/product-placeholder.svg')];
 }
+// Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic.
+$galleryUrls = array_map(static fn ($url): string => \App\Support\PozeOptimizate::src((string) $url), $galleryUrls);
 ?>
 <?php if ($hasTemplateRender): ?>
     <section class="panel product-template-render">

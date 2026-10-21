@@ -5709,6 +5709,16 @@ HTML;
     </section>
 </article>
 HTML;
+            // Poza articolului (șablonul implicit): width/height rezervă locul ei
+            // (stilul de mai jos o face lată cât coloana, cu înălțimea proporțională).
+            $dimensiuniCoperta = \App\Support\PozeOptimizate::dimensiuni($image);
+            if ($dimensiuniCoperta !== '') {
+                $templateHtml = str_replace(
+                    '<img src="{{blog_image_url}}" alt="{{blog_title}}">',
+                    '<img src="{{blog_image_url}}" alt="{{blog_title}}"' . $dimensiuniCoperta . '>',
+                    $templateHtml
+                );
+            }
         }
         $templateCss = trim((string) ($post['template_css_content'] ?? ''));
         if ($templateCss === '') {
@@ -10497,6 +10507,8 @@ CSS;
     {
         $items = [];
         foreach ($urls as $url) {
+            // Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic.
+            $url = \App\Support\PozeOptimizate::src((string) $url);
             $safeUrl = htmlspecialchars((string) $url, ENT_QUOTES);
             $safeAlt = htmlspecialchars($productName, ENT_QUOTES);
             // width/height: locul pozei e rezervat înainte să se încarce (fără „săritură”).
@@ -10511,6 +10523,8 @@ CSS;
         $slides = [];
         $thumbs = [];
         foreach ($urls as $index => $url) {
+            // Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic.
+            $url = \App\Support\PozeOptimizate::src((string) $url);
             $safeUrl = htmlspecialchars((string) $url, ENT_QUOTES);
             $safeAlt = htmlspecialchars($productName, ENT_QUOTES);
             // width/height: locul pozei e rezervat înainte să se încarce (fără „săritură”).

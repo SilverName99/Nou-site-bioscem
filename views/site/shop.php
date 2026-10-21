@@ -18,8 +18,8 @@
             <article class="card">
                 <div class="card-media">
                     <img
-                        src="<?= htmlspecialchars((string) ($product['image_url'] ?? '/assets/img/product-placeholder.svg'), ENT_QUOTES) ?>"
-                        alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"
+                        src="<?= htmlspecialchars(\App\Support\PozeOptimizate::src((string) ($product['image_url'] ?? '/assets/img/product-placeholder.svg')), ENT_QUOTES) ?>"
+                        alt="<?= htmlspecialchars((string) ($product['name'] ?? 'Produs Bioscem'), ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni(\App\Support\PozeOptimizate::src((string) ($product['image_url'] ?? ''))) . "\n" ?>
                         loading="lazy"
                         decoding="async"
                         onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';"

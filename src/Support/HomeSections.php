@@ -116,6 +116,11 @@ final class HomeSections
 
             $url = '/produs/' . rawurlencode($slug);
             $image = trim((string) ($row['image_url'] ?? '')) ?: '/assets/img/product-placeholder.svg';
+            // Pozele mari refăcute (A8) se afișează din fișierul nou, mai mic. Fără
+            // width/height aici: stilul cardului vine din pagina din constructor
+            // (azi doar max-width/max-height într-o cutie de înălțime fixă), iar
+            // dimensiunile ar schimba cutia pozei.
+            $image = PozeOptimizate::src($image);
             $outOfStock = (int) ($row['out_of_stock'] ?? 0) === 1;
 
             $action = $outOfStock

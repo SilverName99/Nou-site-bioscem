@@ -63,7 +63,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
             ?>
             <article class="blog-featured">
                 <a class="blog-featured__media" href="<?= htmlspecialchars((string) $featured['url'], ENT_QUOTES) ?>">
-                    <img src="<?= htmlspecialchars((string) $featured['image'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $featured['title'], ENT_QUOTES) ?>" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
+                    <img src="<?= htmlspecialchars((string) $featured['image'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $featured['title'], ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni((string) $featured['image']) ?> loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
                 </a>
                 <div class="blog-featured__body">
                     <span class="blog-featured__kicker">Articol recent</span>
@@ -71,7 +71,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
                     <p class="blog-featured__excerpt"><?= htmlspecialchars((string) $featured['excerpt'], ENT_QUOTES) ?></p>
                     <div class="blog-featured__meta">
                         <span class="blog-featured__author">
-                            <img class="blog-featured__author-avatar" src="<?= htmlspecialchars((string) $featured['author_avatar'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $featured['author'], ENT_QUOTES) ?>" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
+                            <img class="blog-featured__author-avatar" src="<?= htmlspecialchars((string) $featured['author_avatar'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $featured['author'], ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni((string) $featured['author_avatar']) ?> loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
                             <span><?= htmlspecialchars((string) $featured['author'], ENT_QUOTES) ?></span>
                         </span>
                         <?php if ((string) $featured['date'] !== ''): ?>
@@ -99,7 +99,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
                         <?php $item = $buildPost((array) $post, $baseUrl); ?>
                         <article class="blog-card">
                             <a class="blog-card__media" href="<?= htmlspecialchars((string) $item['url'], ENT_QUOTES) ?>">
-                                <img src="<?= htmlspecialchars((string) $item['image'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $item['title'], ENT_QUOTES) ?>" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
+                                <img src="<?= htmlspecialchars((string) $item['image'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $item['title'], ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni((string) $item['image']) ?> loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
                             </a>
                             <div class="blog-card__body">
                                 <span class="blog-card__category">Articol</span>
@@ -107,7 +107,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
                                 <p class="blog-card__excerpt"><?= htmlspecialchars((string) $item['excerpt'], ENT_QUOTES) ?></p>
                                 <div class="blog-card__meta">
                                     <span class="blog-card__author">
-                                        <img class="blog-card__author-avatar" src="<?= htmlspecialchars((string) $item['author_avatar'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $item['author'], ENT_QUOTES) ?>" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
+                                        <img class="blog-card__author-avatar" src="<?= htmlspecialchars((string) $item['author_avatar'], ENT_QUOTES) ?>" alt="<?= htmlspecialchars((string) $item['author'], ENT_QUOTES) ?>"<?= \App\Support\PozeOptimizate::dimensiuni((string) $item['author_avatar']) ?> loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/assets/img/product-placeholder.svg';">
                                         <span><?= htmlspecialchars((string) $item['author'], ENT_QUOTES) ?></span>
                                     </span>
                                     <?php if ((string) $item['date'] !== ''): ?>
