@@ -16,8 +16,13 @@ use Throwable;
  * descriere, adresa produsului (cea canonică), poza principală și celelalte,
  * prețul de bază și, când e o reducere, prețul redus cu perioada lui,
  * disponibilitatea (aceeași ca în datele structurate ale paginii), marca,
- * starea „nou”, codul EAN când există și livrarea la adresă (aceleași reguli ca
- * în pagină, vezi PoliticaLivrare).
+ * starea „nou”, codul EAN când există și livrarea la adresă, cu termenul de
+ * livrare (aceleași reguli ca în pagină, vezi PoliticaLivrare): în g:shipping
+ * pregătirea (g:min_handling_time / g:max_handling_time) și transportul
+ * (g:min_transit_time / g:max_transit_time), iar zilele lucrătoare luni–vineri
+ * în g:shipping_handling_business_days și g:shipping_transit_business_days
+ * („M;T;W;R;F”, forma din specificația Merchant Center; fără ele, Merchant Center
+ * presupune luni–vineri la pregătire, dar poate presupune luni–sâmbătă la transport).
  *
  * Ce lipsește intenționat:
  *  - identifier_exists=no: Merchant Center îl permite doar dacă produsul chiar
@@ -90,7 +95,7 @@ final class FluxGoogleMerchant
      *   id: string, titlu: string, descriere: string, link: string, imagine: string,
      *   imagini_extra: list<string>, disponibilitate: string, pret: float, pret_redus: ?float,
      *   reducere_de_la: string, reducere_pana_la: string, marca: string, categorie: string,
-     *   gtin: string, livrare: list<array{serviciu: string, pret: float}>
+     *   gtin: string, livrare: list<array{serviciu: string, pret: float, termen?: array<string, array{0: int, 1: int}>}>
      * }> $produse
      */
     public static function xml(array $produse, string $baseUrl, string $numeMagazin): string
@@ -171,7 +176,7 @@ final class FluxGoogleMerchant
         if ($categorie !== '') {
             $c[] = self::camp('product_type', mb_substr($categorie, 0, 750));
         }
-        $termen = PoliticaLivrare::TERMEN_LIVRARE;
+        $cuTermen = false;
         foreach ((array) ($p['livrare'] ?? []) as $optiune) {
             if (!is_array($optiune) || !isset($optiune['pret'])) {
                 continue;
@@ -179,16 +184,43 @@ final class FluxGoogleMerchant
             $livrare = '<g:country>RO</g:country>'
                 . '<g:service>' . self::x((string) ($optiune['serviciu'] ?? '')) . '</g:service>'
                 . '<g:price>' . self::x(self::suma((float) $optiune['pret'])) . '</g:price>';
-            if (is_array($termen) && count($termen) === 4) {
-                $livrare .= '<g:min_handling_time>' . (int) $termen[0] . '</g:min_handling_time>'
-                    . '<g:max_handling_time>' . (int) $termen[1] . '</g:max_handling_time>'
-                    . '<g:min_transit_time>' . (int) $termen[2] . '</g:min_transit_time>'
-                    . '<g:max_transit_time>' . (int) $termen[3] . '</g:max_transit_time>';
+            $termen = JsonLd::termenValid($optiune['termen'] ?? null);
+            if ($termen !== null) {
+                $cuTermen = true;
+                $livrare .= '<g:min_handling_time>' . $termen['pregatire'][0] . '</g:min_handling_time>'
+                    . '<g:max_handling_time>' . $termen['pregatire'][1] . '</g:max_handling_time>'
+                    . '<g:min_transit_time>' . $termen['transport'][0] . '</g:min_transit_time>'
+                    . '<g:max_transit_time>' . $termen['transport'][1] . '</g:max_transit_time>';
             }
             $c[] = '<g:shipping>' . $livrare . '</g:shipping>';
         }
+        if ($cuTermen) {
+            $zile = self::zileLucratoare();
+            $c[] = self::camp('shipping_handling_business_days', $zile);
+            $c[] = self::camp('shipping_transit_business_days', $zile);
+        }
 
         return "<item>\n" . implode("\n", $c) . "\n</item>";
+    }
+
+    /**
+     * Zilele lucrătoare din PoliticaLivrare în forma Merchant Center: inițiale
+     * separate prin „;” (M luni, T marți, W miercuri, R joi, F vineri, S sâmbătă,
+     * U duminică), de exemplu „M;T;W;R;F”.
+     */
+    private static function zileLucratoare(): string
+    {
+        $initiale = [
+            'Monday' => 'M', 'Tuesday' => 'T', 'Wednesday' => 'W', 'Thursday' => 'R',
+            'Friday' => 'F', 'Saturday' => 'S', 'Sunday' => 'U',
+        ];
+        $zile = [];
+        foreach (PoliticaLivrare::ZILE_LUCRATOARE as $zi) {
+            if (isset($initiale[$zi])) {
+                $zile[] = $initiale[$zi];
+            }
+        }
+        return implode(';', $zile);
     }
 
     /** „19.00 RON”: punct zecimal, fără separator de mii. */

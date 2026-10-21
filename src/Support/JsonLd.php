@@ -13,10 +13,9 @@ namespace App\Support;
  *    marca, codul; adrese absolute;
  *  - fără stele inventate: aggregateRating/review apar doar dacă produsul are
  *    recenzii reale aprobate, afișate pe pagină;
- *  - livrarea (shippingDetails) și returul (hasMerchantReturnPolicy), după
- *    condițiile confirmate de proprietar (vezi PoliticaLivrare): doar ce e
- *    sigur pentru produsul comandat singur; fără termen de livrare până nu e
- *    hotărât;
+ *  - livrarea (shippingDetails, cu termenul de livrare) și returul
+ *    (hasMerchantReturnPolicy), după condițiile confirmate de proprietar (vezi
+ *    PoliticaLivrare): doar ce e sigur pentru produsul comandat singur;
  *  - un bloc <script> pentru fiecare tip.
  */
 final class JsonLd
@@ -147,14 +146,19 @@ final class JsonLd
     /**
      * Câte un OfferShippingDetails pentru fiecare opțiune de livrare din
      * PoliticaLivrare::optiuni (azi una singură, livrarea la adresă): costul în
-     * RON, destinația România și, doar când e hotărât, termenul de livrare.
+     * RON, destinația România și termenul de livrare.
      *
-     * @param list<array{serviciu: string, pret: float}> $optiuni
+     * Termenul (deliveryTime) e obligatoriu pentru Google din 8 sep 2026 („Missing
+     * field deliveryTime” în Search Console): ShippingDeliveryTime cu handlingTime
+     * (pregătirea) și transitTime (transportul), fiecare QuantitativeValue cu
+     * minValue/maxValue întregi și unitCode DAY, plus businessDays: zilele
+     * lucrătoare luni–vineri, ca OpeningHoursSpecification (forma din schema.org).
+     *
+     * @param list<array{serviciu: string, pret: float, termen?: array{pregatire: array{0: int, 1: int}, transport: array{0: int, 1: int}}}> $optiuni
      * @return list<array<string, mixed>>
      */
     public static function livrare(array $optiuni): array
     {
-        $termen = PoliticaLivrare::TERMEN_LIVRARE;
         $lista = [];
         foreach ($optiuni as $optiune) {
             if (!is_array($optiune) || !isset($optiune['pret']) || (float) $optiune['pret'] < 0) {
@@ -169,19 +173,50 @@ final class JsonLd
                 ],
                 'shippingDestination' => ['@type' => 'DefinedRegion', 'addressCountry' => 'RO'],
             ];
-            if (is_array($termen) && count($termen) === 4) {
-                $zile = static fn (int $min, int $max): array => [
-                    '@type' => 'QuantitativeValue', 'minValue' => $min, 'maxValue' => $max, 'unitCode' => 'DAY',
+            $termen = self::termenValid($optiune['termen'] ?? null);
+            if ($termen !== null) {
+                $zile = static fn (array $interval): array => [
+                    '@type' => 'QuantitativeValue', 'minValue' => $interval[0], 'maxValue' => $interval[1], 'unitCode' => 'DAY',
                 ];
                 $nod['deliveryTime'] = [
                     '@type' => 'ShippingDeliveryTime',
-                    'handlingTime' => $zile((int) $termen[0], (int) $termen[1]),
-                    'transitTime' => $zile((int) $termen[2], (int) $termen[3]),
+                    'handlingTime' => $zile($termen['pregatire']),
+                    'transitTime' => $zile($termen['transport']),
+                    'businessDays' => [
+                        '@type' => 'OpeningHoursSpecification',
+                        'dayOfWeek' => array_map(
+                            static fn (string $zi): string => 'https://schema.org/' . $zi,
+                            PoliticaLivrare::ZILE_LUCRATOARE
+                        ),
+                    ],
                 ];
             }
             $lista[] = $nod;
         }
         return $lista;
+    }
+
+    /**
+     * Termenul unei opțiuni, dacă are forma din PoliticaLivrare::termen (două
+     * perechi de întregi ≥ 0, minim ≤ maxim); altfel null (fără deliveryTime).
+     *
+     * @return array{pregatire: array{0: int, 1: int}, transport: array{0: int, 1: int}}|null
+     */
+    public static function termenValid(mixed $termen): ?array
+    {
+        if (!is_array($termen)) {
+            return null;
+        }
+        $rezultat = [];
+        foreach (['pregatire', 'transport'] as $parte) {
+            $interval = $termen[$parte] ?? null;
+            if (!is_array($interval) || !is_int($interval[0] ?? null) || !is_int($interval[1] ?? null)
+                || $interval[0] < 0 || $interval[0] > $interval[1]) {
+                return null;
+            }
+            $rezultat[$parte] = [$interval[0], $interval[1]];
+        }
+        return $rezultat;
     }
 
     /**

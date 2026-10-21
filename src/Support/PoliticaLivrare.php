@@ -40,28 +40,44 @@ namespace App\Support;
  * nota livrării 2): fie declarăm cazul cel mai scump, fie lăsăm așa, fie se
  * setează în Merchant Center tarife pe coduri poștale, dacă le acceptă pentru RO.
  *
- * Termenul de livrare (deliveryTime / handling_time / transit_time) nu e încă
- * hotărât de proprietar, deci nu apare nicăieri. Google îl trece la „necesar”
- * pentru afișarea livrării în rezultate (documentația din 8 sep 2026): până îl
- * completăm în TERMEN_LIVRARE, costul se citește, dar afișarea completă poate
- * lipsi.
+ * Termenul de livrare (decizia din 20 oct 2026): pregătire 0–1 zile, transport
+ * 1–2 zile, zile lucrătoare luni–vineri, adică 1–3 zile lucrătoare în total.
+ * Cele patru numere sunt setări (tabelul settings, fără ecran în admin), ca să
+ * se poată schimba fără cod: seo_livrare_pregatire_min/_max și
+ * seo_livrare_transport_min/_max. O valoare lipsă sau greșită (nu e număr
+ * întreg 0–30) ia valoarea implicită de mai jos; dacă minimul iese peste maxim,
+ * perechea întreagă revine la valorile implicite.
+ * Apar în datele structurate (Offer.shippingDetails.deliveryTime, câmp
+ * obligatoriu pentru Google din 8 sep 2026) și în flux (g:min_handling_time…).
+ * Pagina /livrare-transport („Termen estimat: minimum 24 de ore”) nu se atinge.
  *
  * Returul: termenii (/termeni-conditii) dau 14 zile de la primire, fără motiv,
  * clientul plătind doar transportul înapoi → ReturnFeesCustomerResponsibility.
  *
- * Oprire de urgență: SEO_LIVRARE_RETUR=0 în .env scoate livrarea și returul din
- * datele structurate și livrarea din flux (restul rămâne ca în livrarea 1).
+ * Oprire de urgență: SEO_LIVRARE_RETUR=0 în .env scoate livrarea (cu termenul
+ * ei) și returul din datele structurate și livrarea din flux (restul rămâne ca
+ * în livrarea 1).
  */
 final class PoliticaLivrare
 {
     /**
-     * Termenul de livrare, în zile lucrătoare: [pregătire min, max, transport
-     * min, max]. NULL până îl confirmă proprietarul (decizia D10). Când e
-     * completat, apare în datele structurate și în flux.
-     *
-     * @var array{0: int, 1: int, 2: int, 3: int}|null
+     * Termenul de livrare implicit, în zile lucrătoare (decizia proprietarului din
+     * 20 oct 2026): [minim, maxim] pentru pregătire (de la comandă până la predarea
+     * la curier) și pentru transport (de la curier până la client).
      */
-    public const TERMEN_LIVRARE = null;
+    public const TERMEN_IMPLICIT = ['pregatire' => [0, 1], 'transport' => [1, 2]];
+
+    /** Setările care pot schimba termenul (cheile din tabelul settings). */
+    public const SETARI_TERMEN = [
+        'pregatire' => ['seo_livrare_pregatire_min', 'seo_livrare_pregatire_max'],
+        'transport' => ['seo_livrare_transport_min', 'seo_livrare_transport_max'],
+    ];
+
+    /** Cel mai mare număr de zile acceptat într-o setare de termen. */
+    public const ZILE_MAXIM = 30;
+
+    /** Zilele lucrătoare (pregătire și transport): luni–vineri, ca nume schema.org. */
+    public const ZILE_LUCRATOARE = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
     /** Zilele de retragere din termeni (OUG 34/2014, de la primirea coletului). */
     public const ZILE_RETUR = 14;
@@ -81,12 +97,12 @@ final class PoliticaLivrare
 
     /**
      * Livrarea pentru un produs comandat singur, la prețul afișat: o singură
-     * opțiune, livrarea la adresă (vezi sus de ce nu și FANbox). Listă goală
-     * când nu putem spune sigur cât costă transportul.
+     * opțiune, livrarea la adresă (vezi sus de ce nu și FANbox), cu termenul de
+     * livrare. Listă goală când nu putem spune sigur cât costă transportul.
      *
      * @param float $pretAfisat prețul din pagină (cu reducerea, dacă e)
      * @param bool  $redus      produsul e la reducere (preț redus, perioadă de reducere)
-     * @return list<array{serviciu: string, pret: float}>
+     * @return list<array{serviciu: string, pret: float, termen: array{pregatire: array{0: int, 1: int}, transport: array{0: int, 1: int}}}>
      */
     public static function optiuni(array $setari, float $pretAfisat, bool $redus): array
     {
@@ -112,7 +128,46 @@ final class PoliticaLivrare
             return [];
         }
 
-        return [['serviciu' => self::SERVICIU_ADRESA, 'pret' => $gratuitPeste ? 0.0 : round($adresa, 2)]];
+        return [[
+            'serviciu' => self::SERVICIU_ADRESA,
+            'pret' => $gratuitPeste ? 0.0 : round($adresa, 2),
+            'termen' => self::termen($setari),
+        ]];
+    }
+
+    /**
+     * Termenul de livrare din setări (vezi sus): o valoare lipsă sau greșită ia
+     * valoarea implicită; un minim peste maxim readuce perechea la cea implicită.
+     *
+     * @return array{pregatire: array{0: int, 1: int}, transport: array{0: int, 1: int}}
+     */
+    public static function termen(array $setari): array
+    {
+        $termen = self::TERMEN_IMPLICIT;
+        foreach (self::SETARI_TERMEN as $parte => [$cheieMin, $cheieMax]) {
+            $min = self::zile($setari[$cheieMin] ?? null);
+            $max = self::zile($setari[$cheieMax] ?? null);
+            if ($min === null && $max === null) {
+                continue;
+            }
+            $min ??= $termen[$parte][0];
+            $max ??= $termen[$parte][1];
+            if ($min <= $max) {
+                $termen[$parte] = [$min, $max];
+            }
+        }
+        return $termen;
+    }
+
+    /** O setare de zile: număr întreg 0–30 (fără semn, fără zecimale); altfel null. */
+    private static function zile(mixed $valoare): ?int
+    {
+        $text = trim((string) ($valoare ?? ''));
+        if (preg_match('/^\d{1,2}$/', $text) !== 1) {
+            return null;
+        }
+        $zile = (int) $text;
+        return $zile <= self::ZILE_MAXIM ? $zile : null;
     }
 
     /** Linkul absolut spre condițiile de retur. */
