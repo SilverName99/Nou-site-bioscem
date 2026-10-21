@@ -315,7 +315,9 @@ php scripts/seo-continut.php --restaureaza
   fac 301 la cele noi (GET și HEAD), din pagina produsului. Coșul ține produsele după id,
   comenzile după id și numele de atunci, deci nimic nu se rupe.
 - **Linkurile:** `/retur-garantie/`, poza WordPress de pe `/program-sarbatori` (devine
-  linkul text „programul FAN Courier de sărbători”), articolele vechi, linkurile interne pe
+  linkul text „programul FAN Courier de sărbători”), linkul spre articolul vechi
+  „Protocolul Quinton” (A9-14; cele două fraze „…în articolul de pe blogul nostru” de pe
+  quinton-dermo-action și quinton-ocular rămân neatinse până decide proprietarul), linkurile interne pe
   http sau cu „/” la final, site-urile surori pe https; pe `/termeni-conditii` se scot
   rândul „```html” și paragraful care trimitea la pagina însăși. Restul textului juridic
   nu se atinge.

@@ -63,7 +63,7 @@ const PREFIX_COPIE = 'seo-continut-copie-';
 
 /** Câte rânduri trebuie să fie în fișier (D5: cele două căști; A9: înlocuirile). */
 const ASTEPTAT_AIRCALL = 2;
-const ASTEPTAT_INLOCUIRI = 32;
+const ASTEPTAT_INLOCUIRI = 30;
 
 /** Numele magazinului din titluri (livrarea 2): un titlu scris trebuie să rămână la fel cu oricare. */
 const NUME_MAGAZIN = 'Bioscem';

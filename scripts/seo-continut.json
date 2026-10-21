@@ -207,36 +207,6 @@
    "pagina_live": "/produs/quinton-nazal-pediatric"
   },
   {
-   "id": "A9-12",
-   "tabel": "product_extra_field_values",
-   "cheie": {
-    "produs_slug": "quinton-dermo-action",
-    "field_key": "mod_de_pastrare"
-   },
-   "camp": "value",
-   "vechi": "<p>Află mai multe despre QUINTON DERMO ACTION în articolul de pe blogul nostru: <a href=\"https://bioscem.ro/plasma-quinton-sanatatea-pielii/\" target=\"_blank\">Plasma Quinton pentru sănătatea pielii</a></p>\n",
-   "nou": "",
-   "aparitii": 1,
-   "tip": "articol-vechi",
-   "motiv": "Articolul nu mai există (blogul are 0 articole); adresa veche face 301 înapoi la acest produs, deci linkul duce la pagina însăși. Se scoate fraza.",
-   "pagina_live": "/produs/quinton-dermo-action"
-  },
-  {
-   "id": "A9-13",
-   "tabel": "product_extra_field_values",
-   "cheie": {
-    "produs_slug": "quinton-ocular",
-    "field_key": "mod_de_pastrare"
-   },
-   "camp": "value",
-   "vechi": "<p>Află mai multe despre QUINTON OCULAR în articolul de pe blogul nostru: <strong><a href=\"https://bioscem.ro/plasma-quinton-sanatatea-ochilor/\" target=\"_blank\">Plasma Quinton pentru sănătatea ochilor</a></strong></p>\n",
-   "nou": "",
-   "aparitii": 1,
-   "tip": "articol-vechi",
-   "motiv": "Articolul nu mai există; adresa veche face 301 înapoi la acest produs (linkul duce la pagina însăși). Se scoate fraza.",
-   "pagina_live": "/produs/quinton-ocular"
-  },
-  {
    "id": "A9-14",
    "tabel": "product_extra_field_values",
    "cheie": {
@@ -546,6 +516,16 @@
    "pagina": "/produs/inulina-agave-ecologica",
    "ce": "http://www.pronat.ro",
    "de_ce": "Link extern pe http, în afara listei din PLAN-SEO §8.8 (merge, 301 la https://pronat.ro/)."
+  },
+  {
+   "pagina": "/produs/quinton-dermo-action",
+   "ce": "fraza „Află mai multe despre QUINTON DERMO ACTION în articolul de pe blogul nostru: …”, tab-ul „mod_de_pastrare”, link spre articolul WordPress „Plasma Quinton pentru sănătatea pielii” (https://bioscem.ro/plasma-quinton-sanatatea-pielii/) (fostul rând A9-12)",
+   "de_ce": "Articolul nu mai există, iar adresa veche face 301 înapoi la acest produs. Scoaterea frazei sau legarea ei de categorie schimbă textul vizibil al paginii: de decis de proprietar (după review, 21.10.2026). Dacă articolul e republicat la adresa veche (D6/C7), linkul se poate face relativ, fără „/” final."
+  },
+  {
+   "pagina": "/produs/quinton-ocular",
+   "ce": "fraza „Află mai multe despre QUINTON OCULAR în articolul de pe blogul nostru: …”, tab-ul „mod_de_pastrare”, link spre articolul WordPress „Plasma Quinton pentru sănătatea ochilor” (https://bioscem.ro/plasma-quinton-sanatatea-ochilor/) (fostul rând A9-13)",
+   "de_ce": "Articolul nu mai există, iar adresa veche face 301 înapoi la acest produs. Scoaterea frazei sau legarea ei de categorie schimbă textul vizibil al paginii: de decis de proprietar (după review, 21.10.2026). Dacă articolul e republicat la adresa veche (D6/C7), linkul se poate face relativ, fără „/” final."
   }
  ],
  "de_stiut_pentru_cod": [
