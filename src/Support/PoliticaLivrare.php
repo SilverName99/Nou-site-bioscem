@@ -22,16 +22,19 @@ namespace App\Support;
  * Fără prețuri fixe active nu spunem nimic (tariful curierului se calculează
  * abia la comandă).
  *
- * Transportul gratuit (pragul din setări, azi 500 lei): pagina /livrare-transport
- * spune că e gratuit doar pentru comenzile FĂRĂ reduceri. Google nu are cum să
- * primească această condiție la nivel de magazin (pragul pe valoarea comenzii nu
- * știe de reduceri), așa că NU declarăm un prag. Îl spunem doar pe produs, unde
- * e sigur: un produs la preț întreg care singur atinge pragul se livrează
- * gratuit. Unde regula nu e sigură, nu declarăm nimic:
- *  - produs la reducere care atinge pragul: termenii spun „plătește transportul”,
- *    dar calculul din coș dă azi gratuit (nu verifică reducerea) → tăcem;
- *  - pragurile pentru București și provincie diferite, iar prețul e între ele
- *    → depinde de județ, iar Google nu primește regiuni pentru România → tăcem.
+ * Transportul gratuit (pragul din setări, azi 500 lei), exact ca în coș
+ * (CheckoutCalculator::transportGratuit, decizia D din 20 oct 2026): comanda e
+ * gratuită când valoarea ei atinge pragul județului (București sau provincie),
+ * ORICE preț ar avea produsele, deci și la produsele cu reducere. Pentru un
+ * produs comandat singur, fără cupon, valoarea comenzii e prețul afișat (cu
+ * reducerea, dacă e). Un prag 0 înseamnă „niciodată gratuit” acolo.
+ *  - prețul atinge ambele praguri → 0 lei;
+ *  - nu atinge niciunul → tariful livrării la adresă (19 lei);
+ *  - atinge doar unul (praguri diferite pe județe) → depinde de județ, iar Google
+ *    nu primește regiuni pentru România → nu declarăm nimic.
+ * Cuponul și punctele de fidelitate le alege clientul în coș; cu setarea
+ * „include cupoanele” bifată, un cupon poate coborî comanda sub prag. Google
+ * cere costul pentru oferta afișată (fără cupon), deci declarăm costul fără cupon.
  *
  * Taxa pentru kilometri suplimentari (localitățile din afara ariei FAN, total
  * până la 30 lei, plătită și la comenzile cu transport gratuit) NU intră. Regula
@@ -101,10 +104,9 @@ final class PoliticaLivrare
      * livrare. Listă goală când nu putem spune sigur cât costă transportul.
      *
      * @param float $pretAfisat prețul din pagină (cu reducerea, dacă e)
-     * @param bool  $redus      produsul e la reducere (preț redus, perioadă de reducere)
      * @return list<array{serviciu: string, pret: float, termen: array{pregatire: array{0: int, 1: int}, transport: array{0: int, 1: int}}}>
      */
-    public static function optiuni(array $setari, float $pretAfisat, bool $redus): array
+    public static function optiuni(array $setari, float $pretAfisat): array
     {
         if (!self::activ() || !ShippingPricing::esteActiv($setari)) {
             return [];
@@ -115,24 +117,36 @@ final class PoliticaLivrare
             return [];
         }
 
-        // Pragul de gratuitate e pe județ (București / provincie), ca în coș; un
-        // prag 0 înseamnă „niciodată gratuit” acolo.
-        $atinge = static fn (float $prag): bool => $prag > 0.0 && $pretAfisat + 0.00001 >= $prag;
-        $pragBucuresti = (float) ($setari['shipping_free_bucharest'] ?? 0);
-        $pragProvincie = (float) ($setari['shipping_free_province'] ?? 0);
-        $gratuitUndeva = $atinge($pragBucuresti) || $atinge($pragProvincie);
-        $gratuitPeste = $atinge($pragBucuresti) && $atinge($pragProvincie);
-        if ($gratuitUndeva && ($redus || !$gratuitPeste)) {
-            // La reducere: termenii spun „se plătește”, coșul dă gratuit. Doar în
-            // unele județe: Google nu primește regiuni pentru România. Tăcem.
+        // Pragul de gratuitate e pe județ (București / provincie), ca în coș.
+        $gratuitBucuresti = self::gratuit($setari, true, $pretAfisat);
+        $gratuitProvincie = self::gratuit($setari, false, $pretAfisat);
+        if ($gratuitBucuresti !== $gratuitProvincie) {
+            // Gratuit doar în unele județe: Google nu primește regiuni pentru România. Tăcem.
             return [];
         }
 
         return [[
             'serviciu' => self::SERVICIU_ADRESA,
-            'pret' => $gratuitPeste ? 0.0 : round($adresa, 2),
+            'pret' => $gratuitBucuresti ? 0.0 : round($adresa, 2),
             'termen' => self::termen($setari),
         ]];
+    }
+
+    /**
+     * Comanda de $valoare lei (fără cupon) are transport gratuit în București /
+     * în provincie? Aceeași regulă ca CheckoutCalculator::transportGratuit: pragul
+     * județului (lipsă din setări = 200, ca în coș), 0 = niciodată gratuit, iar
+     * comparația e „valoarea ≥ prag”, fără să conteze dacă produsele sunt la reducere.
+     */
+    public static function gratuit(array $setari, bool $bucuresti, float $valoare): bool
+    {
+        $prag = $bucuresti
+            ? (float) ($setari['shipping_free_bucharest'] ?? 200)
+            : (float) ($setari['shipping_free_province'] ?? 200);
+        if ($prag <= 0) {
+            return false;
+        }
+        return $valoare >= $prag;
     }
 
     /**
