@@ -580,6 +580,7 @@ final class SiteController
                 'page' => $blogPage,
                 'mannequinSectionHtml' => $this->renderMannequinSection($db instanceof PDO ? $db : null, $settings),
                 'blogPostsHtml' => $blogPostsHtml,
+                'h1Implicit' => \App\Support\SeoIndexare::h1PentruPagina($titlu, 'blog', (string) ($blogPage['html_content'] ?? '')),
             ], $this->customPageSeoMeta($db instanceof PDO ? $db : null, $blogPage), $robots));
             return;
         }
@@ -593,6 +594,7 @@ final class SiteController
             ],
             'blogPostsHtml' => $blogPostsHtml,
             'mannequinSectionHtml' => '',
+            'h1Implicit' => \App\Support\SeoIndexare::h1PentruPagina('Blog', 'blog'),
         ], $robots));
     }
 
@@ -4077,6 +4079,8 @@ final class SiteController
             'productReviewFormHtml' => $productReviewFormHtml,
             'gdprAgreementsFormHtml' => $gdprAgreementsFormHtml,
             'checkoutSuccessOrderInfoHtml' => $checkoutSuccessOrderInfoHtml,
+            // A11: titlul paginii ca H1 când textul n-are (nu pe coș, comandă, cont, login).
+            'h1Implicit' => \App\Support\SeoIndexare::h1PentruPagina((string) $page['title'], $slug, $pageHtmlContent),
         ], $this->seoPagina($db, $page, $slug)));
     }
 

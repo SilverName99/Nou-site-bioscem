@@ -118,10 +118,23 @@ $pageHtml = (string) preg_replace_callback(
 // Linkurile de categorie scrise în pagină (/magazin?category=…) duc la
 // /categorie/{slug}; textul paginii din baza de date rămâne neatins.
 $pageHtml = \App\Support\LinkuriCategorii::rescrieInPagina($pageHtml, $nextEventDb instanceof \PDO ? $nextEventDb : null);
+// Pagina de conținut fără niciun <h1> primește titlul ei ca H1 (A11; controllerul
+// trimite titlul doar pentru paginile de conținut, vezi App\Support\SeoIndexare).
+$pageHtmlCuH1 = \App\Support\SeoIndexare::adaugaH1($pageHtml, (string) ($h1Implicit ?? ''));
+$h1Adaugat = $pageHtmlCuH1 !== $pageHtml;
+$pageHtml = $pageHtmlCuH1;
 ?>
 <?php if (trim($pageCss) !== ''): ?>
     <style>
         <?= $pageCss ?>
+    </style>
+<?php endif; ?>
+<?php if ($h1Adaugat): ?>
+    <style>
+        /* Titlul adăugat de șablon: fără specificitate (:where), ca stilurile paginii
+           (de exemplu șablonul paginilor de text) să aibă întâietate. */
+        :where(.custom-page-content) > :where(.custom-page-h1){max-width:1180px;margin:24px auto 14px;font-family:Georgia,"Times New Roman",serif;font-size:31px;font-weight:500;line-height:1.3;color:#064b4f;}
+        @media (max-width:768px){:where(.custom-page-content) > :where(.custom-page-h1){font-size:25px;}}
     </style>
 <?php endif; ?>
 <?php
