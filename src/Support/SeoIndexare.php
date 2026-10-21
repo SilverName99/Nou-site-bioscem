@@ -19,7 +19,8 @@ namespace App\Support;
  *    de exemplu un link de plată greșit, care rămân exact ca înainte);
  *  - un articol de blog sau o categorie care nu există (/blog/x, /categorie/x)
  *    primesc pagina 404 obișnuită a magazinului (not-found.php), nu un text
- *    simplu de 27 de octeți, respectiv tot magazinul;
+ *    simplu de 27 de octeți, respectiv tot magazinul (în afară de căile excluse
+ *    scrise cu „//”, de exemplu „//api/blog/posts”, care rămân ca înainte);
  *  - H1: o pagină de conținut din constructor (termeni, cookies, date
  *    personale, acorduri GDPR, program de sărbători) fără niciun <h1> în text
  *    primește titlul ei ca H1, din șablon; textul din baza de date rămâne
@@ -97,6 +98,21 @@ final class SeoIndexare
     public static function faraCanonicalPentruCod(int $cod, string $uri = '/'): bool
     {
         if (!self::activ() || !in_array($cod, [404, 410], true)) {
+            return false;
+        }
+        $cale = explode('?', $uri, 2)[0];
+        return !SeoRedirects::eExclusa($cale === '' ? '/' : $cale);
+    }
+
+    /**
+     * /blog/x sau /categorie/x inexistente primesc pagina 404 a magazinului? Da, în
+     * afară de adresele care încep cu o cale exclusă scrisă cu „//” (de exemplu
+     * „//api/blog/posts”, pe care routerul o citește ca /blog/posts): acolo răspunsul
+     * rămâne exact ca înainte, ca la canonical (vezi faraCanonicalPentruCod).
+     */
+    public static function pagina404Magazin(string $uri = '/'): bool
+    {
+        if (!self::activ()) {
             return false;
         }
         $cale = explode('?', $uri, 2)[0];

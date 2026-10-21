@@ -97,9 +97,10 @@ final class SiteController
 
         if ($categoryName === '') {
             // Categorie inexistentă: pagina 404 a magazinului, nu tot magazinul sub
-            // un 404 (A10). Doar când baza răspunde; fără ea, ca înainte.
+            // un 404 (A10). Doar când baza răspunde și adresa nu e o cale exclusă
+            // scrisă cu „//” (vezi SeoIndexare::pagina404Magazin); altfel, ca înainte.
             $db = $this->db();
-            if ($db instanceof PDO && \App\Support\SeoIndexare::activ()) {
+            if ($db instanceof PDO && \App\Support\SeoIndexare::pagina404Magazin((string) ($_SERVER['REQUEST_URI'] ?? '/'))) {
                 $this->renderPagina404(
                     'Categoria căutată nu există',
                     'Este posibil ca linkul să fie vechi. Caută produsul dorit sau vezi tot magazinul.',
@@ -685,11 +686,12 @@ final class SiteController
     /**
      * Articol de blog inexistent (nepublicat, programat, șters): pagina 404 a
      * magazinului, cu meniu, căutare și produse (A10), în loc de textul simplu de
-     * până acum. Cu SEO_NOINDEX=0, textul simplu, ca înainte.
+     * până acum. Cu SEO_NOINDEX=0, sau pe o cale exclusă scrisă cu „//” (de exemplu
+     * „//api/blog/posts”, citită de router ca /blog/posts), textul simplu, ca înainte.
      */
     private function articolNegasit(?PDO $db): void
     {
-        if (!\App\Support\SeoIndexare::activ()) {
+        if (!\App\Support\SeoIndexare::pagina404Magazin((string) ($_SERVER['REQUEST_URI'] ?? '/'))) {
             http_response_code(404);
             echo 'Articolul nu a fost găsit.';
             return;
