@@ -17,17 +17,23 @@ namespace App\Support;
  *  - pagina „nu există” (404/410) nu are canonical: o adresă care nu există nu
  *    e varianta altei pagini (în afară de căile de coș, comandă, plată și cont,
  *    de exemplu un link de plată greșit, care rămân exact ca înainte);
+ *  - un articol de blog sau o categorie care nu există (/blog/x, /categorie/x)
+ *    primesc pagina 404 obișnuită a magazinului (not-found.php), nu un text
+ *    simplu de 27 de octeți, respectiv tot magazinul;
  *  - H1: o pagină de conținut din constructor (termeni, cookies, date
- *    personale, acorduri GDPR, program de sărbători, /blog) fără niciun <h1> în
- *    text primește titlul ei ca H1, din șablon; textul din baza de date rămâne
- *    neatins. Paginile de coș, comandă, plată, cont și login rămân exact ca
+ *    personale, acorduri GDPR, program de sărbători) fără niciun <h1> în text
+ *    primește titlul ei ca H1, din șablon; textul din baza de date rămâne
+ *    neatins. Pe /blog, titlul listei de articole („Blog & Resurse”, deja vizibil)
+ *    devine H1 în loc de H2, cu același aspect, ca să nu apară două titluri unul
+ *    sub altul. Paginile de coș, comandă, plată, cont și login rămân exact ca
  *    înainte.
  *
  * Etichetele mici și cele cu nume de boli rămân indexate (deciziile D2 și D3).
  *
  * Opriri de urgență, în .env:
- *  - SEO_NOINDEX=0: fără noindex pe căutare și pe /blog, canonical la loc pe 404;
- *  - SEO_H1=0: fără H1 adăugat de șablon.
+ *  - SEO_NOINDEX=0: fără noindex pe căutare și pe /blog, canonical la loc pe 404,
+ *    /blog/x și /categorie/x inexistente răspund ca înainte;
+ *  - SEO_H1=0: fără H1 adăugat de șablon, titlul de pe /blog rămâne H2.
  */
 final class SeoIndexare
 {
@@ -113,6 +119,17 @@ final class SeoIndexare
             return '';
         }
         return $titlu;
+    }
+
+    /**
+     * Titlul listei de articole de pe /blog („Blog & Resurse”) e H1? Da, când H1-ul
+     * e pornit și textul paginii „blog” din constructor n-are deja un <h1>. Atunci
+     * lista îl scrie ca <h1> (cu aceleași stiluri ca H2-ul de până acum), iar
+     * șablonul nu mai adaugă H1-ul „Blog” deasupra (adaugaH1 găsește un <h1>).
+     */
+    public static function titluBlogCaH1(string $htmlPagina): bool
+    {
+        return self::h1Activ() && preg_match('/<h1[\s>]/i', $htmlPagina) !== 1;
     }
 
     /**

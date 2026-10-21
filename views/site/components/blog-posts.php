@@ -11,6 +11,9 @@ $totalPages = max(1, (int) ($paginationPayload['total_pages'] ?? 1));
 $prevPageUrl = trim((string) ($paginationPayload['prev_url'] ?? ''));
 $nextPageUrl = trim((string) ($paginationPayload['next_url'] ?? ''));
 $pageLinks = is_array($paginationPayload['items'] ?? null) ? $paginationPayload['items'] : [];
+// Pe /blog titlul listei e H1-ul paginii (A11, vezi SeoIndexare::titluBlogCaH1);
+// aceleași stiluri ca H2-ul de până acum, doar eticheta se schimbă.
+$etichetaTitlu = !empty($titluH1) ? 'h1' : 'h2';
 $buildPost = static function (array $post, string $baseUrl): array {
     $title = trim((string) ($post['title'] ?? 'Articol blog'));
     $slug = trim((string) ($post['slug'] ?? ''));
@@ -51,7 +54,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
     <div class="blog-listing__shell">
         <header class="blog-listing__head">
             <span class="blog-listing__eyebrow">Jurnalul Bioscem</span>
-            <h2>Blog &amp; Resurse</h2>
+            <<?= $etichetaTitlu ?>>Blog &amp; Resurse</<?= $etichetaTitlu ?>>
             <p>Articole utile despre wellness, nutriție și un stil de viață echilibrat.</p>
         </header>
         <?php if ($posts === []): ?>
@@ -176,7 +179,7 @@ $buildPost = static function (array $post, string $baseUrl): array {
 .blog-listing__shell{max-width:1180px;margin:0 auto;padding:0;border:none;border-radius:0;background:transparent;}
 .blog-listing__head{margin:0 0 16px;}
 .blog-listing__eyebrow{display:inline-flex;margin:0 0 10px;font-family:"DM Sans",Arial,sans-serif;font-size:12px;font-weight:400;text-transform:uppercase;letter-spacing:.16em;color:#0f7b53;}
-.blog-listing__head h2{margin:0;font-family:"Playfair Display",Georgia,serif;font-size:36px;line-height:1.06;font-weight:700;color:#0f172a;}
+.blog-listing__head <?= $etichetaTitlu ?>{margin:0;font-family:"Playfair Display",Georgia,serif;font-size:36px;line-height:1.06;font-weight:700;color:#0f172a;}
 .blog-listing__head p{margin:10px 0 0;font-family:"DM Sans",Arial,sans-serif;color:#64748b;font-size:18px;line-height:1.6;font-weight:400;}
 .blog-featured{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0;border:1px solid #dbe5dd;overflow:hidden;background:#fff;margin:0 0 18px;}
 .blog-featured__media{display:block;background:#f2f8ef;min-height:280px;overflow:hidden;}
@@ -222,10 +225,10 @@ $buildPost = static function (array $post, string $baseUrl): array {
 .blog-listing.is-loading .blog-listing__shell{opacity:.72;transform:translateY(6px);transition:opacity .22s ease,transform .22s ease;pointer-events:none;}
 .blog-listing__empty{padding:14px;border:1px dashed #cbd5e1;border-radius:12px;background:#fff;}
 @media (min-width:1024px){.blog-featured__title{font-size:30px;}}
-@media (min-width:768px){.blog-listing__head h2{font-size:48px;}}
-@media (min-width:1200px){.blog-listing__head h2{font-size:60px;}}
+@media (min-width:768px){.blog-listing__head <?= $etichetaTitlu ?>{font-size:48px;}}
+@media (min-width:1200px){.blog-listing__head <?= $etichetaTitlu ?>{font-size:60px;}}
 @media (max-width:1020px){.blog-listing__grid{grid-template-columns:repeat(2,minmax(0,1fr));}.blog-featured{grid-template-columns:1fr;}.blog-featured__media{min-height:220px;}}
-@media (max-width:680px){.blog-listing{padding:14px 0 24px;}.blog-listing__shell{padding:0 12px;border-radius:0;}.blog-listing__head h2{font-size:36px;}.blog-listing__head p{font-size:18px;}.blog-featured__title{font-size:30px;}.blog-listing__grid{grid-template-columns:1fr;}}
+@media (max-width:680px){.blog-listing{padding:14px 0 24px;}.blog-listing__shell{padding:0 12px;border-radius:0;}.blog-listing__head <?= $etichetaTitlu ?>{font-size:36px;}.blog-listing__head p{font-size:18px;}.blog-featured__title{font-size:30px;}.blog-listing__grid{grid-template-columns:1fr;}}
 </style>
 
 <script>

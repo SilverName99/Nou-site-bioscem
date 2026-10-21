@@ -96,6 +96,17 @@ final class SiteController
         $categoryName = $this->resolveCategoryNameBySlug($slug);
 
         if ($categoryName === '') {
+            // Categorie inexistentă: pagina 404 a magazinului, nu tot magazinul sub
+            // un 404 (A10). Doar când baza răspunde; fără ea, ca înainte.
+            $db = $this->db();
+            if ($db instanceof PDO && \App\Support\SeoIndexare::activ()) {
+                $this->renderPagina404(
+                    'Categoria căutată nu există',
+                    'Este posibil ca linkul să fie vechi. Caută produsul dorit sau vezi tot magazinul.',
+                    $db
+                );
+                return;
+            }
             http_response_code(404);
         } else {
             // Aceeași categorie scrisă altfel (litere mari): 301 la forma salvată.
@@ -568,10 +579,14 @@ final class SiteController
     public function blog(): void
     {
         $db = $this->db();
-        $blogPostsHtml = $this->renderBlogPostsSection($db instanceof PDO ? $db : null);
+        $blogPage = $this->findPublishedPageBySlug('blog');
+        // A11: titlul listei („Blog & Resurse”) e H1-ul paginii, când textul ei n-are deja unul.
+        $blogPostsHtml = $this->renderBlogPostsSection(
+            $db instanceof PDO ? $db : null,
+            \App\Support\SeoIndexare::titluBlogCaH1(is_array($blogPage) ? (string) ($blogPage['html_content'] ?? '') : '{{blog_posts}}')
+        );
         // /blog fără niciun articol publicat: noindex,follow (decizia D7, A10).
         $robots = \App\Support\SeoIndexare::pentruBlog(count($this->loadPublishedBlogPosts($db instanceof PDO ? $db : null, 1)));
-        $blogPage = $this->findPublishedPageBySlug('blog');
         if (is_array($blogPage)) {
             $settings = $this->cachedSettings($db instanceof PDO ? $db : null);
             $titlu = (string) ($blogPage['title'] ?? 'Blog');
@@ -639,21 +654,18 @@ final class SiteController
     {
         $slug = trim((string) ($params['slug'] ?? ''));
         if ($slug === '') {
-            http_response_code(404);
-            echo 'Articolul nu a fost găsit.';
+            $this->articolNegasit(null);
             return;
         }
 
         $db = $this->db();
         if (!$db instanceof PDO) {
-            http_response_code(404);
-            echo 'Articolul nu a fost găsit.';
+            $this->articolNegasit(null);
             return;
         }
         $post = $this->loadPublishedBlogPostBySlug($db, $slug);
         if (!is_array($post)) {
-            http_response_code(404);
-            echo 'Articolul nu a fost găsit.';
+            $this->articolNegasit($db);
             return;
         }
 
@@ -668,6 +680,25 @@ final class SiteController
             ],
             'mannequinSectionHtml' => '',
         ], $seoMeta));
+    }
+
+    /**
+     * Articol de blog inexistent (nepublicat, programat, șters): pagina 404 a
+     * magazinului, cu meniu, căutare și produse (A10), în loc de textul simplu de
+     * până acum. Cu SEO_NOINDEX=0, textul simplu, ca înainte.
+     */
+    private function articolNegasit(?PDO $db): void
+    {
+        if (!\App\Support\SeoIndexare::activ()) {
+            http_response_code(404);
+            echo 'Articolul nu a fost găsit.';
+            return;
+        }
+        $this->renderPagina404(
+            'Articolul nu a fost găsit',
+            'Este posibil ca linkul să fie vechi sau articolul să nu mai fie publicat. Caută produsul dorit sau vezi tot magazinul.',
+            $db
+        );
     }
 
     public function product(array $params): void
@@ -4072,7 +4103,7 @@ final class SiteController
             'page' => $page,
             'mannequinSectionHtml' => $this->renderMannequinSection($db, $settings),
             'shopCatalogHtml' => $slug === 'magazin' ? $this->renderShopCatalogSection($db, $this->requestCategoryFilter()) : '',
-            'blogPostsHtml' => $slug === 'blog' ? $this->renderBlogPostsSection($db) : '',
+            'blogPostsHtml' => $slug === 'blog' ? $this->renderBlogPostsSection($db, \App\Support\SeoIndexare::titluBlogCaH1($pageHtmlContent)) : '',
             'cartFormHtml' => $cartFormHtml,
             'checkoutFormHtml' => $checkoutFormHtml,
             'accountSectionHtml' => $accountSectionHtml,
@@ -4550,7 +4581,11 @@ final class SiteController
         ]);
     }
 
-    private function renderBlogPostsSection(?PDO $db): string
+    /**
+     * Lista de articole ({{blog_posts}}). $titluH1: titlul listei („Blog & Resurse”)
+     * e scris ca <h1>, cu aceleași stiluri, pentru că e H1-ul paginii /blog (A11).
+     */
+    private function renderBlogPostsSection(?PDO $db, bool $titluH1 = false): string
     {
         $perPage = self::BLOG_POSTS_PER_PAGE;
         $totalPosts = $this->countPublishedBlogPosts($db);
@@ -4616,6 +4651,7 @@ final class SiteController
             'posts' => $posts,
             'baseUrl' => '/blog',
             'pagination' => $pagination,
+            'titluH1' => $titluH1,
         ]);
     }
 

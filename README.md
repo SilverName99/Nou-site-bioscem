@@ -258,9 +258,12 @@ de pagini; CDN-ul din hPanel se goleste de mana.
   reface singur în cel mult 15 minute. Pagina /livrare-transport nu se schimbă de aici.
 - **noindex,follow** pe căutarea internă (`/magazin?q=…`, fără canonical) și pe `/blog` cât
   timp nu are niciun articol publicat; pagina 404/410 nu are canonical (în afară de căile de
-  coș, comandă, plată și cont, care rămân ca înainte). **H1**: o pagină din
+  coș, comandă, plată și cont, care rămân ca înainte). Un articol de blog sau o categorie
+  care nu există (`/blog/x`, `/categorie/x`) primesc pagina 404 obișnuită a magazinului, nu
+  un text simplu, respectiv tot magazinul. **H1**: o pagină din
   constructor fără niciun `<h1>` în text primește titlul ei ca H1 (nu pe coș, comandă, cont,
-  login). Detaliile: `src/Support/SeoIndexare.php`.
+  login); pe `/blog`, titlul listei („Blog & Resurse”) devine H1, cu același aspect.
+  Detaliile: `src/Support/SeoIndexare.php`.
 - **Pozele** (A8): pozele afișate de șabloane au `width`/`height` (citite din fișier, cu
   cache în `storage/cache/image-dimensions.json`), acolo unde stilul șablonului le dă
   deja lățimea și înălțimea, deci pagina arată la fel. Nu primesc: cardurile de produs
@@ -282,8 +285,9 @@ de pagini; CDN-ul din hPanel se goleste de mana.
 - **Opriri de urgență** în `.env` (apoi golirea cache-ului de pagini și a CDN-ului):
   `SEO_REDIRECTURI=0` (redirecționările), `SEO_TITLURI=0` (titlurile și descrierile),
   `SEO_LIVRARE_RETUR=0` (livrarea cu termenul și returul, din date și din flux),
-  `SEO_NOINDEX=0` (noindex pe căutare și pe /blog, canonical la loc pe 404),
-  `SEO_H1=0` (H1-ul adăugat de șablon), `SEO_POZE=0` (fără dimensiunile noi și fără
+  `SEO_NOINDEX=0` (noindex pe căutare și pe /blog, canonical la loc pe 404, /blog/x și
+  /categorie/x inexistente ca înainte), `SEO_H1=0` (H1-ul adăugat de șablon și H1-ul de
+  pe /blog), `SEO_POZE=0` (fără dimensiunile noi și fără
   pozele refăcute), `SEO_PRODUSE_SIMILARE=0` (secțiunea de dinainte: doar produsele
   alese în admin, desenate din JavaScript).
 
