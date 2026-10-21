@@ -261,11 +261,67 @@ de pagini; CDN-ul din hPanel se goleste de mana.
   coș, comandă, plată și cont, care rămân ca înainte). **H1**: o pagină din
   constructor fără niciun `<h1>` în text primește titlul ei ca H1 (nu pe coș, comandă, cont,
   login). Detaliile: `src/Support/SeoIndexare.php`.
+- **Pozele** (A8): pozele afișate de șabloane au `width`/`height` (citite din fișier, cu
+  cache în `storage/cache/image-dimensions.json`), acolo unde stilul șablonului le dă
+  deja lățimea și înălțimea, deci pagina arată la fel. Nu primesc: cardurile de produs
+  de pe prima pagină (stilul lor vine din pagina din constructor: doar `max-width` /
+  `max-height` într-o cutie de înălțime fixă, deci nu „sar”), pozele din textul
+  paginilor (conținut), SVG-urile și coșul, comanda și contul (neatinse). Cele 10 poze
+  mari din plan se afișează din fișiere noi WebP sub 150 KB, din
+  `public/assets/img/optimizate/` (lista: `config/poze-optimizate.php`, cu mărimea
+  pozei vechi ca siguranță: altă poză încărcată cu același nume se afișează ea). Pozele
+  vechi rămân pe server; datele structurate, fluxul și poza de distribuire le folosesc
+  în continuare. Detaliile: `src/Support/PozeOptimizate.php`.
+- **Produse similare** (A14): 4–8 produse din aceeași categorie, întâi cele care se pot
+  cumpăra; cele alese în admin din aceeași categorie vin primele, restul pe rând după
+  produsul curent; sub 4 se completează cu cele alese în admin din alte categorii.
+  Produsele cu ofertă de ales (lot) intră doar dacă sunt alese în admin. Cardurile sunt
+  în HTML (linkuri reale), caruselul arată ca înainte. Detaliile:
+  `src/Support/ProduseSimilare.php`.
+- **Conținutul** (D5 AIRCALL, A9 linkurile din texte): `scripts/seo-continut.php`, mai jos.
 - **Opriri de urgență** în `.env` (apoi golirea cache-ului de pagini și a CDN-ului):
   `SEO_REDIRECTURI=0` (redirecționările), `SEO_TITLURI=0` (titlurile și descrierile),
   `SEO_LIVRARE_RETUR=0` (livrarea cu termenul și returul, din date și din flux),
   `SEO_NOINDEX=0` (noindex pe căutare și pe /blog, canonical la loc pe 404),
-  `SEO_H1=0` (H1-ul adăugat de șablon).
+  `SEO_H1=0` (H1-ul adăugat de șablon), `SEO_POZE=0` (fără dimensiunile noi și fără
+  pozele refăcute), `SEO_PRODUSE_SIMILARE=0` (secțiunea de dinainte: doar produsele
+  alese în admin, desenate din JavaScript).
+
+### SEO: conținutul din livrarea 4 (`scripts/seo-continut.php`)
+
+Căștile AIRCALL (D5) și linkurile vechi din texte (A9), o singură dată, prin SSH, din
+folderul site-ului. Lista exactă („vechi → nou”, câte apariții, de ce) e în
+`scripts/seo-continut.json`.
+
+```bash
+# 1. ce s-ar schimba (nu scrie nimic)
+php scripts/seo-continut.php --plan
+# 2. scrierea; înainte salvează valorile de acum în storage/seo-continut-copie-<data>.json
+php scripts/seo-continut.php --aplica
+# 3. dacă trebuie dat înapoi: pune valorile din cea mai nouă copie
+php scripts/seo-continut.php --restaureaza
+#    sau dintr-o copie anume:  --restaureaza --fisier=storage/seo-continut-copie-....json
+```
+
+- **AIRCALL:** rămân două produse cu codurile SP21A și SP21N (stocul și comenzile din ERP
+  merg după cod; scriptul nu schimbă niciodată codul și verifică asta). Se schimbă numele
+  („Căști antiradiații AIRCALL – alb” / „– negru”), titlul și descrierea Google, primul
+  paragraf al descrierii (leagă cele două culori) și adresa, la litere mici
+  (`/produs/casti-antiradiatii-aircall-sp21a` / `…-sp21n`). Adresele vechi, cu majusculă,
+  fac 301 la cele noi (GET și HEAD), din pagina produsului. Coșul ține produsele după id,
+  comenzile după id și numele de atunci, deci nimic nu se rupe.
+- **Linkurile:** `/retur-garantie/`, poza WordPress de pe `/program-sarbatori` (devine
+  linkul text „programul FAN Courier de sărbători”), articolele vechi, linkurile interne pe
+  http sau cu „/” la final, site-urile surori pe https; pe `/termeni-conditii` se scot
+  rândul „```html” și paragraful care trimitea la pagina însăși. Restul textului juridic
+  nu se atinge.
+- Refuză (fără să scrie nimic) dacă baza nu e cea așteptată: lipsește o pagină, un produs
+  sau un câmp, un text vechi nu apare exact de câte ori scrie în listă, codul AIRCALL nu
+  e cel din listă, adresa nouă e deja a altui produs, ori numele/titlul AIRCALL au fost
+  schimbate de mână. Scrie totul într-o tranzacție; rulat a doua oară spune „Nimic de
+  schimbat”. La restaurare, un câmp schimbat de mână între timp e „SĂRIT” (`--forteaza`
+  îl suprascrie). După scriere golește cache-ul de pagini și fluxul Merchant Center;
+  CDN-ul din hPanel se golește de mână.
 
 ### ERP ANDAXI: „Client agresiv” pe comenzi
 
