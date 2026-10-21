@@ -33,7 +33,7 @@ final class SeoIndexare
 {
     public const NOINDEX = 'noindex,follow';
 
-    /** Paginile din constructor care nu primesc H1 din șablon (prima pagină, 404). */
+    /** Paginile din constructor care nu primesc H1 din șablon (prima pagină, pagina 404, magazinul). */
     private const FARA_H1 = ['', 'acasa', 'home', '404', 'magazin'];
 
     /** noindex pe căutare și /blog gol, fără canonical pe 404? (oprire: SEO_NOINDEX=0) */
