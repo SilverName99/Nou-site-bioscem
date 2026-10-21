@@ -236,6 +236,36 @@ Rulat a doua oara spune „Nimic de schimbat”. La restaurare, un avertisment s
 mana intre timp e „SĂRIT” (tot `--forteaza` il suprascrie). Dupa scriere goleste cache-ul
 de pagini; CDN-ul din hPanel se goleste de mana.
 
+### SEO: livrarea pentru Google, termenul de livrare și opririle de urgență
+
+- **Livrarea în datele pentru Google** (pe fiecare produs, `Offer.shippingDetails`, și în
+  fluxul `/feed/google-merchant.xml`) urmează exact regula din coș: livrarea la adresă din
+  Setări livrare → prețuri fixe (azi 19 lei), 0 lei când prețul afișat al produsului (cu
+  reducerea, dacă e) atinge pragul de transport gratuit (azi 500 lei), **și la produsele cu
+  reducere**. Când pragurile București / provincie diferă și prețul e între ele, nu se
+  declară nimic (depinde de județ). Detaliile: `src/Support/PoliticaLivrare.php`.
+- **Termenul de livrare** (Google îl cere: `deliveryTime`; în flux `g:min_handling_time`…):
+  pregătire 0–1 zile, transport 1–2 zile, zile lucrătoare luni–vineri. Se schimbă fără cod,
+  din tabelul `settings` (nu are ecran în admin), de exemplu transport până la 3 zile:
+  ```sql
+  INSERT INTO settings (`key`, `value`) VALUES ('seo_livrare_transport_max', '3')
+    ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
+  ```
+  Cheile: `seo_livrare_pregatire_min`, `seo_livrare_pregatire_max`, `seo_livrare_transport_min`,
+  `seo_livrare_transport_max` (numere întregi 0–30; o valoare greșită ia valoarea implicită,
+  un minim peste maxim readuce perechea la cea implicită). După schimbare: Admin → Setări
+  magazin → „Caching” → „Golește doar pagini” și „Flush cache” în hPanel → CDN; fluxul se
+  reface singur în cel mult 15 minute. Pagina /livrare-transport nu se schimbă de aici.
+- **noindex,follow** pe căutarea internă (`/magazin?q=…`, fără canonical) și pe `/blog` cât
+  timp nu are niciun articol publicat; pagina 404/410 nu are canonical. **H1**: o pagină din
+  constructor fără niciun `<h1>` în text primește titlul ei ca H1 (nu pe coș, comandă, cont,
+  login). Detaliile: `src/Support/SeoIndexare.php`.
+- **Opriri de urgență** în `.env` (apoi golirea cache-ului de pagini și a CDN-ului):
+  `SEO_REDIRECTURI=0` (redirecționările), `SEO_TITLURI=0` (titlurile și descrierile),
+  `SEO_LIVRARE_RETUR=0` (livrarea cu termenul și returul, din date și din flux),
+  `SEO_NOINDEX=0` (noindex pe căutare și pe /blog, canonical la loc pe 404),
+  `SEO_H1=0` (H1-ul adăugat de șablon).
+
 ### ERP ANDAXI: „Client agresiv” pe comenzi
 
 Cand in ERP e pornita setarea „Bifa „Client agresiv” pe fisa clientului” (Setari →
