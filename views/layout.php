@@ -215,7 +215,9 @@ if ($canonicalUrlFinal === '') {
 }
 // Fără canonical (și fără og:url) pe pagina „nu există” (404/410) și unde
 // controllerul o cere (căutarea internă cu noindex). Vezi App\Support\SeoIndexare.
-if (!empty($faraCanonical) || \App\Support\SeoIndexare::faraCanonicalPentruCod((int) http_response_code())) {
+// Paginile de coș, comandă, plată și cont rămân exact ca înainte, și pe 404.
+if (!empty($faraCanonical)
+    || \App\Support\SeoIndexare::faraCanonicalPentruCod((int) http_response_code(), (string) ($_SERVER['REQUEST_URI'] ?? '/'))) {
     $canonicalUrlFinal = '';
 }
 $metaImageUrlFinal = trim((string) ($metaImageUrl ?? ''));

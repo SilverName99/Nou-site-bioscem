@@ -257,7 +257,8 @@ de pagini; CDN-ul din hPanel se goleste de mana.
   magazin → „Caching” → „Golește doar pagini” și „Flush cache” în hPanel → CDN; fluxul se
   reface singur în cel mult 15 minute. Pagina /livrare-transport nu se schimbă de aici.
 - **noindex,follow** pe căutarea internă (`/magazin?q=…`, fără canonical) și pe `/blog` cât
-  timp nu are niciun articol publicat; pagina 404/410 nu are canonical. **H1**: o pagină din
+  timp nu are niciun articol publicat; pagina 404/410 nu are canonical (în afară de căile de
+  coș, comandă, plată și cont, care rămân ca înainte). **H1**: o pagină din
   constructor fără niciun `<h1>` în text primește titlul ei ca H1 (nu pe coș, comandă, cont,
   login). Detaliile: `src/Support/SeoIndexare.php`.
 - **Opriri de urgență** în `.env` (apoi golirea cache-ului de pagini și a CDN-ului):

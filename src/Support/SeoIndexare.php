@@ -15,7 +15,8 @@ namespace App\Support;
  *      - /blog cât timp n-are niciun articol publicat (decizia D7); primul
  *        articol publicat îl readuce singur în Google (și în sitemap);
  *  - pagina „nu există” (404/410) nu are canonical: o adresă care nu există nu
- *    e varianta altei pagini;
+ *    e varianta altei pagini (în afară de căile de coș, comandă, plată și cont,
+ *    de exemplu un link de plată greșit, care rămân exact ca înainte);
  *  - H1: o pagină de conținut din constructor (termeni, cookies, date
  *    personale, acorduri GDPR, program de sărbători, /blog) fără niciun <h1> în
  *    text primește titlul ei ca H1, din șablon; textul din baza de date rămâne
@@ -81,10 +82,19 @@ final class SeoIndexare
         return ['metaRobots' => self::NOINDEX];
     }
 
-    /** Pagina răspunde „nu există” (404/410): fără canonical (și fără og:url). */
-    public static function faraCanonicalPentruCod(int $cod): bool
+    /**
+     * Pagina răspunde „nu există” (404/410): fără canonical (și fără og:url), în
+     * afară de căile de coș, comandă, plată și cont (SeoRedirects::CAI_EXCLUSE),
+     * care rămân exact ca înainte. Calea se ia brută din adresă, fără parametri:
+     * parse_url ar citi „//plata/x” drept gazdă, iar eExclusa știe de „//”.
+     */
+    public static function faraCanonicalPentruCod(int $cod, string $uri = '/'): bool
     {
-        return self::activ() && in_array($cod, [404, 410], true);
+        if (!self::activ() || !in_array($cod, [404, 410], true)) {
+            return false;
+        }
+        $cale = explode('?', $uri, 2)[0];
+        return !SeoRedirects::eExclusa($cale === '' ? '/' : $cale);
     }
 
     /**
