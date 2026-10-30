@@ -23,7 +23,19 @@ $bCampaignStatus = (string) ($builder['status'] ?? 'draft');
 $bScheduledAt    = !empty($builder['scheduled_at'])
     ? htmlspecialchars(date('Y-m-d\TH:i', strtotime((string) $builder['scheduled_at'])), ENT_QUOTES)
     : '';
+// Șabloanele cu înfățișarea magazinului (NewsletterSabloane) și datele pașilor
+// newsletterului (Destinatari, Verificare, Trimite / Programează).
+$bSabloane       = is_array($builder['sabloane'] ?? null) ? $builder['sabloane'] : [];
+$bPoateModifica  = $bType !== 'campaign' || (bool) ($builder['poate_modifica'] ?? true);
+$bPasInitial     = $bType === 'campaign' ? max(1, min(4, (int) ($_GET['pas'] ?? ($bPoateModifica ? 1 : 4)))) : 1;
+require_once __DIR__ . '/../componente/_incarca.php';
+$adminCssComp    = @filemtime(__DIR__ . '/../../../public/assets/css/admin-componente.css') ?: 1;
+$adminCssNl      = @filemtime(__DIR__ . '/../../../public/assets/css/admin-newsletter.css') ?: 1;
+$adminJsNl       = @filemtime(__DIR__ . '/../../../public/assets/js/admin/newsletter-pasi.js') ?: 1;
+$adminJsComp     = @filemtime(__DIR__ . '/../../../public/assets/js/admin/componente.js') ?: 1;
 ?>
+<link rel="stylesheet" href="/assets/css/admin-componente.css?v=<?= (int) $adminCssComp ?>">
+<link rel="stylesheet" href="/assets/css/admin-newsletter.css?v=<?= (int) $adminCssNl ?>">
 <style>
 /* ── Email Builder ─────────────────────────────────────────── */
 .eb-wrap{display:flex;flex-direction:column;height:calc(100vh - 52px);margin:-8px -16px -24px;overflow:hidden;}
@@ -179,46 +191,6 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
 .eb-gallery-img img{width:100%;height:100%;object-fit:cover;display:block;}
 .eb-modal-url-input{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-top:8px;box-sizing:border-box;}
 
-/* ── Campaign Wizard ─────────────────────────────────────── */
-.eb-wizard-bar{display:flex;align-items:center;gap:0;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:0 14px;overflow:hidden;}
-.eb-wizard-step{display:flex;align-items:center;gap:7px;padding:10px 12px;font-size:13px;font-weight:500;color:#6b7280;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;flex-shrink:0;transition:color .15s,border-color .15s;background:none;border-left:none;border-right:none;border-top:none;}
-.eb-wizard-step:hover{color:#111827;}
-.eb-wizard-step.active{color:#1e6b50;border-bottom-color:#1e6b50;}
-.eb-wizard-step-num{width:20px;height:20px;border-radius:50%;background:#e5e7eb;color:#374151;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.eb-wizard-step.active .eb-wizard-step-num{background:#1e6b50;color:#fff;}
-.eb-wizard-step.done .eb-wizard-step-num{background:#d1fae5;color:#065f46;}
-.eb-wizard-step-sep{color:#d1d5db;font-size:12px;padding:0 4px;pointer-events:none;}
-.eb-wizard-panel{flex:1;overflow-y:auto;padding:28px 32px;background:#f9fafb;}
-.eb-wiz-section{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px;max-width:640px;margin:0 auto;}
-.eb-wiz-section h3{margin:0 0 16px;font-size:15px;color:#111827;}
-.eb-wiz-field{margin-bottom:16px;}
-.eb-wiz-field label{display:block;font-size:12.5px;font-weight:600;color:#374151;margin-bottom:5px;}
-.eb-wiz-field input,.eb-wiz-field select,.eb-wiz-field textarea{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;color:#111827;background:#fff;box-sizing:border-box;}
-.eb-wiz-field input:focus,.eb-wiz-field select:focus,.eb-wiz-field textarea:focus{outline:none;border-color:#1e6b50;box-shadow:0 0 0 2px rgba(30,107,80,.1);}
-.eb-wiz-field small{display:block;font-size:11px;color:#9ca3af;margin-top:3px;}
-.eb-wiz-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;}
-.eb-wiz-actions .btn{padding:8px 20px;}
-.eb-wiz-list-card{border:2px solid #e5e7eb;border-radius:8px;padding:14px 16px;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:12px;transition:border-color .15s,background .15s;}
-.eb-wiz-list-card:hover{border-color:#a7f3d0;background:#f0fdf4;}
-.eb-wiz-list-card.selected{border-color:#1e6b50;background:#f0fdf4;}
-.eb-wiz-list-card .eb-wiz-list-name{font-weight:600;font-size:13.5px;color:#111827;}
-.eb-wiz-list-card .eb-wiz-list-count{font-size:12px;color:#6b7280;}
-.eb-wiz-list-card .eb-wiz-list-check{margin-left:auto;font-size:18px;color:#1e6b50;display:none;}
-.eb-wiz-list-card.selected .eb-wiz-list-check{display:block;}
-.eb-wiz-preview-wrap{display:flex;flex-direction:column;gap:16px;max-width:660px;margin:0 auto;}
-.eb-wiz-preview-frame{background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;}
-.eb-wiz-preview-tabs{display:flex;gap:8px;justify-content:center;}
-.eb-wiz-preview-tabs button{padding:6px 18px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;background:#fff;cursor:pointer;color:#6b7280;}
-.eb-wiz-preview-tabs button.active{background:#1e6b50;color:#fff;border-color:#1e6b50;}
-.eb-wiz-send-box{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:20px;}
-.eb-wiz-send-box h4{margin:0 0 14px;font-size:14px;color:#111827;}
-.eb-wiz-send-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
-.eb-wiz-send-row:last-child{margin-bottom:0;}
-.eb-wiz-send-row input[type=email],.eb-wiz-send-row input[type=datetime-local]{padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;flex:1;min-width:0;}
-.status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11.5px;font-weight:600;}
-.status-badge.draft{background:#f3f4f6;color:#374151;}
-.status-badge.scheduled{background:#fef9c3;color:#854d0e;}
-.status-badge.sent{background:#d1fae5;color:#065f46;}
 </style>
 
 <div class="eb-wrap" id="eb-wrap">
@@ -241,7 +213,10 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
         <button data-preview="desktop">🖥 Desktop</button>
         <button data-preview="mobile">📱 Mobil</button>
       </div>
-      <button type="button" id="btn-save" class="btn" style="padding:6px 16px;">Salvează</button>
+      <button type="button" id="btn-save" class="btn<?= $bType === 'campaign' ? ' btn-secondary' : '' ?>" style="padding:6px 16px;">Salvează</button>
+      <?php if ($bType === 'campaign'): ?>
+      <button type="button" class="btn" id="nlp-continua-1" data-mergi-la="2" style="padding:6px 16px;">Continuă la destinatari →</button>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -264,27 +239,31 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
   </form>
 
   <?php if ($bType === 'campaign'): ?>
-  <!-- ── Campaign Wizard Bar ── -->
-  <div class="eb-wizard-bar" id="eb-wizard-bar">
-    <button type="button" class="eb-wizard-step active" data-wiz-step="1" onclick="ebWizGo(1)">
-      <span class="eb-wizard-step-num">1</span>Conținut
-    </button>
-    <span class="eb-wizard-step-sep">›</span>
-    <button type="button" class="eb-wizard-step" data-wiz-step="2" onclick="ebWizGo(2)">
-      <span class="eb-wizard-step-num">2</span>Destinatari
-    </button>
-    <span class="eb-wizard-step-sep">›</span>
-    <button type="button" class="eb-wizard-step" data-wiz-step="3" onclick="ebWizGo(3)">
-      <span class="eb-wizard-step-num">3</span>Setări
-    </button>
-    <span class="eb-wizard-step-sep">›</span>
-    <button type="button" class="eb-wizard-step" data-wiz-step="4" onclick="ebWizGo(4)">
-      <span class="eb-wizard-step-num">4</span>Trimitere
-    </button>
-    <span style="margin-left:auto;padding:0 8px;">
-      <span class="status-badge <?= htmlspecialchars($bCampaignStatus, ENT_QUOTES) ?>" id="eb-campaign-status-badge"><?= htmlspecialchars($bCampaignStatus, ENT_QUOTES) ?></span>
-    </span>
+  <!-- ── Pașii newsletterului ── -->
+  <?php
+  $stareCampanie = \App\Support\NewsletterService::STARI[$bCampaignStatus] ?? $bCampaignStatus;
+  $clasaStare = ['scheduled' => 'programat', 'sending' => 'se-trimite', 'paused' => 'oprit', 'sent' => 'trimis'][$bCampaignStatus] ?? 'ciorna';
+  admin_componenta('bara-pasi', [
+      'id' => 'eb-wizard-bar',
+      'curent' => $bPasInitial,
+      'pasi' => [
+          ['nr' => 1, 'eticheta' => 'Conținut'],
+          ['nr' => 2, 'eticheta' => 'Destinatari'],
+          ['nr' => 3, 'eticheta' => 'Verificare'],
+          ['nr' => 4, 'eticheta' => 'Trimite / Programează'],
+      ],
+      'dreapta' => '<span class="adm-stare adm-stare--' . $clasaStare . '" id="eb-campaign-status-badge">' . adm_e($stareCampanie) . '</span>',
+  ]);
+  ?>
+  <?php if (!$bPoateModifica): ?>
+  <div style="padding:10px 14px 0;background:#fff;">
+    <?php admin_componenta('mesaj', [
+        'tip' => 'info',
+        'titlu' => 'Newsletterul a început să plece, așa că nu se mai poate modifica.',
+        'text' => 'Poți să te uiți la el. Pentru o variantă nouă, folosește „Duplică” din lista de newslettere.',
+    ]); ?>
   </div>
+  <?php endif; ?>
   <?php endif; ?>
 
   <!-- ── Body ── -->
@@ -292,6 +271,15 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
 
     <!-- ── Left Palette ── -->
     <aside class="eb-palette">
+      <?php if ($bType === 'campaign'): ?>
+      <div class="eb-settings-panel" style="border-top:0;border-bottom:1px solid #e5e7eb;">
+        <div class="eb-palette-title">Newsletter</div>
+        <label for="eb-set-subject">Subiect (îl văd abonații în inbox)</label>
+        <input type="text" id="eb-set-subject" maxlength="190" value="<?= htmlspecialchars($bSubject, ENT_QUOTES) ?>" placeholder="ex. Reduceri de toamnă la ceaiuri">
+        <label for="eb-set-name">Nume intern (doar pentru tine)</label>
+        <input type="text" id="eb-set-name" maxlength="190" value="<?= htmlspecialchars($bName, ENT_QUOTES) ?>">
+      </div>
+      <?php endif; ?>
       <div class="eb-palette-section">
         <div class="eb-palette-title">Blocuri</div>
         <?php
@@ -370,9 +358,9 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
         </label>
       </div>
       <?php endif; ?>
-      <?php if ($bShowStarter): ?>
+      <?php if ($bShowStarter || ($bSabloane !== [] && $bPoateModifica)): ?>
       <div class="eb-palette-section">
-        <button type="button" class="btn btn-secondary" style="width:100%;font-size:12px;" onclick="ebShowStarterModal()">✦ Template de start</button>
+        <button type="button" class="btn btn-secondary" style="width:100%;font-size:12px;" onclick="ebShowStarterModal()">✦ <?= $bSabloane !== [] ? 'Alege un șablon' : 'Template de start' ?></button>
       </div>
       <?php endif; ?>
     </aside>
@@ -405,118 +393,25 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
   </div><!-- /eb-body -->
 
   <?php if ($bType === 'campaign'): ?>
-  <!-- ── Wizard Step 2: Destinatari ── -->
-  <div class="eb-wizard-panel" id="eb-wiz-panel-2" style="display:none;">
-    <div class="eb-wiz-section">
-      <h3>Alege listele de abonați</h3>
-      <p style="font-size:12.5px;color:#6b7280;margin:0 0 14px;">Poți selecta una sau mai multe liste. Abonații duplicați vor primi emailul o singură dată.</p>
-      <?php if (empty($bNewsletterLists)): ?>
-        <p style="color:#6b7280;font-size:13px;">Nu există liste de abonați. <a href="/admin/emails/newsletters?tab=subscribers">Creează o listă</a> mai întâi.</p>
-      <?php else: ?>
-        <div id="eb-wiz-list-count-summary" style="font-size:12px;color:#1e6b50;font-weight:600;margin-bottom:10px;min-height:18px;"></div>
-        <?php foreach ($bNewsletterLists as $list): ?>
-          <?php $lid = (int) ($list['id'] ?? 0); $checked = in_array($lid, $bListIds, true); ?>
-          <div class="eb-wiz-list-card <?= $checked ? 'selected' : '' ?>"
-               data-list-id="<?= $lid ?>" data-count="<?= (int) ($list['subscribers_count'] ?? 0) ?>"
-               onclick="ebWizToggleList(<?= $lid ?>)">
-            <div>
-              <div class="eb-wiz-list-name"><?= htmlspecialchars((string) ($list['name'] ?? ''), ENT_QUOTES) ?></div>
-              <div class="eb-wiz-list-count"><?= (int) ($list['subscribers_count'] ?? 0) ?> abonați activi</div>
-            </div>
-            <span class="eb-wiz-list-check">✓</span>
-          </div>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      <div class="eb-wiz-actions">
-        <button type="button" class="btn btn-secondary" onclick="ebWizGo(1)">← Înapoi</button>
-        <button type="button" class="btn" onclick="ebWizSaveAndGo(3)">Continuă →</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Wizard Step 3: Setări ── -->
-  <div class="eb-wizard-panel" id="eb-wiz-panel-3" style="display:none;">
-    <div class="eb-wiz-section">
-      <h3>Setările campaniei</h3>
-      <div class="eb-wiz-field">
-        <label>Numele campaniei</label>
-        <input type="text" id="eb-wiz-name" value="<?= htmlspecialchars($bName, ENT_QUOTES) ?>" oninput="document.getElementById('eb-name-input').value=this.value;document.getElementById('eb-title-display').textContent=this.value;markDirty()">
-      </div>
-      <div class="eb-wiz-field">
-        <label>Subiect email</label>
-        <input type="text" id="eb-wiz-subject" value="<?= htmlspecialchars($bSubject, ENT_QUOTES) ?>" oninput="document.getElementById('eb-subject-input').value=this.value;markDirty()">
-        <small>Acesta este subiectul pe care abonații îl vor vedea în inbox.</small>
-      </div>
-      <div class="eb-wiz-actions">
-        <button type="button" class="btn btn-secondary" onclick="ebWizGo(2)">← Înapoi</button>
-        <button type="button" class="btn" onclick="ebWizSaveAndGo(4)">Continuă →</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Wizard Step 4: Trimitere ── -->
-  <div class="eb-wizard-panel" id="eb-wiz-panel-4" style="display:none;">
-    <div class="eb-wiz-preview-wrap">
-      <div class="eb-wiz-send-box">
-        <h4>Previzualizare</h4>
-        <div class="eb-wiz-preview-tabs">
-          <button type="button" class="active" id="fpwiz-desktop" onclick="ebWizPreviewWidth(600)">🖥 Desktop</button>
-          <button type="button" id="fpwiz-mobile" onclick="ebWizPreviewWidth(375)">📱 Mobil</button>
-        </div>
-        <div style="margin-top:12px;border:1px solid #e5e7eb;border-radius:8px;overflow:auto;max-height:420px;background:#fff;">
-          <div id="eb-wiz-prev-loading" style="padding:32px;text-align:center;color:#9ca3af;font-size:13px;">Se generează previzualizarea...</div>
-          <iframe id="eb-wiz-prev-iframe" title="Preview newsletter" style="display:none;width:600px;max-width:100%;border:none;min-height:300px;"></iframe>
-        </div>
-      </div>
-
-      <div class="eb-wiz-send-box">
-        <h4>Trimite test</h4>
-        <form method="post" action="/admin/emails" onsubmit="return ebWizSyncBeforeAction()">
-          <input type="hidden" name="section" value="newsletter-campaign-send-test">
-          <input type="hidden" name="campaign_id" value="<?= $bId ?>">
-          <input type="hidden" name="from_builder" value="1">
-          <div class="eb-wiz-send-row">
-            <input type="email" name="test_email" placeholder="adresa@email.com" required>
-            <button class="btn btn-secondary" type="submit">Trimite test</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="eb-wiz-send-box">
-        <h4>Acțiuni</h4>
-        <div class="eb-wiz-send-row">
-          <form method="post" action="/admin/emails" onsubmit="return ebWizSyncBeforeAction()">
-            <input type="hidden" name="section" value="newsletter-campaign-send-now">
-            <input type="hidden" name="campaign_id" value="<?= $bId ?>">
-            <input type="hidden" name="from_builder" value="1">
-            <button class="btn" type="submit" onclick="return confirm('Trimiți newsletter-ul acum către toți abonații?')">🚀 Trimite acum</button>
-          </form>
-          <form method="post" action="/admin/emails" style="display:flex;gap:8px;flex:1;min-width:0;" onsubmit="return ebWizSyncBeforeAction()">
-            <input type="hidden" name="section" value="newsletter-campaign-schedule">
-            <input type="hidden" name="campaign_id" value="<?= $bId ?>">
-            <input type="hidden" name="from_builder" value="1">
-            <input type="datetime-local" name="scheduled_at" value="<?= $bScheduledAt ?>" required style="flex:1;min-width:0;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-            <button class="btn btn-secondary" type="submit">📅 Programează</button>
-          </form>
-        </div>
-        <div class="eb-wiz-send-row" style="margin-top:8px;">
-          <form method="post" action="/admin/emails/builder" onsubmit="sync();clearDirty();" style="display:flex;gap:8px;">
-            <input type="hidden" name="builder_type" value="campaign">
-            <input type="hidden" name="builder_id" value="<?= $bId ?>">
-            <input type="hidden" id="eb-wiz-save-draft-blocks" name="builder_blocks_json" value="">
-            <input type="hidden" id="eb-wiz-save-draft-name" name="builder_name" value="<?= htmlspecialchars($bName, ENT_QUOTES) ?>">
-            <input type="hidden" id="eb-wiz-save-draft-subject" name="builder_subject" value="<?= htmlspecialchars($bSubject, ENT_QUOTES) ?>">
-            <input type="hidden" id="eb-wiz-save-draft-list" name="builder_list_ids" value="<?= htmlspecialchars(implode(',', $bListIds), ENT_QUOTES) ?>">
-            <button class="btn btn-secondary" type="submit" onclick="ebWizSyncDraftForm()">💾 Salvează draft</button>
-          </form>
-        </div>
-      </div>
-
-      <div style="text-align:center;">
-        <button type="button" class="btn btn-secondary" onclick="ebWizGo(3)" style="font-size:12px;">← Înapoi la setări</button>
-      </div>
-    </div>
-  </div>
+  <?php
+  // Pașii 2–4: fiecare e un fișier mic din emails/newsletter/, cu componentele
+  // din views/admin/componente/ (vezi docs/newsletter-faza-d.md).
+  $nlId = $bId;
+  $nlListe = $bNewsletterLists;
+  $nlListeAlese = array_values(array_map('intval', $bListIds));
+  $nlPoateModifica = $bPoateModifica;
+  $nlEmailTest = (string) ($builder['email_test'] ?? '');
+  $nlStare = $bCampaignStatus;
+  $nlProgramat = (string) ($builder['scheduled_at'] ?? '');
+  $nlTrimisLa = (string) ($builder['sent_at'] ?? '');
+  $nlEroare = (string) ($builder['last_error'] ?? '');
+  $nlTotaluri = is_array($builder['totaluri'] ?? null) ? $builder['totaluri'] : [];
+  $nlRamase = (int) ($builder['ramase'] ?? 0);
+  $nlTotalDestinatari = (int) ($builder['total_recipients'] ?? 0);
+  include __DIR__ . '/newsletter/pas-destinatari.php';
+  include __DIR__ . '/newsletter/pas-verificare.php';
+  include __DIR__ . '/newsletter/pas-trimitere.php';
+  ?>
   <?php endif; ?>
 
 </div><!-- /eb-wrap -->
@@ -525,10 +420,23 @@ $bScheduledAt    = !empty($builder['scheduled_at'])
 <div class="eb-modal-overlay" id="eb-starter-modal" style="display:none;" onclick="if(event.target===this)ebCloseStarterModal()">
   <div class="eb-modal" style="width:560px;">
     <div class="eb-modal-header">
-      <h3>Alege un template de start</h3>
+      <h3><?= $bSabloane !== [] ? 'Alege un șablon' : 'Alege un template de start' ?></h3>
       <button type="button" class="eb-modal-close" onclick="ebCloseStarterModal()">✕</button>
     </div>
     <div class="eb-modal-body">
+      <?php if ($bSabloane !== []): ?>
+      <p class="nlp-sectiune-titlu">Cu logo-ul și culorile magazinului</p>
+      <div class="nlp-sabloane">
+        <?php foreach ($bSabloane as $cheieSablon => $sablon): ?>
+        <button type="button" class="nlp-sablon" onclick="ebApplyStarter('magazin:<?= htmlspecialchars((string) $cheieSablon, ENT_QUOTES) ?>')">
+          <span class="nlp-sablon__mostra" aria-hidden="true"><i></i><i></i><i></i></span>
+          <strong><?= htmlspecialchars((string) ($sablon['titlu'] ?? ''), ENT_QUOTES) ?></strong>
+          <span><?= htmlspecialchars((string) ($sablon['descriere'] ?? ''), ENT_QUOTES) ?></span>
+        </button>
+        <?php endforeach; ?>
+      </div>
+      <p class="nlp-sectiune-titlu">Simple</p>
+      <?php endif; ?>
       <div class="eb-starter-grid">
         <div class="eb-starter-card" onclick="ebApplyStarter('blank')">
           <div class="eb-starter-icon">📄</div>
@@ -1839,8 +1747,12 @@ window.ebApplyStarter = function(preset) {
       {type:'spacer', height:16, background:'#f9fafb'},
     ],
   };
-  const tpl = starters[preset];
+  // Șabloanele magazinului vin de la server (NewsletterSabloane), cu produse reale.
+  const sabloaneMagazin = <?= json_encode(array_map(fn($x) => $x['blocks'] ?? [], $bSabloane), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?: '{}' ?>;
+  const tpl = preset.startsWith('magazin:') ? sabloaneMagazin[preset.slice(8)] : starters[preset];
   if(!tpl) return;
+  // Un șablon înlocuiește tot conținutul: întrebăm dacă e deja ceva scris (se poate și reveni cu Undo).
+  if(blocks.length > 0 && dirty && !confirm('Șablonul înlocuiește conținutul de acum. Continui? (Poți reveni cu „Undo”.)')) return;
   pushHistory();
   blocks = JSON.parse(JSON.stringify(tpl));
   sel = -1;
@@ -2059,127 +1971,17 @@ document.getElementById('eb-back-link')?.addEventListener('click', e => {
 });
 
 /* ═══════════════════════════════════════════════════════════
-   CAMPAIGN WIZARD
+   PAȘII NEWSLETTERULUI (Destinatari, Verificare, Trimite)
+   Logica e în /assets/js/admin/newsletter-pasi.js; aici doar ce
+   ține de starea builderului (blocurile, salvarea, „modificat”).
 ═══════════════════════════════════════════════════════════ */
-<?php if ($bType === 'campaign'): ?>
-let ebWizCurrentStep = 1;
-let ebWizSelectedListIds = <?= json_encode($bListIds) ?>;
-
-function ebWizUpdateListSummary() {
-  const total = [...document.querySelectorAll('.eb-wiz-list-card.selected')]
-    .reduce((s, el) => s + parseInt(el.dataset.count || 0), 0);
-  const el = document.getElementById('eb-wiz-list-count-summary');
-  if(el) el.textContent = ebWizSelectedListIds.length > 0
-    ? `${ebWizSelectedListIds.length} list${ebWizSelectedListIds.length > 1 ? 'e' : 'ă'} selectat${ebWizSelectedListIds.length > 1 ? 'e' : 'ă'} · ~${total} abonați`
-    : '';
-}
-
-window.ebWizGo = function(step) {
-  ebWizCurrentStep = step;
-  // Show/hide body panels
-  const body = document.getElementById('eb-wrap')?.querySelector('.eb-body');
-  if(body) body.style.display = step === 1 ? '' : 'none';
-  [2,3,4].forEach(s => {
-    const p = document.getElementById('eb-wiz-panel-'+s);
-    if(p) p.style.display = s === step ? '' : 'none';
-  });
-  // Update step buttons
-  document.querySelectorAll('.eb-wizard-step[data-wiz-step]').forEach(btn => {
-    const s = parseInt(btn.dataset.wizStep);
-    btn.classList.toggle('active', s === step);
-    btn.classList.toggle('done', s < step);
-  });
-  if(step === 2) ebWizUpdateListSummary();
-  if(step === 4) ebWizLoadPreview(600);
+window.ebBuilder = {
+  blocuri: () => JSON.parse(JSON.stringify(blocks)),
+  sincronizeaza: () => sync(),
+  esteModificat: () => dirty,
+  marcheazaSalvat: () => clearDirty(),
+  marcheazaModificat: () => markDirty(),
 };
-
-window.ebWizToggleList = function(id) {
-  const idx = ebWizSelectedListIds.indexOf(id);
-  if(idx === -1) ebWizSelectedListIds.push(id);
-  else ebWizSelectedListIds.splice(idx, 1);
-  document.getElementById('eb-list-ids-input').value = ebWizSelectedListIds.join(',');
-  document.querySelectorAll('.eb-wiz-list-card').forEach(card => {
-    card.classList.toggle('selected', ebWizSelectedListIds.includes(parseInt(card.dataset.listId)));
-  });
-  ebWizUpdateListSummary();
-};
-
-window.ebWizSaveAndGo = function(nextStep) {
-  const nameEl = document.getElementById('eb-wiz-name');
-  const subjEl = document.getElementById('eb-wiz-subject');
-  if(nameEl) { document.getElementById('eb-name-input').value = nameEl.value; document.getElementById('eb-title-display').textContent = nameEl.value; }
-  if(subjEl) document.getElementById('eb-subject-input').value = subjEl.value;
-  document.getElementById('eb-list-ids-input').value = ebWizSelectedListIds.join(',');
-  sync();
-  const form = document.getElementById('eb-form');
-  if(!form) { ebWizGo(nextStep); return; }
-  const fd = new FormData(form);
-  fetch('/admin/emails/builder', {method:'POST', body: new URLSearchParams(fd)})
-    .then(() => { clearDirty(); ebWizGo(nextStep); })
-    .catch(() => ebWizGo(nextStep));
-};
-
-window.ebWizSyncBeforeAction = function() {
-  // Save the campaign data first via AJAX before form submission
-  const nameEl = document.getElementById('eb-wiz-name');
-  const subjEl = document.getElementById('eb-wiz-subject');
-  if(nameEl) document.getElementById('eb-name-input').value = nameEl.value;
-  if(subjEl) document.getElementById('eb-subject-input').value = subjEl.value;
-  document.getElementById('eb-list-ids-input').value = ebWizSelectedListIds.join(',');
-  sync();
-  // Save via AJAX then let the form submit
-  const form = document.getElementById('eb-form');
-  if(form) {
-    const fd = new FormData(form);
-    fetch('/admin/emails/builder', {method:'POST', body: new URLSearchParams(fd)}).catch(()=>{});
-  }
-  clearDirty();
-  return true;
-};
-
-window.ebWizSyncDraftForm = function() {
-  sync();
-  const nameEl = document.getElementById('eb-wiz-name');
-  const subjEl = document.getElementById('eb-wiz-subject');
-  if(nameEl) document.getElementById('eb-wiz-save-draft-name').value = nameEl.value;
-  if(subjEl) document.getElementById('eb-wiz-save-draft-subject').value = subjEl.value;
-  document.getElementById('eb-wiz-save-draft-list').value = ebWizSelectedListIds.join(',');
-  document.getElementById('eb-wiz-save-draft-blocks').value = document.getElementById('eb-blocks-input')?.value || '[]';
-};
-
-window.ebWizLoadPreview = function(width) {
-  const loading = document.getElementById('eb-wiz-prev-loading');
-  const iframe  = document.getElementById('eb-wiz-prev-iframe');
-  if(!iframe) return;
-  if(loading) loading.style.display = '';
-  iframe.style.display = 'none';
-  const subject = document.getElementById('eb-subject-input')?.value || '';
-  sync();
-  fetch('/admin/emails/builder/preview', {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:'blocks_json='+encodeURIComponent(JSON.stringify(blocks))+'&subject='+encodeURIComponent(subject)
-  }).then(r=>r.json()).then(d=>{
-    if(d.ok && iframe) {
-      iframe.style.cssText = `width:${width}px;max-width:100%;min-height:300px;border:none;display:block;`;
-      iframe.srcdoc = d.html;
-      iframe.onload = () => { const h=iframe.contentDocument?.documentElement?.scrollHeight; if(h) iframe.style.height=h+10+'px'; };
-      if(loading) loading.style.display='none';
-    }
-  }).catch(()=>{ if(loading) loading.textContent='Eroare la generarea preview.'; });
-  // Update tab buttons
-  ['desktop','mobile'].forEach(t => {
-    const btn = document.getElementById('fpwiz-'+t);
-    if(btn) btn.classList.toggle('active', (t==='desktop'&&width===600)||(t==='mobile'&&width===375));
-  });
-};
-
-window.ebWizPreviewWidth = function(width) {
-  ebWizLoadPreview(width);
-  const iframe = document.getElementById('eb-wiz-prev-iframe');
-  if(iframe) iframe.style.width = width+'px';
-};
-<?php endif; ?>
 
 /* ═══════════════════════════════════════════════════════════
    INIT
@@ -2200,9 +2002,14 @@ window.ebWizPreviewWidth = function(width) {
 
 render();
 sync();
-<?php if ($bShowStarter): ?>
+<?php if (($bShowStarter || !empty($builder['nou'])) && $bPoateModifica): ?>
 setTimeout(() => ebShowStarterModal(), 300);
 <?php endif; ?>
 
 })(); // end IIFE
 </script>
+<script src="/assets/js/admin/componente.js?v=<?= (int) $adminJsComp ?>" defer></script>
+<?php if ($bType === 'campaign'): ?>
+<script src="/assets/js/admin/newsletter-pasi.js?v=<?= (int) $adminJsNl ?>" defer
+        data-id="<?= $bId ?>" data-pas="<?= $bPasInitial ?>" data-poate-modifica="<?= $bPoateModifica ? '1' : '0' ?>"></script>
+<?php endif; ?>

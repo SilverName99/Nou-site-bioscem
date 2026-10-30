@@ -1,0 +1,72 @@
+/*
+ * Pașii newsletterului din builder: Destinatari, Verificare, Trimite /
+ * Programează. Doar așezarea în pagină („nlp-…”); înfățișarea vine din
+ * admin-componente.css. Vezi docs/newsletter-faza-d.md.
+ */
+.nlp-pas { flex: 1; overflow-y: auto; background: var(--adm-fundal-pagina, #f8fafc); padding: 22px 24px 40px; }
+.nlp-pas[hidden] { display: none !important; }
+.nlp-continut { max-width: 1120px; margin: 0 auto; }
+.nlp-doua-coloane { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.nlp-actiuni { display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; margin-top: 18px; }
+.nlp-actiuni .btn { padding: 9px 18px; font-size: 13.5px; text-decoration: none; }
+.nlp-total { font-size: 14px; color: var(--adm-text, #0f172a); margin: 12px 0 0; }
+.nlp-total strong { font-size: 18px; color: var(--adm-accent, #0f766e); }
+
+/* Lista de verificare */
+.nlp-verificari { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.nlp-verificare { display: grid; grid-template-columns: 26px 1fr; gap: 10px; background: var(--adm-fundal, #fff); border: 1px solid var(--adm-linie, #e5e7eb); border-radius: var(--adm-raza, 10px); padding: 10px 12px; font-size: 13.5px; line-height: 1.5; }
+.nlp-verificare__semn { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #fff; margin-top: 1px; }
+.nlp-verificare--ok .nlp-verificare__semn { background: var(--adm-ok, #15803d); }
+.nlp-verificare--avertisment .nlp-verificare__semn { background: #ca8a04; }
+.nlp-verificare--eroare .nlp-verificare__semn { background: var(--adm-eroare, #b91c1c); }
+.nlp-verificare--eroare { border-color: #fecaca; background: var(--adm-eroare-fundal, #fef2f2); }
+.nlp-verificare--avertisment { border-color: #fde68a; background: var(--adm-avertisment-fundal, #fefce8); }
+.nlp-verificare__titlu { font-weight: 600; display: block; }
+.nlp-verificare__text { margin: 2px 0 0; color: #475569; }
+.nlp-verificare ul { margin: 4px 0 0; padding-left: 18px; color: #475569; }
+
+/* Previzualizarea: desktop și telefon */
+.nlp-previzualizare { background: var(--adm-fundal, #fff); border: 1px solid var(--adm-linie, #e5e7eb); border-radius: var(--adm-raza, 10px); padding: 14px; }
+.nlp-previzualizare__bara { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.nlp-comutator { display: inline-flex; border: 1px solid var(--adm-linie, #e5e7eb); border-radius: 8px; overflow: hidden; }
+.nlp-comutator button { border: 0; background: #fff; padding: 7px 14px; font-size: 13px; cursor: pointer; color: #475569; }
+.nlp-comutator button[aria-pressed="true"] { background: var(--adm-accent, #0f766e); color: #fff; }
+.nlp-comutator button:focus-visible { outline: none; box-shadow: var(--adm-focus); }
+.nlp-ecran { display: flex; justify-content: center; background: #eef2f6; border-radius: 8px; padding: 18px 10px; overflow-x: auto; }
+.nlp-ecran iframe { display: block; border: 0; background: #fff; height: 640px; width: 680px; max-width: none; box-shadow: 0 4px 18px rgba(15, 23, 42, .12); border-radius: 6px; }
+.nlp-ecran.este-telefon iframe { width: 375px; border-radius: 22px; border: 10px solid #1f2937; height: 700px; }
+.nlp-subiect-inbox { font-size: 13px; color: #475569; margin: 0 0 10px; }
+.nlp-subiect-inbox strong { color: var(--adm-text, #0f172a); }
+
+/* Formulare mici din panouri */
+.nlp-camp { display: grid; gap: 6px; margin: 0 0 10px; }
+.nlp-camp label { font-size: 12.5px; font-weight: 600; color: #374151; }
+.nlp-camp input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13.5px; }
+.nlp-camp input:focus-visible { outline: none; border-color: var(--adm-accent, #0f766e); box-shadow: var(--adm-focus); }
+.nlp-camp small { color: var(--adm-text-secundar, #64748b); font-size: 12px; }
+.nlp-rezumat { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13.5px; }
+.nlp-rezumat dt { color: var(--adm-text-secundar, #64748b); }
+.nlp-rezumat dd { margin: 0; font-weight: 600; color: var(--adm-text, #0f172a); overflow-wrap: anywhere; }
+.nlp-progres { height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+.nlp-progres span { display: block; height: 100%; background: var(--adm-accent, #0f766e); }
+.nlp-optiuni { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.nlp-optiuni .adm-panou + .adm-panou { margin-top: 0; }
+.nlp-btn-mare { width: 100%; padding: 12px 16px !important; font-size: 15px; font-weight: 600; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Șabloanele cu înfățișarea magazinului, în fereastra „Alege un șablon” */
+.nlp-sabloane { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.nlp-sablon { text-align: left; border: 2px solid var(--adm-linie, #e5e7eb); border-radius: var(--adm-raza, 10px); background: #fff; padding: 14px; cursor: pointer; }
+.nlp-sablon:hover, .nlp-sablon:focus-visible { border-color: var(--adm-accent, #0f766e); background: var(--adm-accent-fundal, #f0fdfa); outline: none; }
+.nlp-sablon strong { display: block; font-size: 14px; margin-bottom: 3px; color: var(--adm-text, #0f172a); }
+.nlp-sablon span { font-size: 12.5px; color: var(--adm-text-secundar, #64748b); }
+.nlp-sablon__mostra { display: flex; gap: 4px; margin-bottom: 10px; }
+.nlp-sablon__mostra i { display: block; height: 8px; border-radius: 3px; background: #075d61; flex: 1; }
+.nlp-sablon__mostra i:nth-child(2) { background: #eaf6f5; }
+.nlp-sablon__mostra i:nth-child(3) { background: #0b3f52; }
+.nlp-sectiune-titlu { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--adm-text-secundar, #64748b); margin: 0 0 8px; }
+
+@media (max-width: 960px) {
+    .nlp-doua-coloane, .nlp-optiuni { grid-template-columns: 1fr; }
+    .nlp-ecran iframe { width: 100%; }
+}

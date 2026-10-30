@@ -359,9 +359,21 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
         </div>
 
         <?php if ($newsletterTab === 'campaigns'): ?>
-            <div class="newsletter-template-header-row">
-                <h3 class="newsletter-block-title">Newslettere</h3>
-                <button type="button" class="btn" id="campaign-new-btn">+ Newsletter nou</button>
+            <?php require_once __DIR__ . '/componente/_incarca.php'; ?>
+            <link rel="stylesheet" href="/assets/css/admin-componente.css?v=<?= (int) (@filemtime(__DIR__ . '/../../public/assets/css/admin-componente.css') ?: 1) ?>">
+            <script src="/assets/js/admin/componente.js?v=<?= (int) (@filemtime(__DIR__ . '/../../public/assets/js/admin/componente.js') ?: 1) ?>" defer></script>
+            <div style="margin-top:14px;">
+            <?php admin_componenta('antet-pagina', [
+                'id' => 'nl-antet-newslettere',
+                'titlu' => 'Newslettere',
+                'subtitlu' => 'Apasă „+ Newsletter nou”, alege un șablon și urmează cei 4 pași: Conținut → Destinatari → Verificare → Trimite / Programează.',
+                'ajutor' => [
+                    'Ciornă: încă îl lucrezi. Programat: pleacă singur la ora aleasă. Se trimite: pleacă acum, pe bucăți, automat. Oprit: serverul de email a refuzat mesaje; deschide-l și apasă „Reia trimiterea”. Trimis: gata.',
+                    'Un newsletter care a început să plece nu se mai modifică. Pentru o variantă nouă, folosește butonul ⧉ (Duplică).',
+                    'Nimeni nu primește același newsletter de două ori, iar cine s-a dezabonat nu-l primește deloc.',
+                ],
+                'actiuni' => '<button type="button" class="btn" id="campaign-new-btn">+ Newsletter nou</button>',
+            ]); ?>
             </div>
 
             <?php

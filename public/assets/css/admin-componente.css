@@ -1,0 +1,100 @@
+/*
+ * Componentele de admin (planul Fazei D, WP-31): antet de pagină, ajutor „?”,
+ * bară de pași, tabel, panou lateral, mesaj (banner), stare goală.
+ *
+ * Toate culorile și mărimile sunt variabile „--adm-…”, cu valorile adminului de
+ * azi (verdele butoanelor din app.css). Faza D („B — Compact”) redefinește doar
+ * variabilele și regulile de aici; paginile care folosesc clasele „adm-…” nu se
+ * schimbă. Butoanele rămân cele existente („btn”, „btn-secondary”, „btn-danger”).
+ */
+:root {
+    --adm-accent: #0f766e;
+    --adm-accent-inchis: #115e59;
+    --adm-accent-fundal: #f0fdfa;
+    --adm-text: #0f172a;
+    --adm-text-secundar: #64748b;
+    --adm-linie: #e5e7eb;
+    --adm-fundal: #ffffff;
+    --adm-fundal-pagina: #f8fafc;
+    --adm-raza: 10px;
+    --adm-spatiu: 16px;
+    --adm-ok: #15803d;
+    --adm-ok-fundal: #f0fdf4;
+    --adm-avertisment: #a16207;
+    --adm-avertisment-fundal: #fefce8;
+    --adm-eroare: #b91c1c;
+    --adm-eroare-fundal: #fef2f2;
+    --adm-info: #1d4ed8;
+    --adm-info-fundal: #eff6ff;
+    --adm-focus: 0 0 0 3px rgba(15, 118, 110, .35);
+}
+
+.adm-ascuns { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── Antet de pagină + ajutor ─────────────────────────────── */
+.adm-antet { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--adm-spatiu); flex-wrap: wrap; margin: 0 0 12px; }
+.adm-antet__titlu { margin: 0; font-size: 18px; line-height: 1.3; color: var(--adm-text); display: flex; align-items: center; gap: 8px; }
+.adm-antet__subtitlu { margin: 4px 0 0; color: var(--adm-text-secundar); font-size: 13.5px; line-height: 1.5; max-width: 70ch; }
+.adm-antet__actiuni { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.adm-ajutor__buton { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--adm-linie); background: var(--adm-fundal); color: var(--adm-accent); font-weight: 700; font-size: 13px; cursor: pointer; line-height: 1; padding: 0; }
+.adm-ajutor__buton[aria-expanded="true"] { background: var(--adm-accent); color: #fff; border-color: var(--adm-accent); }
+.adm-ajutor { background: var(--adm-info-fundal); border: 1px solid #bfdbfe; border-radius: var(--adm-raza); padding: 10px 14px; margin: 0 0 14px; color: #1e3a8a; font-size: 13.5px; line-height: 1.6; }
+.adm-ajutor p { margin: 0 0 6px; }
+.adm-ajutor p:last-child { margin-bottom: 0; }
+
+/* ── Bara de pași ─────────────────────────────────────────── */
+.adm-pasi { display: flex; align-items: center; gap: 12px; background: var(--adm-fundal); border-bottom: 1px solid var(--adm-linie); padding: 0 14px; flex-shrink: 0; overflow-x: auto; }
+.adm-pasi__lista { display: flex; list-style: none; margin: 0; padding: 0; gap: 2px; counter-reset: none; }
+.adm-pasi__element { display: flex; align-items: center; }
+.adm-pasi__element + .adm-pasi__element::before { content: "›"; color: #cbd5e1; padding: 0 4px; }
+.adm-pasi__pas { display: flex; align-items: center; gap: 7px; padding: 11px 10px; background: none; border: 0; border-bottom: 2px solid transparent; font-size: 13.5px; font-weight: 500; color: var(--adm-text-secundar); cursor: pointer; white-space: nowrap; }
+.adm-pasi__pas:hover { color: var(--adm-text); }
+.adm-pasi__pas:focus-visible { outline: none; box-shadow: var(--adm-focus); border-radius: 6px; }
+.adm-pasi__pas.este-curent { color: var(--adm-accent); border-bottom-color: var(--adm-accent); }
+.adm-pasi__nr { width: 22px; height: 22px; border-radius: 50%; background: #e5e7eb; color: #374151; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.adm-pasi__pas.este-curent .adm-pasi__nr { background: var(--adm-accent); color: #fff; }
+.adm-pasi__pas.este-gata .adm-pasi__nr { background: #ccfbf1; color: var(--adm-accent-inchis); }
+.adm-pasi__dreapta { margin-left: auto; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+/* ── Mesaj (banner) ───────────────────────────────────────── */
+.adm-mesaj { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; border: 1px solid; border-left-width: 4px; border-radius: var(--adm-raza); padding: 12px 14px; margin: 0 0 14px; font-size: 13.5px; line-height: 1.55; }
+.adm-mesaj__titlu { display: block; margin: 0 0 2px; }
+.adm-mesaj__text { margin: 0; }
+.adm-mesaj__actiuni { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.adm-mesaj--info { background: var(--adm-info-fundal); border-color: #bfdbfe; color: #1e3a8a; }
+.adm-mesaj--succes { background: var(--adm-ok-fundal); border-color: #bbf7d0; color: #14532d; }
+.adm-mesaj--avertisment { background: var(--adm-avertisment-fundal); border-color: #fde68a; color: #713f12; }
+.adm-mesaj--eroare { background: var(--adm-eroare-fundal); border-color: #fecaca; color: #7f1d1d; }
+
+/* ── Panou lateral ────────────────────────────────────────── */
+.adm-panou { background: var(--adm-fundal); border: 1px solid var(--adm-linie); border-radius: var(--adm-raza); padding: 16px; }
+.adm-panou + .adm-panou { margin-top: 14px; }
+.adm-panou__titlu { margin: 0 0 10px; font-size: 14.5px; color: var(--adm-text); }
+.adm-panou__corp { font-size: 13.5px; color: var(--adm-text); line-height: 1.55; }
+
+/* ── Tabel ────────────────────────────────────────────────── */
+.adm-tabel__cadru { overflow-x: auto; border: 1px solid var(--adm-linie); border-radius: var(--adm-raza); background: var(--adm-fundal); }
+.adm-tabel { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.adm-tabel th { text-align: left; font-weight: 600; color: var(--adm-text-secundar); background: var(--adm-fundal-pagina); padding: 9px 12px; border-bottom: 1px solid var(--adm-linie); white-space: nowrap; }
+.adm-tabel td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; color: var(--adm-text); }
+.adm-tabel tr:last-child td { border-bottom: 0; }
+.adm-tabel tr.este-ales td { background: var(--adm-accent-fundal); }
+.adm-tabel label { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.adm-tabel input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--adm-accent); }
+
+/* ── Stare goală ──────────────────────────────────────────── */
+.adm-gol { text-align: center; padding: 28px 16px; border: 1px dashed #cbd5e1; border-radius: var(--adm-raza); background: var(--adm-fundal); }
+.adm-gol__titlu { margin: 0 0 4px; font-weight: 600; color: var(--adm-text); }
+.adm-gol__text { margin: 0 0 12px; color: var(--adm-text-secundar); font-size: 13.5px; }
+
+/* ── Stare (pastilă) ──────────────────────────────────────── */
+.adm-stare { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #f1f5f9; color: #334155; }
+.adm-stare--programat { background: #fef9c3; color: #854d0e; }
+.adm-stare--se-trimite { background: #dbeafe; color: #1e40af; }
+.adm-stare--oprit { background: #fee2e2; color: #991b1b; }
+.adm-stare--trimis { background: #dcfce7; color: #166534; }
+
+/* Focus vizibil pe tot ce e în componente (planul cere inel de focus). */
+.adm-panou a:focus-visible, .adm-panou button:focus-visible, .adm-panou input:focus-visible,
+.adm-mesaj a:focus-visible, .adm-mesaj button:focus-visible, .adm-tabel input:focus-visible,
+.adm-gol a:focus-visible, .adm-ajutor__buton:focus-visible { outline: none; box-shadow: var(--adm-focus); }
