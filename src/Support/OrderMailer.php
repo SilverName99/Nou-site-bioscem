@@ -621,7 +621,8 @@ HTML;
                 'recipient' => $to,
                 'subject' => $subject,
                 'status' => 'failed',
-                'error_message' => $exception->getMessage(),
+                'error_message' => ($exception instanceof TrimitereNeconfirmata ? 'Neconfirmat (poate a ajuns): ' : '')
+                    . $exception->getMessage(),
                 'provider' => $provider,
                 'meta' => $meta,
             ]);
@@ -781,6 +782,11 @@ HTML;
                 . '--' . $separator . "--\r\n";
             fwrite($fp, implode("\r\n", $anteturi) . "\r\n\r\n" . $corp . "\r\n.\r\n");
             $raspunsData = $citeste();
+            if (trim($raspunsData) === '') {
+                // Conținutul a plecat, dar serverul n-a mai răspuns: nu știm dacă
+                // l-a primit. Un refuz clar (4xx/5xx) rămâne refuz, mai jos.
+                throw new TrimitereNeconfirmata('Serverul SMTP nu a confirmat primirea mesajului (conexiune întreruptă după trimitere).');
+            }
             if ((int) substr($raspunsData, 0, 3) !== 250) {
                 throw new RuntimeException('SMTP a refuzat mesajul: ' . trim($raspunsData));
             }
@@ -926,9 +932,16 @@ HTML;
             $response = curl_exec($ch);
             $httpCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             $error = curl_error($ch);
+            $codEroare = curl_errno($ch);
+            $trimisCorp = (float) curl_getinfo($ch, CURLINFO_SIZE_UPLOAD) > 0;
             curl_close($ch);
 
             if ($response === false) {
+                // Cererea a plecat întreagă, dar răspunsul s-a pierdut (timp
+                // expirat, răspuns gol, conexiune ruptă): poate a fost primită.
+                if ($trimisCorp && in_array($codEroare, [28, 52, 56], true)) {
+                    throw new TrimitereNeconfirmata('Furnizorul de email nu a confirmat primirea: ' . $error);
+                }
                 throw new RuntimeException('HTTP cURL error: ' . $error);
             }
 

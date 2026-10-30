@@ -335,8 +335,14 @@ final class NewsletterVerificare
 
     /**
      * Cere scurt fiecare adresă (HEAD, 4 secunde în total, în paralel) și
-     * întoarce codul HTTP; 0 = fără răspuns. Doar pentru adrese din afara
-     * site-ului, din admin, la cerere: nu pleacă nimic către abonați.
+     * întoarce codul HTTP; 0 = fără răspuns sau neverificată. Doar pentru adrese
+     * din afara site-ului, din admin, la cerere: nu pleacă nimic către abonați.
+     *
+     * Serverul nu are voie să fie folosit ca să „sune” în rețeaua lui internă
+     * (SSRF): gazda se rezolvă aici, orice adresă IP de buclă, privată,
+     * rezervată sau link-local e refuzată, IP-ul verificat e fixat pentru
+     * conexiune (CURLOPT_RESOLVE), iar redirecționările nu se urmează (un 3xx
+     * înseamnă că linkul merge). Doar porturile 80 și 443.
      *
      * @param list<string> $adrese
      * @return array<string,int>
@@ -348,17 +354,29 @@ final class NewsletterVerificare
         }
         $multi = curl_multi_init();
         $manere = [];
+        $coduri = [];
         foreach ($adrese as $adresa) {
+            $ip = self::ipPublic($adresa);
+            if ($ip === null) {
+                $coduri[$adresa] = 0;
+                continue;
+            }
+            $schema = strtolower((string) parse_url($adresa, PHP_URL_SCHEME));
+            $gazda = (string) parse_url($adresa, PHP_URL_HOST);
+            $port = $schema === 'https' ? 443 : 80;
             $ch = curl_init($adresa);
             curl_setopt_array($ch, [
                 CURLOPT_NOBODY => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 4,
+                CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_CONNECTTIMEOUT => 3,
                 CURLOPT_TIMEOUT => 4,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_USERAGENT => 'Mozilla/5.0 (verificare newsletter)',
                 CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_RESOLVE => [$gazda . ':' . $port . ':' . $ip],
+                // Fără proxy: altfel IP-ul verificat mai sus n-ar mai conta.
+                CURLOPT_PROXY => '',
+                CURLOPT_NOPROXY => '*',
             ]);
             curl_multi_add_handle($multi, $ch);
             $manere[$adresa] = $ch;
@@ -371,11 +389,11 @@ final class NewsletterVerificare
             }
         } while ($active && $stare === CURLM_OK && microtime(true) - $pornit < 5);
 
-        $coduri = [];
         foreach ($manere as $adresa => $ch) {
             $cod = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-            // Unele servere refuză HEAD (405/403/501) dar pagina merge: nu e o problemă.
-            if (in_array($cod, [403, 405, 501], true)) {
+            // Unele servere refuză HEAD (405/403/501) dar pagina merge; un 3xx
+            // trimite mai departe (nu-l urmăm): nu sunt probleme.
+            if (in_array($cod, [403, 405, 501], true) || ($cod >= 300 && $cod < 400)) {
                 $cod = 200;
             }
             $coduri[$adresa] = $cod;
@@ -384,6 +402,47 @@ final class NewsletterVerificare
         }
         curl_multi_close($multi);
         return $coduri;
+    }
+
+    /**
+     * IP-ul public (IPv4) la care se poate cere adresa, sau null dacă nu se
+     * verifică: port neobișnuit, gazdă care nu se rezolvă sau care duce în
+     * rețeaua internă (127.x, 10.x, 192.168.x, 169.254.x, 100.64.x ș.a.).
+     */
+    private static function ipPublic(string $adresa): ?string
+    {
+        $schema = strtolower((string) parse_url($adresa, PHP_URL_SCHEME));
+        $gazda = trim((string) parse_url($adresa, PHP_URL_HOST), '[]');
+        $port = parse_url($adresa, PHP_URL_PORT);
+        if (!in_array($schema, ['http', 'https'], true) || $gazda === '') {
+            return null;
+        }
+        if ($port !== null && $port !== ($schema === 'https' ? 443 : 80)) {
+            return null;
+        }
+        if (filter_var($gazda, FILTER_VALIDATE_IP)) {
+            $ipuri = [$gazda];
+        } else {
+            $ipuri = @gethostbynamel($gazda) ?: [];
+        }
+        if ($ipuri === []) {
+            return null;
+        }
+        $filtru = defined('FILTER_FLAG_GLOBAL_RANGE')
+            ? FILTER_FLAG_GLOBAL_RANGE
+            : FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+        foreach ($ipuri as $ip) {
+            // Toate IP-urile gazdei trebuie să fie publice; IPv6 nu se verifică.
+            if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | $filtru)) {
+                return null;
+            }
+            // 100.64.0.0/10 (rețeaua operatorului) nu e acoperită de toate versiunile filtrului.
+            $parti = array_map('intval', explode('.', $ip));
+            if ($parti[0] === 100 && $parti[1] >= 64 && $parti[1] <= 127) {
+                return null;
+            }
+        }
+        return $ipuri[0];
     }
 
     private static function punct(string $cheie, string $stare, string $titlu, string $text, array $detalii = []): array

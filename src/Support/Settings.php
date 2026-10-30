@@ -251,6 +251,12 @@ final class Settings
         $rows = $db->query('SELECT `key`, `value` FROM settings')->fetchAll();
 
         foreach ($rows as $row) {
+            // Cheia de semnare a linkurilor din newsletter nu circulă prin
+            // setări (pagini de admin, ERP, diagnostic); o citește doar
+            // NewsletterService, direct din tabel.
+            if ((string) $row['key'] === 'newsletter_cheie_semnare') {
+                continue;
+            }
             $settings[(string) $row['key']] = (string) $row['value'];
         }
 

@@ -64,7 +64,10 @@ Adrese, nume de câmpuri și atribute noi, de declarat în `$contractAdminPortur
   `data-nlp-confirma`, `data-nlp-trimite`, `data-ecran`, `.nlp-lista[data-activi]`;
 - setarea `newsletter_cron_ultima_rulare` (scrisă de cron, citită de lista de verificare);
 - coloanele `newsletter_campaign_sends.attempts`, `newsletter_campaigns.last_error` și starea
-  nouă `paused` (Oprit) a unei campanii; starea `pending` a unui rând din evidența trimiterilor.
+  nouă `paused` (Oprit) a unei campanii; stările `pending` și `unknown` (neconfirmat) ale unui
+  rând din evidența trimiterilor;
+- cheia de semnare `newsletter_cheie_semnare` în `settings` (exclusă din `Settings::all`) și
+  variabila opțională `NEWSLETTER_SECRET`; clasa `TrimitereNeconfirmata`.
 
 Plimbarea cu tastatura (WP-31): pașii sunt butoane, fiecare element are inel de focus
 (`--adm-focus`), Esc închide ajutorul. Dacă newsletterul devine plugin în CMS, textele lui

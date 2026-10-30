@@ -1470,7 +1470,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         <strong><?= (int) $dcTotaluri['esuate'] ?></strong> adrese au fost respinse de serverul de email (se reîncearcă de cel mult <?= \App\Support\NewsletterService::MAX_INCERCARI ?> ori).
                     <?php endif; ?>
                     <?php if ((int) ($dcTotaluri['neconfirmate'] ?? 0) > 0): ?>
-                        <strong><?= (int) $dcTotaluri['neconfirmate'] ?></strong> trimiteri au fost întrerupte la mijloc și nu se reiau automat (ca nimeni să nu primească de două ori).
+                        <strong><?= (int) $dcTotaluri['neconfirmate'] ?></strong> trimiteri au fost întrerupte la mijloc sau neconfirmate de serverul de email; nu se reiau automat (ca nimeni să nu primească de două ori).
                     <?php endif; ?>
                 </p>
             <?php endif; ?>
@@ -1548,7 +1548,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         <tr>
                             <td><?= htmlspecialchars($rEmail, ENT_QUOTES) ?></td>
                             <?php
-                            $rStatusText = ['sent' => 'trimis', 'failed' => 'respins', 'pending' => 'întrerupt'][$rStatus] ?? $rStatus;
+                            $rStatusText = ['sent' => 'trimis', 'failed' => 'respins', 'pending' => 'întrerupt', 'unknown' => 'neconfirmat'][$rStatus] ?? $rStatus;
                             $rEroare = trim((string) ($rcp['error_message'] ?? ''));
                             ?>
                             <td><span class="nl-stats-badge <?= $rStatus === 'sent' ? 'green' : '' ?>" <?= $rEroare !== '' ? 'title="' . htmlspecialchars($rEroare, ENT_QUOTES) . '"' : '' ?>><?= htmlspecialchars($rStatusText, ENT_QUOTES) ?></span></td>

@@ -646,6 +646,17 @@ serverul de email se reincearca de cel mult 3 ori, la treceri diferite ale cronu
 Dupa 5 respingeri la rand campania trece in starea **Oprit**, cu motivul afisat in admin,
 si asteapta pe cineva sa apese „Reia trimiterea" (cronul nu o reia singur).
 
+Trimiterea porneste doar din starea potrivita, verificata dupa lacat: cronul continua
+doar campaniile „sending", porneste doar programatele ajunse la ora lor, iar o campanie
+oprita sau cu programarea anulata intre timp nu mai pleaca. Daca serverul de email nu
+confirma primirea dupa ce a primit tot mesajul (conexiune cazuta), adresa ramane
+„neconfirmata" (starea `unknown`), nu se retrimite si apare in istoric ca „Neconfirmat".
+
+Linkurile din newsletter (dezabonare, pixel, clic) sunt semnate cu o cheie aleatoare:
+`NEWSLETTER_SECRET` din `.env` daca exista (optional), altfel 32 de octeti generati o
+singura data in tabelul `settings` (`newsletter_cheie_semnare`, care nu iese prin
+`Settings::all`). Linkurile din emailurile trimise inainte (cheia veche) merg in continuare.
+
 Cronul scrie ora ultimei rulari in setarea `newsletter_cron_ultima_rulare`; lista de
 verificare din builder avertizeaza daca a trecut prea mult de atunci.
 

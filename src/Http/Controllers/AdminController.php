@@ -13524,8 +13524,16 @@ final class AdminController
                 );
                 $ramase = (int) ($result['remaining'] ?? 0);
                 if (!empty($result['busy'])) {
+                    // Lacătul e ținut de altă trimitere (de obicei cronul). Dacă
+                    // omul a apăsat „Reia trimiterea” pe o campanie oprită, o
+                    // trecem pe „sending”, ca trecerea următoare a cronului s-o
+                    // continue; altfel ar rămâne oprită fără să știe nimeni.
+                    $db->prepare('UPDATE newsletter_campaigns SET status = "sending", last_error = NULL WHERE id = :id AND status = "paused"')
+                        ->execute(['id' => $campaignId]);
                     Flash::set('success', 'Newsletterul se trimite deja în fundal (' . $ramase
                         . ' mai sunt la rând). Nu trebuie să apeși nimic: pleacă singur.');
+                } elseif (!empty($result['nepornit'])) {
+                    Flash::set('error', 'Newsletterul nu a pornit: între timp i s-a schimbat starea (a fost oprit, trimis sau șters). Reîncarcă pagina.');
                 } elseif (!empty($result['paused'])) {
                     Flash::set('error', 'Trimiterea s-a oprit: ' . (string) ($result['error'] ?? '')
                         . ' Verifică setările de trimitere (Email-uri → Setări trimitere), apoi apasă din nou „Reia trimiterea”.');

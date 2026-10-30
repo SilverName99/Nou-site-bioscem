@@ -3978,7 +3978,10 @@ final class SiteController
         $campaignId  = (int) ($params['campaignId'] ?? 0);
         $subscriberId = (int) ($params['subscriberId'] ?? 0);
         $token       = trim((string) ($params['token'] ?? ''));
-        $destUrl     = trim((string) ($_GET['url'] ?? ''));
+        // Adresa brută, exact cum a fost semnată; spațiile se curăță doar după
+        // verificare (un link vechi cu spațiu la capăt rămâne valabil).
+        $urlBrut     = (string) ($_GET['url'] ?? '');
+        $destUrl     = trim($urlBrut);
 
         $fallback = NewsletterService::appBaseUrl();
         if ($fallback === '') {
@@ -3995,13 +3998,16 @@ final class SiteController
         $db = $this->db();
         $destinatie = null;
         if ($db instanceof \PDO && $campaignId > 0 && $subscriberId > 0 && $token !== '') {
-            $destinatie = NewsletterService::handleClickTrack($db, $campaignId, $subscriberId, $token, $destUrl);
+            $destinatie = NewsletterService::handleClickTrack($db, $campaignId, $subscriberId, $token, $urlBrut);
+            if ($destinatie === null && $urlBrut !== $destUrl) {
+                $destinatie = NewsletterService::handleClickTrack($db, $campaignId, $subscriberId, $token, $destUrl);
+            }
         }
         if ($destinatie === null) {
             header('Location: ' . $fallback);
             return;
         }
-        $destUrl = $destinatie;
+        $destUrl = trim($destinatie);
 
         if ($campaignId > 0) {
             setcookie('nl_cid', (string) $campaignId, [
