@@ -188,6 +188,7 @@ $router->post('/api/erp/notificare', [AdminController::class, 'erpNotification']
 $router->post('/api/erp/adrese', [AdminController::class, 'erpOrderAddresses']);
 $router->post('/newsletter/optin/{slug}', [SiteController::class, 'optInSubmit']);
 $router->get('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribe']);
+$router->post('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribeOneClick']);
 $router->get('/newsletter/track/open/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackOpen']);
 $router->get('/newsletter/track/click/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackClick']);
 $router->get('/contul-meu', [SiteController::class, 'account']);
@@ -346,6 +347,7 @@ $router->get('/admin/emails', [AdminController::class, 'emails']);
 $router->get('/admin/emails/builder', [AdminController::class, 'emailsBuilder']);
 $router->post('/admin/emails/builder', [AdminController::class, 'emailsBuilderSave']);
 $router->post('/admin/emails/builder/preview', [AdminController::class, 'emailsBuilderPreview']);
+$router->post('/admin/emails/builder/verificare', [AdminController::class, 'emailsBuilderVerificare']);
 $router->get('/admin/emails/{section}', [AdminController::class, 'emailsSection']);
 $router->post('/admin/emails', [AdminController::class, 'emailsSave']);
 $router->post('/admin/emails/test', [AdminController::class, 'emailsSendTest']);

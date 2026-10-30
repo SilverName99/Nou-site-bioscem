@@ -589,9 +589,19 @@ HTML;
             $emailType = 'custom';
         }
         $meta = is_array($historyMeta['meta'] ?? null) ? $historyMeta['meta'] : [];
+        // Antete în plus (de exemplu List-Unsubscribe la newsletter). Doar
+        // nume și valori pe un singur rând: nimic din ele nu poate adăuga alte
+        // antete sau destinatari.
+        $anteteExtra = [];
+        foreach ((array) ($historyMeta['headers'] ?? []) as $numeAntet => $valoareAntet) {
+            $numeAntet = (string) $numeAntet;
+            if (preg_match('/^[A-Za-z][A-Za-z0-9-]{0,60}$/', $numeAntet)) {
+                $anteteExtra[$numeAntet] = self::sanitizeHeader((string) $valoareAntet);
+            }
+        }
 
         try {
-            self::sendHtmlEmail($to, $subject, $html, $settings);
+            self::sendHtmlEmail($to, $subject, $html, $settings, $anteteExtra);
             self::logEmailSend($db, [
                 'order_id' => $orderId,
                 'email_type' => $emailType,
@@ -619,7 +629,7 @@ HTML;
         }
     }
 
-    private static function sendHtmlEmail(string $to, string $subject, string $html, array $settings): void
+    private static function sendHtmlEmail(string $to, string $subject, string $html, array $settings, array $anteteExtra = []): void
     {
         $fromName = self::sanitizeHeader((string) ($settings['order_email_from_name'] ?? 'Bioscem'));
         $fromAddress = trim((string) ($settings['order_email_from_address'] ?? 'no-reply@localhost'));
@@ -630,7 +640,7 @@ HTML;
         $subject = self::sanitizeHeader($subject);
         $deliveryMethod = strtolower(trim((string) ($settings['email_delivery_method'] ?? 'smtp')));
         if ($deliveryMethod === 'sendgrid') {
-            self::sendWithSendGrid($to, $subject, $html, $fromName, $fromAddress, $settings);
+            self::sendWithSendGrid($to, $subject, $html, $fromName, $fromAddress, $settings, $anteteExtra);
             return;
         }
 
@@ -638,11 +648,11 @@ HTML;
         // pentru instalările fără SMTP (pe Hostinger mail() e aruncat tăcut).
         $smtpHost = trim((string) ($settings['smtp_host'] ?? ''));
         if ($deliveryMethod === 'smtp' && $smtpHost !== '') {
-            self::sendWithSmtp($to, $subject, $html, $fromName, $fromAddress, $settings);
+            self::sendWithSmtp($to, $subject, $html, $fromName, $fromAddress, $settings, $anteteExtra);
             return;
         }
 
-        self::sendWithPhpMail($to, $subject, $html, $fromName, $fromAddress);
+        self::sendWithPhpMail($to, $subject, $html, $fromName, $fromAddress, $anteteExtra);
     }
 
     /**
@@ -656,7 +666,8 @@ HTML;
         string $html,
         string $fromName,
         string $fromAddress,
-        array $settings
+        array $settings,
+        array $anteteExtra = []
     ): void {
         $host = trim((string) ($settings['smtp_host'] ?? ''));
         $port = (int) ($settings['smtp_port'] ?? 587);
@@ -756,6 +767,9 @@ HTML;
                 'Content-Type: multipart/alternative; boundary="' . $separator . '"',
                 'Message-ID: <' . bin2hex(random_bytes(16)) . '@' . $ehloHost . '>',
             ];
+            foreach ($anteteExtra as $numeAntet => $valoareAntet) {
+                $anteturi[] = $numeAntet . ': ' . $valoareAntet;
+            }
             $corp = '--' . $separator . "\r\n"
                 . "Content-Type: text/plain; charset=UTF-8\r\n"
                 . "Content-Transfer-Encoding: base64\r\n\r\n"
@@ -818,7 +832,8 @@ HTML;
         string $subject,
         string $html,
         string $fromName,
-        string $fromAddress
+        string $fromAddress,
+        array $anteteExtra = []
     ): void {
         if (!function_exists('mail')) {
             throw new RuntimeException('Functia mail() nu este disponibila pe server.');
@@ -831,6 +846,9 @@ HTML;
             'Reply-To: ' . $fromAddress,
             'X-Mailer: PHP/' . phpversion(),
         ];
+        foreach ($anteteExtra as $numeAntet => $valoareAntet) {
+            $headers[] = $numeAntet . ': ' . $valoareAntet;
+        }
 
         $ok = @mail($to, $subject, $html, implode("\r\n", $headers));
         if (!$ok) {
@@ -844,7 +862,8 @@ HTML;
         string $html,
         string $fromName,
         string $fromAddress,
-        array $settings
+        array $settings,
+        array $anteteExtra = []
     ): void {
         $apiKey = trim((string) ($settings['sendgrid_api_key'] ?? ''));
         if ($apiKey === '') {
@@ -865,6 +884,9 @@ HTML;
                 'value' => $html,
             ]],
         ];
+        if ($anteteExtra !== []) {
+            $payload['headers'] = $anteteExtra;
+        }
 
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($body === false) {

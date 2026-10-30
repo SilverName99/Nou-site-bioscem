@@ -3883,7 +3883,9 @@ final class SiteController
         }
 
         try {
-            NewsletterService::subscribeToList($db, (int) ($form['list_id'] ?? 0), $email, $name);
+            // Omul se abonează singur, din formular: e consimțământ nou, deci o
+            // adresă dezabonată mai demult se reactivează (doar aici).
+            NewsletterService::subscribeToList($db, (int) ($form['list_id'] ?? 0), $email, $name, true);
         } catch (RuntimeException $exception) {
             $this->respondOptInError($exception->getMessage());
             return;
@@ -3924,6 +3926,32 @@ final class SiteController
         echo '<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dezabonare</title></head><body style="margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#1f2937;"><div style="max-width:560px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;text-align:center;"><h1 style="margin:0 0 10px;font-size:28px;color:#0f172a;">Te-ai dezabonat cu succes.</h1><p style="margin:0;color:#475569;line-height:1.6;">Nu vei mai primi newslettere de la noi pe adresa <strong style="color:#0f172a;">' . htmlspecialchars((string) ($result['email'] ?? ''), ENT_QUOTES) . '</strong>.</p></div></body></html>';
     }
 
+    /**
+     * Dezabonarea „cu un clic” din clientul de email (RFC 8058): Gmail, Yahoo
+     * și Apple Mail trimit singure un POST la linkul din antetul
+     * List-Unsubscribe, fără să deschidă pagina. Răspunsul e doar un cod.
+     */
+    public function newsletterUnsubscribeOneClick(array $params): void
+    {
+        $token = trim((string) ($params['token'] ?? ''));
+        $db = $this->db();
+        header('Content-Type: text/plain; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        if ($token === '' || !$db instanceof PDO) {
+            http_response_code($token === '' ? 400 : 500);
+            echo 'Eroare';
+            return;
+        }
+        NewsletterService::ensureSchema($db);
+        $result = NewsletterService::unsubscribeByToken($db, $token);
+        if (!$result['ok']) {
+            http_response_code(404);
+            echo 'Link invalid';
+            return;
+        }
+        echo 'Dezabonat';
+    }
+
     public function newsletterTrackOpen(array $params): void
     {
         $campaignId  = (int) ($params['campaignId'] ?? 0);
@@ -3952,16 +3980,28 @@ final class SiteController
         $token       = trim((string) ($params['token'] ?? ''));
         $destUrl     = trim((string) ($_GET['url'] ?? ''));
 
-        $fallback = 'https://bioscem.ro';
+        $fallback = NewsletterService::appBaseUrl();
+        if ($fallback === '') {
+            $fallback = 'https://bioscem.ro';
+        }
+        $fallback .= '/';
         if ($destUrl === '' || !in_array(parse_url($destUrl, PHP_URL_SCHEME), ['http', 'https'], true)) {
             header('Location: ' . $fallback);
             return;
         }
 
+        // Doar un link semnat de noi duce mai departe (și numără clicul); orice
+        // altceva ajunge pe prima pagină a magazinului.
         $db = $this->db();
+        $destinatie = null;
         if ($db instanceof \PDO && $campaignId > 0 && $subscriberId > 0 && $token !== '') {
-            $destUrl = NewsletterService::handleClickTrack($db, $campaignId, $subscriberId, $token, $destUrl);
+            $destinatie = NewsletterService::handleClickTrack($db, $campaignId, $subscriberId, $token, $destUrl);
         }
+        if ($destinatie === null) {
+            header('Location: ' . $fallback);
+            return;
+        }
+        $destUrl = $destinatie;
 
         if ($campaignId > 0) {
             setcookie('nl_cid', (string) $campaignId, [

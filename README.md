@@ -637,6 +637,28 @@ urmatoare), `--per-run=` cati destinatari cel mult per campanie per trecere
 Rularile nu se suprapun: scriptul ia un lacat pe fisier
 (`storage/newsletter-cron.lock`) si iese imediat daca precedenta inca lucreaza.
 
+**Nimeni nu primeste acelasi newsletter de doua ori** (nici cand „Trimite acum" e apasat
+de doua ori sau in timp ce lucreaza cronul): o campanie e trimisa de un singur proces
+odata (lacat `GET_LOCK` in baza de date), iar fiecare adresa e trecuta „pending" inainte
+de trimitere. Daca procesul moare intre trimitere si confirmare, adresa ramane „pending"
+si nu se mai retrimite (apare la statistici ca „intrerupta"). Un mesaj respins de
+serverul de email se reincearca de cel mult 3 ori, la treceri diferite ale cronului.
+Dupa 5 respingeri la rand campania trece in starea **Oprit**, cu motivul afisat in admin,
+si asteapta pe cineva sa apese „Reia trimiterea" (cronul nu o reia singur).
+
+Cronul scrie ora ultimei rulari in setarea `newsletter_cron_ultima_rulare`; lista de
+verificare din builder avertizeaza daca a trecut prea mult de atunci.
+
+**`APP_URL` din `.env` e obligatoriu pentru newslettere**: din cron nu exista adresa
+site-ului, iar fara ea linkul de dezabonare ar fi mort. Fara `APP_URL` campania nu
+pleaca (se opreste, cu motivul scris).
+
+Fiecare newsletter are antetele `List-Unsubscribe` si `List-Unsubscribe-Post`
+(cerute de Gmail si Yahoo pentru trimiterile in masa): clientul de email dezaboneaza
+omul printr-un POST la `/newsletter/unsubscribe/{token}`.
+
+Ghidul pentru cine trimite newsletterele: `docs/ghid-newsletter.md`.
+
 ### Recomandări next sprint
 
 - extindere Stripe (refund-uri din admin, retry plată, audit trail webhook);
