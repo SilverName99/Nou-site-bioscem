@@ -372,8 +372,27 @@ CREATE TABLE IF NOT EXISTS newsletter_subscribers (
     email VARCHAR(190) NOT NULL UNIQUE,
     name VARCHAR(190) DEFAULT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
+    pending_at DATETIME DEFAULT NULL,
+    confirmed_at DATETIME DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Lista „nu trimite”: doar amprenta SHA-256 a adresei unui abonat șters.
+CREATE TABLE IF NOT EXISTS newsletter_suprimate (
+    email_hash CHAR(64) NOT NULL PRIMARY KEY,
+    motiv VARCHAR(40) NOT NULL DEFAULT 'stergere_admin',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Cererile de confirmare a abonării (limite pe adresă și pe IP), păstrate 2 zile.
+CREATE TABLE IF NOT EXISTS newsletter_cereri_confirmare (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    email_hash CHAR(64) NOT NULL,
+    ip VARCHAR(64) DEFAULT NULL,
+    created_at DATETIME NOT NULL,
+    INDEX idx_email_creat (email_hash, created_at),
+    INDEX idx_ip_creat (ip, created_at)
 );
 
 CREATE TABLE IF NOT EXISTS newsletter_list_subscribers (

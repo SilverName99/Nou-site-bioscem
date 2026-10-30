@@ -83,6 +83,12 @@ $deadline = time() + $seconds;
 NewsletterService::ensureSchema($db);
 $settings = Settings::all($db);
 
+// Cererile de abonare neconfirmate în 30 de zile (dubla confirmare) se curăță.
+try {
+    NewsletterService::curataCereriExpirate($db);
+} catch (Throwable) {
+}
+
 $continuate = NewsletterService::continueRunningCampaigns($db, $settings, $perRun, $deadline);
 $programate = NewsletterService::sendDueScheduledCampaigns($db, $settings, $limit, $deadline, $perRun);
 

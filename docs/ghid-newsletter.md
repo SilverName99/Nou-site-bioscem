@@ -155,8 +155,48 @@ altfel). În lista de newslettere apeși ⧉ (**Duplică**), modifici copia și 
 **Vreau să-l trimit și celor care s-au abonat între timp.** Tot cu **Duplică**: copia pleacă
 la toată lista, deci și la cei care l-au primit deja. Gândește-te dacă merită.
 
-**Cineva vrea să nu mai primească.** Linkul „Dezabonează-mă” din email face asta singur. Dacă
-îți scrie direct, îl cauți în **Liste abonați** și apeși ⟲.
+**Cineva vrea să nu mai primească.** Linkul „Dezabonează-mă” din email deschide o pagină cu
+butonul **Confirm dezabonarea**; după ce îl apasă, gata. Dacă îți scrie direct, îl cauți în
+**Liste abonați** și apeși ⟲. Dacă cere să-i ștergi datele, apeși 🗑 (vezi mai jos, „Lista
+«nu trimite»”).
+
+---
+
+## Cum se abonează oamenii (dubla confirmare)
+
+Cine se înscrie din formularul de pe site **nu e abonat imediat**. Primește un email „Mai e un
+singur pas” și devine abonat doar după ce apasă **Confirm abonarea** (din email, apoi pe pagina
+care se deschide). Așa nimeni nu poate abona adresa altcuiva.
+
+![Emailul de confirmare](ghid-newsletter/13-email-confirmare.jpg)
+
+![Pagina de confirmare](ghid-newsletter/14-pagina-confirmare.jpg)
+
+- Până confirmă, în **Liste abonați** apare ca **neconfirmat** și nu primește newslettere.
+  Nu-l poți confirma tu în locul lui.
+- Linkul e valabil **30 de zile**. Cererile neconfirmate se șterg singure după 30 de zile.
+- Aceeași adresă primește cel mult un email de confirmare la 5 minute (3 pe zi), iar de pe
+  aceeași conexiune se pot face cel mult 20 de cereri pe oră: formularul nu poate fi folosit
+  ca să umple inboxul cuiva.
+- Cine se dezabonase și se reabonează din formular rămâne dezabonat până apasă linkul.
+- Adresele adăugate de tine în **Liste abonați** sau din import sunt active imediat, ca
+  înainte: adaugă-le doar dacă omul și-a dat acordul (în magazin, pe hârtie, la telefon).
+
+![Abonați: „neconfirmat” = n-a apăsat încă linkul din email](ghid-newsletter/15-abonati.jpg)
+
+## Lista „nu trimite” (abonați șterși)
+
+Când ștergi un abonat (🗑 în **Liste abonați**), adresa lui intră pe lista „nu trimite”:
+
+- nu mai poate fi adăugată din admin și e sărită la orice import (CSV, Mailchimp, backup
+  WordPress); mesajul de după import spune câte adrese au fost sărite;
+- singurul mod în care revine: persoana se abonează **singură** din formularul de pe site și
+  confirmă din email.
+
+Ce păstrăm (GDPR): **doar amprenta adresei** (un cod calculat din ea, SHA-256), nu adresa
+însăși și nimic altceva. O păstrăm doar ca să respectăm cererea omului de a nu mai primi
+emailuri; din amprentă nu se poate citi adresa, se poate doar verifica dacă o adresă dată e
+pe listă. În **Statistici** vezi câte adrese sunt pe listă.
 
 ---
 
@@ -164,6 +204,8 @@ la toată lista, deci și la cei care l-au primit deja. Gândește-te dacă meri
 
 - Trimite doar celor care s-au abonat. **Nu importa adrese** din altă parte (clienți vechi,
   cărți de vizită) fără acordul lor.
+- Cine cere să nu mai primească nimic sau să-i ștergi datele: îl ștergi (🗑). Adresa intră pe
+  lista „nu trimite” și nu mai revine din greșeală, la un import.
 - **Nu reactiva** pe cineva care s-a dezabonat, decât dacă ți-a cerut-o explicit, în scris.
   Adminul te întreabă de fiecare dată.
 - Cel mult un newsletter pe săptămână. Prea multe aduc dezabonări și ajung în Spam.

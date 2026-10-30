@@ -102,7 +102,7 @@ final class NewsletterVerificare
         } elseif ($destinatari === 0) {
             $puncte[] = self::punct('destinatari', 'eroare', 'Listele alese nu au niciun abonat activ', 'Alege altă listă sau adaugă abonați.');
         } else {
-            $puncte[] = self::punct('destinatari', 'ok', self::numar($destinatari, 'abonat activ', 'abonați activi') . ' vor primi newsletterul', 'Cine e în mai multe liste îl primește o singură dată. Dezabonații nu-l primesc.');
+            $puncte[] = self::punct('destinatari', 'ok', self::numar($destinatari, 'abonat activ', 'abonați activi') . ' vor primi newsletterul', 'Cine e în mai multe liste îl primește o singură dată. Dezabonații și cei care n-au confirmat încă abonarea din email nu-l primesc.');
         }
 
         // 4. Expeditorul și trimiterea

@@ -177,6 +177,9 @@ for ($i = $paginationStart; $i <= $paginationEnd; $i++) {
                         <tr><td><strong>Conturi scrise</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['conturi_scrise'] ?? 0) ?></strong></td></tr>
                         <tr><td><strong>Adrese scrise</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['adrese_scrise'] ?? 0) ?></strong></td></tr>
                         <tr><td><strong>Abonați scriși</strong></td><td style="text-align:right;"><strong><?= (int) ($raport['abonati_scrisi'] ?? 0) ?></strong></td></tr>
+                        <?php if ((int) ($raport['abonati_suprimati'] ?? 0) > 0): ?>
+                        <tr><td>Abonați săriți (pe lista „nu trimite”)</td><td style="text-align:right;"><?= (int) $raport['abonati_suprimati'] ?></td></tr>
+                        <?php endif; ?>
                         <?php if ((int) ($raport['esuate'] ?? 0) > 0): ?>
                             <tr><td style="color:#b91c1c;">Rânduri eșuate</td><td style="text-align:right;color:#b91c1c;"><?= (int) $raport['esuate'] ?></td></tr>
                         <?php endif; ?>

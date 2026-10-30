@@ -111,6 +111,44 @@ final class NewsletterSabloane
         ];
     }
 
+    /**
+     * Emailul de confirmare a abonării (dubla confirmare): logo, culorile
+     * magazinului, un singur buton. Tranzacțional: fără subsol de dezabonare.
+     */
+    public static function emailConfirmare(string $url, string $numeMagazin): array
+    {
+        return array_merge(
+            self::antet(),
+            [
+                self::titlu('Mai e un singur pas', 26, 22),
+                self::text(
+                    "Bună,\n\nCineva (sperăm că tu) a cerut să primească newsletterul " . $numeMagazin
+                    . " pe această adresă. Apasă butonul de mai jos ca să confirmi abonarea.\n\n"
+                    . "Dacă nu ai cerut tu, ignoră acest email: nu te abonăm și nu-ți mai scriem.",
+                    'left'
+                ),
+                self::buton('Confirm abonarea', $url),
+                [
+                    'type' => 'text',
+                    'content' => 'Linkul e valabil ' . NewsletterService::ZILE_CONFIRMARE . ' de zile.',
+                    'align' => 'center', 'background' => '#ffffff', 'text_color' => self::TEXT_SECUNDAR,
+                    'font_size' => 13, 'font_size_mobile' => 13, 'padding_bottom' => 20,
+                ],
+            ],
+            self::subsolSimplu($numeMagazin)
+        );
+    }
+
+    private static function subsolSimplu(string $numeMagazin): array
+    {
+        $site = preg_replace('#^https?://#', '', NewsletterService::appBaseUrl()) ?: 'bioscem.ro';
+        return [[
+            'type' => 'text', 'content' => '<b>' . $numeMagazin . '</b> · ' . $site,
+            'align' => 'center', 'background' => self::FUNDAL_DESCHIS, 'text_color' => self::TEXT_SECUNDAR,
+            'font_size' => 13, 'font_size_mobile' => 13, 'padding_top' => 16, 'padding_bottom' => 16,
+        ]];
+    }
+
     /** Cele mai noi produse active, cu poză și preț. */
     private static function produse(PDO $db, int $cate): array
     {

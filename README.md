@@ -674,6 +674,26 @@ Fiecare newsletter are antetele `List-Unsubscribe` si `List-Unsubscribe-Post`
 (cerute de Gmail si Yahoo pentru trimiterile in masa): clientul de email dezaboneaza
 omul printr-un POST la `/newsletter/unsubscribe/{token}`.
 
+**Dubla confirmare (double opt-in).** Formularul public nu aboneaza direct: o adresa noua
+devine `pending` (un dezabonat ramane `unsubscribed`, cu `pending_at`) si primeste un email
+de confirmare (prin mailerul tranzactional, fara subsol de newsletter). Linkul
+`/newsletter/confirmare/{token}` (semnat cu cheia noua, valabil 30 de zile) arata o pagina
+cu „Confirm abonarea"; doar POST-ul butonului il face `active` si scrie `confirmed_at`.
+Limite: pe adresa un email la 5 minute si 3 pe zi, pe IP 20 de cereri pe ora
+(`newsletter_cereri_confirmare`, curatat dupa 2 zile). Cronul de newsletter sterge
+cererile neconfirmate mai vechi de 30 de zile. Abonatii `pending` nu primesc campanii si
+nu intra la numar. Adaugarea din admin si importurile raman cum erau (active imediat),
+dar nu reactiveaza niciodata un dezabonat.
+
+**Dezabonare.** Linkul din email (GET) arata doar pagina cu „Confirm dezabonarea"; doar
+POST-ul butonului (sau POST-ul „cu un clic" RFC 8058 al clientului de email) dezaboneaza.
+
+**Lista „nu trimite".** Stergerea unui abonat din admin pastreaza doar amprenta SHA-256 a
+adresei normalizate (`newsletter_suprimate`). O adresa de pe lista e refuzata la adaugarea
+din admin si sarita (si numarata) la importurile CSV, Mailchimp si WordPress. Doar dubla
+confirmare facuta chiar de persoana, din formularul public, o scoate de pe lista. GDPR:
+pastram doar amprenta, cu scopul de a respecta opozitia persoanei.
+
 Ghidul pentru cine trimite newsletterele: `docs/ghid-newsletter.md`.
 
 ### Recomandări next sprint

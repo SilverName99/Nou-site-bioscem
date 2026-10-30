@@ -189,6 +189,8 @@ $router->post('/api/erp/adrese', [AdminController::class, 'erpOrderAddresses']);
 $router->post('/newsletter/optin/{slug}', [SiteController::class, 'optInSubmit']);
 $router->get('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribe']);
 $router->post('/newsletter/unsubscribe/{token}', [SiteController::class, 'newsletterUnsubscribeOneClick']);
+$router->get('/newsletter/confirmare/{token}', [SiteController::class, 'newsletterConfirmare']);
+$router->post('/newsletter/confirmare/{token}', [SiteController::class, 'newsletterConfirmare']);
 $router->get('/newsletter/track/open/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackOpen']);
 $router->get('/newsletter/track/click/{campaignId}/{subscriberId}/{token}', [SiteController::class, 'newsletterTrackClick']);
 $router->get('/contul-meu', [SiteController::class, 'account']);

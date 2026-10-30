@@ -381,6 +381,7 @@ final class AdminController
         }
 
         $abonatiNoi = 0;
+        $abonatiSuprimati = 0;
         $abonati = (array) ($date['abonati'] ?? []);
         if ($abonati !== []) {
             try {
@@ -389,6 +390,11 @@ final class AdminController
                     $listaId = NewsletterService::defaultListId($db);
                 }
                 foreach ($abonati as $a) {
+                    if (NewsletterService::esteSuprimat($db, (string) $a['email'])) {
+                        // Pe lista „nu trimite”: nu se readuce din backup.
+                        $abonatiSuprimati++;
+                        continue;
+                    }
                     try {
                         NewsletterService::subscribeToList($db, $listaId, (string) $a['email'], (string) $a['name']);
                         $abonatiNoi++;
@@ -405,6 +411,7 @@ final class AdminController
             'conturi_scrise' => $noi,
             'adrese_scrise' => $adrese,
             'abonati_scrisi' => $abonatiNoi,
+            'abonati_suprimati' => $abonatiSuprimati,
             'esuate' => $esuate,
         ];
     }
@@ -12602,7 +12609,7 @@ final class AdminController
                     }
 
                     $stmtSubscribers = $db->prepare(
-                        'SELECT s.id, s.email, s.name, s.status
+                        'SELECT s.id, s.email, s.name, s.status, s.pending_at, s.confirmed_at
                          FROM newsletter_list_subscribers ls
                          INNER JOIN newsletter_subscribers s ON s.id = ls.subscriber_id
                          WHERE ls.list_id = :list_id' . $filtru . '
@@ -12644,6 +12651,8 @@ final class AdminController
                 $newsletterStats['forms_total'] = (int) $db->query('SELECT COUNT(*) FROM newsletter_optin_forms')->fetchColumn();
                 $newsletterStats['subscribers_active'] = (int) $db->query('SELECT COUNT(*) FROM newsletter_subscribers WHERE status = "active"')->fetchColumn();
                 $newsletterStats['subscribers_unsubscribed'] = (int) $db->query('SELECT COUNT(*) FROM newsletter_subscribers WHERE status = "unsubscribed"')->fetchColumn();
+                $newsletterStats['subscribers_pending'] = (int) $db->query('SELECT COUNT(*) FROM newsletter_subscribers WHERE status = "pending"')->fetchColumn();
+                $newsletterStats['suprimate'] = (int) $db->query('SELECT COUNT(*) FROM newsletter_suprimate')->fetchColumn();
 
                 // Load all sent campaigns with aggregated stats
                 try {
@@ -13774,16 +13783,31 @@ final class AdminController
                 return;
             }
             $eraDezabonat = NewsletterService::esteDezabonat($db, $email);
-            NewsletterService::subscribeToList($db, $listId, $email, $name);
+            $stareVeche = $db->prepare('SELECT status FROM newsletter_subscribers WHERE email = :e LIMIT 1');
+            $stareVeche->execute(['e' => $email]);
+            $eraNeconfirmat = (string) ($stareVeche->fetchColumn() ?: '') === 'pending';
+            try {
+                // O adresă nouă adăugată din admin e activă imediat, ca până acum
+                // (adminul o adaugă doar cu acordul omului, dat în altă parte).
+                NewsletterService::subscribeToList($db, $listId, $email, $name);
+            } catch (\App\Support\AdresaSuprimata) {
+                Flash::set('error', 'Adresa ' . $email . ' a fost ștearsă la cererea persoanei și e pe lista „nu trimite”, '
+                    . 'așa că nu poate fi adăugată din admin. Persoana se poate reabona singură, din formularul de pe site (cu confirmare prin email).');
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
+                return;
+            }
 
             // Cine s-a dezabonat rămâne dezabonat: îl reactivează doar el,
             // printr-un formular de abonare, sau adminul cu butonul ⟲ din listă.
+            // Cine n-a confirmat încă abonarea din email rămâne neconfirmat.
             Flash::set(
-                $eraDezabonat ? 'error' : 'success',
+                $eraDezabonat || $eraNeconfirmat ? 'error' : 'success',
                 $eraDezabonat
                     ? 'Adresa ' . $email . ' s-a dezabonat mai demult, așa că a rămas dezabonată (nu primește newslettere). '
                         . 'Reactiveaz-o doar dacă persoana ți-a cerut asta explicit.'
-                    : 'Abonat salvat.'
+                    : ($eraNeconfirmat
+                        ? 'Adresa ' . $email . ' și-a cerut singură abonarea și n-a confirmat-o încă din email; rămâne neconfirmată (nu primește newslettere) până apasă linkul.'
+                        : 'Abonat salvat.')
             );
             header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
             return;
@@ -13803,9 +13827,18 @@ final class AdminController
                 header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
                 return;
             }
+            // Lista „nu trimite”: din adresa ștearsă rămâne doar amprenta ei,
+            // ca un import sau o adăugare din admin să n-o readucă (GDPR:
+            // păstrăm atât cât e nevoie ca să respectăm opoziția omului).
+            $adresa = $db->prepare('SELECT email FROM newsletter_subscribers WHERE id = :id LIMIT 1');
+            $adresa->execute(['id' => $subscriberId]);
+            $emailSters = (string) ($adresa->fetchColumn() ?: '');
+            if ($emailSters !== '') {
+                NewsletterService::suprima($db, $emailSters);
+            }
             $db->prepare('DELETE FROM newsletter_list_subscribers WHERE subscriber_id = :id')->execute(['id' => $subscriberId]);
             $db->prepare('DELETE FROM newsletter_subscribers WHERE id = :id')->execute(['id' => $subscriberId]);
-            Flash::set('success', 'Abonatul a fost șters.');
+            Flash::set('success', 'Abonatul a fost șters și adresa a fost pusă pe lista „nu trimite” (nu mai poate fi adăugată din admin sau din import).');
             header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
             return;
         }
@@ -13826,6 +13859,12 @@ final class AdminController
             $current = $db->prepare('SELECT status FROM newsletter_subscribers WHERE id = :id LIMIT 1');
             $current->execute(['id' => $subscriberId]);
             $status = (string) ($current->fetchColumn() ?: 'active');
+            if ($status === 'pending') {
+                // Abonarea cerută din formular o confirmă doar omul, din email.
+                Flash::set('error', 'Abonatul n-a confirmat încă abonarea din email. Doar el o poate confirma.');
+                header('Location: /admin/emails/newsletters?tab=subscribers&list=' . $listId . $this->subscribersReturnQuery());
+                return;
+            }
             $next = $status === 'active' ? 'unsubscribed' : 'active';
             $db->prepare('UPDATE newsletter_subscribers SET status = :status WHERE id = :id')->execute([
                 'status' => $next,
@@ -19061,6 +19100,7 @@ HTML;
         $adaugati = 0;
         $existenti = 0;
         $sariti = 0;
+        $suprimate = 0;
         $invalizi = 0;
         $fisiereSarite = [];
         $vazute = [];
@@ -19118,6 +19158,10 @@ HTML;
                     $existenti++;
                     continue;
                 }
+                if (NewsletterService::esteSuprimat($db, $email)) {
+                    $suprimate++;
+                    continue;
+                }
                 try {
                     NewsletterService::subscribeToList($db, $listId, $email, trim((string) ($rand['name'] ?? '')));
                     $adaugati++;
@@ -19139,7 +19183,7 @@ HTML;
             }
         }
 
-        if ($adaugati === 0 && $existenti === 0 && $invalizi === 0 && $sariti === 0) {
+        if ($adaugati === 0 && $existenti === 0 && $invalizi === 0 && $sariti === 0 && $suprimate === 0) {
             return [
                 'ok' => false,
                 'message' => 'Nu am găsit nicio adresă în fișier. Verifică să fie exportul din Mailchimp '
@@ -19149,7 +19193,8 @@ HTML;
 
         $mesaj = 'Import Mailchimp finalizat: ' . $adaugati . ' abonați noi, '
             . $existenti . ' existau deja, ' . $sariti . ' săriți (nu erau activi), '
-            . $invalizi . ' adrese invalide.';
+            . $invalizi . ' adrese invalide'
+            . ($suprimate > 0 ? ', ' . $suprimate . ' sărite pentru că sunt pe lista „nu trimite”' : '') . '.';
         if ($fisiereSarite !== []) {
             $mesaj .= ' Fișiere ignorate (dezabonați / adrese curățate): ' . implode(', ', $fisiereSarite) . '.';
         }
@@ -19268,6 +19313,7 @@ HTML;
         $invalid = 0;
         $processedPairs = 0;
         $ramasDezabonati = [];
+        $suprimate = [];
 
         $db->beginTransaction();
         try {
@@ -19334,6 +19380,11 @@ HTML;
                         $alreadyInList = ((int) $membershipFind->fetchColumn()) === 1;
                     }
 
+                    if (NewsletterService::esteSuprimat($db, $email)) {
+                        // Pe lista „nu trimite” (șters la cererea omului): sărit.
+                        $suprimate[$email] = true;
+                        continue;
+                    }
                     if ($existingSubscriberId > 0 && NewsletterService::esteDezabonat($db, $email)) {
                         // Intră în listă, dar rămâne dezabonat (nu primește nimic).
                         $ramasDezabonati[$email] = true;
@@ -19355,6 +19406,9 @@ HTML;
             return ['ok' => false, 'message' => 'Importul abonaților a eșuat. Verifică structura fișierului și încearcă din nou.'];
         }
 
+        if ($processedPairs <= 0 && $suprimate !== []) {
+            return ['ok' => false, 'message' => 'Nu s-a importat nimic: toate cele ' . count($suprimate) . ' adrese sunt pe lista „nu trimite” (șterse la cererea persoanelor).'];
+        }
         if ($processedPairs <= 0) {
             return ['ok' => false, 'message' => 'Nu am găsit perechi valide Email/Listă în fișier.'];
         }
@@ -19369,6 +19423,9 @@ HTML;
                 . $createdLists . ' liste noi create, ' . $invalid . ' intrări invalide.'
                 . ($ramasDezabonati !== []
                     ? ' ' . count($ramasDezabonati) . ' adrese s-au dezabonat mai demult și au rămas dezabonate.'
+                    : '')
+                . ($suprimate !== []
+                    ? ' ' . count($suprimate) . ' adrese sărite: sunt pe lista „nu trimite”.'
                     : ''),
         ];
     }

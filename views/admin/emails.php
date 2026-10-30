@@ -856,6 +856,11 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                         Intră în lista selectată mai sus. Se importă <strong>doar abonații activi</strong>: dezabonații
                         și adresele curățate sunt ignorate automat, chiar dacă exportul le conține.
                     </p>
+                    <p style="margin:0 0 10px;color:#64748b;font-size:12px;">
+                        <strong>neconfirmat</strong> = s-a înscris din formularul de pe site și n-a apăsat încă linkul din emailul
+                        de confirmare (nu primește newslettere; cererea expiră după 30 de zile). Un abonat șters intră pe lista
+                        „nu trimite”: importurile și adăugarea din admin îl sar; doar el se poate reabona, de pe site.
+                    </p>
 
                     <?php
                     $subTotal = (int) ($subscribersTotal ?? 0);
@@ -917,8 +922,20 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                             <tr>
                                 <td><?= htmlspecialchars((string) ($subscriber['email'] ?? ''), ENT_QUOTES) ?></td>
                                 <td><?= htmlspecialchars((string) ($subscriber['name'] ?? ''), ENT_QUOTES) ?></td>
-                                <td><span class="status-pill <?= $subStatus === 'active' ? 'ok' : 'off' ?>"><?= htmlspecialchars(['active' => 'abonat', 'unsubscribed' => 'dezabonat'][$subStatus] ?? $subStatus, ENT_QUOTES) ?></span></td>
+                                <?php
+                                // Starea pe înțeles: „neconfirmat” = a cerut abonarea din
+                                // formular și n-a apăsat încă linkul din email.
+                                $subEticheta = ['active' => 'abonat', 'unsubscribed' => 'dezabonat', 'pending' => 'neconfirmat'][$subStatus] ?? $subStatus;
+                                if ($subStatus === 'unsubscribed' && !empty($subscriber['pending_at'])) {
+                                    $subEticheta .= ' · a cerut reabonarea';
+                                }
+                                $subTitlu = $subStatus === 'pending'
+                                    ? 'A cerut abonarea pe ' . date('d.m.Y H:i', (int) strtotime((string) $subscriber['pending_at'])) . '; așteaptă clicul din emailul de confirmare.'
+                                    : (!empty($subscriber['confirmed_at']) ? 'A confirmat abonarea pe ' . date('d.m.Y H:i', (int) strtotime((string) $subscriber['confirmed_at'])) . '.' : '');
+                                ?>
+                                <td><span class="status-pill <?= $subStatus === 'active' ? 'ok' : 'off' ?>" <?= $subTitlu !== '' ? 'title="' . htmlspecialchars($subTitlu, ENT_QUOTES) . '"' : '' ?>><?= htmlspecialchars($subEticheta, ENT_QUOTES) ?></span></td>
                                 <td class="template-actions">
+                                    <?php if ($subStatus !== 'pending'): ?>
                                     <form method="post" action="/admin/emails" style="display:inline;"
                                         <?php if ($subStatus !== 'active'): ?>onsubmit="return confirm('Această persoană s-a dezabonat. Reactiveaz-o doar dacă ți-a cerut explicit să primească din nou newslettere. Continui?');"<?php endif; ?>>
                                         <input type="hidden" name="section" value="newsletter-subscriber-toggle">
@@ -928,7 +945,8 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                                         <input type="hidden" name="sub_q" value="<?= htmlspecialchars($subQuery, ENT_QUOTES) ?>">
                                         <button type="submit" class="icon-btn" title="Activează/dezabonează">⟲</button>
                                     </form>
-                                    <form method="post" action="/admin/emails" style="display:inline;" onsubmit="return confirm('Ștergi abonatul?');">
+                                    <?php endif; ?>
+                                    <form method="post" action="/admin/emails" style="display:inline;" onsubmit="return confirm('Ștergi abonatul? Adresa intră pe lista „nu trimite”: nu mai poate fi adăugată din admin sau din import; doar persoana se poate reabona singură, de pe site.');">
                                         <input type="hidden" name="section" value="newsletter-subscriber-delete">
                                         <input type="hidden" name="subscriber_id" value="<?= $subscriberId ?>">
                                         <input type="hidden" name="list_id" value="<?= $selectedListId ?>">
@@ -1348,6 +1366,16 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
                     <div class="nl-kpi-icon">🚫</div>
                     <div class="nl-kpi-val"><?= (int) ($newsletterStats['subscribers_unsubscribed'] ?? 0) ?></div>
                     <div class="nl-kpi-label">Dezabonați</div>
+                </div>
+                <div class="nl-stats-kpi">
+                    <div class="nl-kpi-icon">✉</div>
+                    <div class="nl-kpi-val"><?= (int) ($newsletterStats['subscribers_pending'] ?? 0) ?></div>
+                    <div class="nl-kpi-label">Neconfirmați (așteaptă clicul din email)</div>
+                </div>
+                <div class="nl-stats-kpi">
+                    <div class="nl-kpi-icon">⛔</div>
+                    <div class="nl-kpi-val"><?= (int) ($newsletterStats['suprimate'] ?? 0) ?></div>
+                    <div class="nl-kpi-label">Pe lista „nu trimite”</div>
                 </div>
             </div>
 
