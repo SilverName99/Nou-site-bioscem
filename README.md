@@ -660,8 +660,12 @@ inainte, cu limite: la prima rulare dupa actualizare se scrie pragul
 `newsletter_cheie_limita` (cea mai mare campanie si cel mai mare abonat de atunci, ascuns
 la fel). Un clic semnat doar cu cheia veche duce mai departe numai pentru o campanie
 de sub prag si numai la o adresa care chiar apare in acea campanie (altfel: prima pagina,
-fara cookie). Un link de dezabonare vechi nu dezaboneaza direct: arata o pagina cu
-„Confirm dezabonarea" (formular cu token nou); un POST direct cu token vechi e refuzat.
+fara cookie). Un link de dezabonare vechi nu dezaboneaza si nu da niciun token nou: pagina
+lui are doar butonul „Trimite-mi linkul de dezabonare pe email", iar serverul trimite pe
+adresa abonatului (mailerul tranzactional) un link nou, semnat cu cheia secreta; doar cine
+are acces la inbox se poate apoi dezabona. Raspunsul e acelasi daca abonatul exista sau nu;
+cel mult un astfel de email pe abonat la 24 de ore. Un POST direct cu token vechi e refuzat
+(403), tot fara sa se afle daca abonatul exista.
 
 Cronul scrie ora ultimei rulari in setarea `newsletter_cron_ultima_rulare`; lista de
 verificare din builder avertizeaza daca a trecut prea mult de atunci.
@@ -679,8 +683,13 @@ devine `pending` (un dezabonat ramane `unsubscribed`, cu `pending_at`) si primes
 de confirmare (prin mailerul tranzactional, fara subsol de newsletter). Linkul
 `/newsletter/confirmare/{token}` (semnat cu cheia noua, valabil 30 de zile) arata o pagina
 cu „Confirm abonarea"; doar POST-ul butonului il face `active` si scrie `confirmed_at`.
-Limite: pe adresa un email la 5 minute si 3 pe zi, pe IP 20 de cereri pe ora
-(`newsletter_cereri_confirmare`, curatat dupa 2 zile). Cronul de newsletter sterge
+Limite (numarate si rezervate sub acelasi lacat `GET_LOCK`, deci si cererile trimise in
+paralel le respecta): pe adresa un email la 5 minute si 3 pe zi; pe IP 20 de cereri pe ora,
+dupa `REMOTE_ADDR` (pe Hostinger/LiteSpeed e IP-ul real; `X-Forwarded-For` nu conteaza);
+pe tot site-ul 100 de emailuri de confirmare / dezabonare pe ora. Cand plafonul global e
+atins, adminul vede o nota in Liste abonati si in Statistici (setarea
+`newsletter_limita_globala_atinsa`). Jurnalul `newsletter_cereri_confirmare` se curata
+dupa 2 zile. Cronul de newsletter sterge
 cererile neconfirmate mai vechi de 30 de zile. Abonatii `pending` nu primesc campanii si
 nu intra la numar. Adaugarea din admin si importurile raman cum erau (active imediat),
 dar nu reactiveaza niciodata un dezabonat.

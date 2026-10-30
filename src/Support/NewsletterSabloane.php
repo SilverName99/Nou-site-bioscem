@@ -139,6 +139,28 @@ final class NewsletterSabloane
         );
     }
 
+    /**
+     * Emailul cu linkul personal de dezabonare, cerut de pe pagina unui link
+     * vechi. Tranzacțional: fără subsol de newsletter.
+     */
+    public static function emailLinkDezabonare(string $url, string $numeMagazin): array
+    {
+        return array_merge(
+            self::antet(),
+            [
+                self::titlu('Linkul tău de dezabonare', 26, 22),
+                self::text(
+                    "Bună,\n\nCineva (probabil tu) a cerut, de pe site, linkul de dezabonare de la newsletterul "
+                    . $numeMagazin . " pentru această adresă. Apasă butonul de mai jos și apoi „Confirm dezabonarea”.\n\n"
+                    . "Dacă nu ai cerut tu, ignoră acest email: rămâi abonat și nu se schimbă nimic.",
+                    'left'
+                ),
+                self::buton('Mergi la dezabonare', $url),
+            ],
+            self::subsolSimplu($numeMagazin)
+        );
+    }
+
     private static function subsolSimplu(string $numeMagazin): array
     {
         $site = preg_replace('#^https?://#', '', NewsletterService::appBaseUrl()) ?: 'bioscem.ro';

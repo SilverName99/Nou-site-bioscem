@@ -230,6 +230,16 @@ final class NewsletterService
             );
         } catch (Throwable) {
         }
+        // Același jurnal ține și emailurile „linkul tău de dezabonare” (pentru
+        // linkurile vechi), cu limita lor.
+        try {
+            $db->exec('ALTER TABLE newsletter_cereri_confirmare ADD COLUMN tip VARCHAR(20) NOT NULL DEFAULT "abonare"');
+        } catch (Throwable) {
+        }
+        try {
+            $db->exec('ALTER TABLE newsletter_cereri_confirmare ADD INDEX idx_creat (created_at)');
+        } catch (Throwable) {
+        }
         // De ce s-a oprit o campanie (server de email care refuză, listă
         // ștearsă), ca omul din admin să vadă motivul, nu doar „oprit”.
         try {
@@ -413,6 +423,74 @@ final class NewsletterService
             ->execute(['h' => self::amprentaAdresa($email), 'm' => substr($motiv, 0, 40)]);
     }
 
+    /** Câte emailuri de confirmare / „link de dezabonare” pleacă pe oră, cel mult, pe tot site-ul. */
+    public const LIMITA_GLOBALA_ORA = 100;
+
+    /** Câte cereri pe oră se primesc de la aceeași adresă IP (REMOTE_ADDR). */
+    public const LIMITA_IP_ORA = 20;
+
+    /**
+     * Rezervă dreptul de a trimite un email declanșat din pagina publică
+     * (confirmarea abonării, linkul de dezabonare). Numărarea și înregistrarea
+     * se fac sub același lacăt (GET_LOCK), deci zeci de cereri în paralel nu mai
+     * pot trece toate de limite înainte să fie scrise. Înainte, limitele se
+     * numărau întâi și cererea se scria abia la final: 40 de cereri simultane
+     * pentru aceeași adresă au trimis 17 emailuri.
+     *
+     * Limite: pe IP (REMOTE_ADDR) LIMITA_IP_ORA pe oră; pe tot site-ul
+     * LIMITA_GLOBALA_ORA pe oră; pe adresă: la abonare un email la 5 minute și
+     * 3 pe zi, la linkul de dezabonare unul pe zi.
+     *
+     * @return string ok | limita_adresa | limita_ip | limita_globala | ocupat
+     */
+    private static function rezervaTrimitere(PDO $db, string $tip, string $amprenta, string $ip): string
+    {
+        $lacat = 'nl_optin_' . substr(sha1((string) ($db->query('SELECT DATABASE()')->fetchColumn() ?: '')), 0, 16);
+        try {
+            $ia = $db->prepare('SELECT GET_LOCK(:n, 5)');
+            $ia->execute(['n' => $lacat]);
+            if ((int) $ia->fetchColumn() !== 1) {
+                return 'ocupat';
+            }
+        } catch (Throwable) {
+            return 'ocupat';
+        }
+        try {
+            if ($ip !== '') {
+                $peIp = $db->prepare('SELECT COUNT(*) FROM newsletter_cereri_confirmare WHERE ip = :ip AND created_at > NOW() - INTERVAL 1 HOUR');
+                $peIp->execute(['ip' => $ip]);
+                if ((int) $peIp->fetchColumn() >= self::LIMITA_IP_ORA) {
+                    return 'limita_ip';
+                }
+            }
+            $peAdresa = $db->prepare(
+                'SELECT COUNT(*) AS pe_zi, COALESCE(SUM(created_at > NOW() - INTERVAL 5 MINUTE), 0) AS recent
+                 FROM newsletter_cereri_confirmare
+                 WHERE email_hash = :h AND tip = :tip AND created_at > NOW() - INTERVAL 1 DAY'
+            );
+            $peAdresa->execute(['h' => $amprenta, 'tip' => $tip]);
+            $limite = $peAdresa->fetch() ?: [];
+            $maxPeZi = $tip === 'abonare' ? 3 : 1;
+            if ((int) ($limite['recent'] ?? 0) > 0 || (int) ($limite['pe_zi'] ?? 0) >= $maxPeZi) {
+                return 'limita_adresa';
+            }
+            $global = (int) $db->query('SELECT COUNT(*) FROM newsletter_cereri_confirmare WHERE created_at > NOW() - INTERVAL 1 HOUR')->fetchColumn();
+            if ($global >= self::LIMITA_GLOBALA_ORA) {
+                // Se vede în admin (Liste abonați, Statistici): poate fi un atac.
+                Settings::save($db, ['newsletter_limita_globala_atinsa' => date('Y-m-d H:i:s')]);
+                return 'limita_globala';
+            }
+            $db->prepare('INSERT INTO newsletter_cereri_confirmare (email_hash, ip, tip, created_at) VALUES (:h, :ip, :tip, NOW())')
+                ->execute(['h' => $amprenta, 'ip' => $ip !== '' ? $ip : null, 'tip' => $tip]);
+            return 'ok';
+        } finally {
+            try {
+                $db->prepare('SELECT RELEASE_LOCK(:n)')->execute(['n' => $lacat]);
+            } catch (Throwable) {
+            }
+        }
+    }
+
     /**
      * Cererea de abonare din formularul public (dubla confirmare).
      *
@@ -421,10 +499,10 @@ final class NewsletterService
      * cu linkul de confirmare. Doar clicul lui din email (și butonul de pe
      * pagină) îl face abonat activ. Un abonat activ nu se atinge.
      *
-     * Limite: pe adresă cel mult un email la 5 minute și 3 pe zi; pe IP cel
-     * mult 20 de cereri pe oră.
+     * `$ip` trebuie să fie REMOTE_ADDR (pe Hostinger/LiteSpeed e deja IP-ul
+     * real al clientului); X-Forwarded-For se poate falsifica.
      *
-     * @return array{stare: string, email: string} stare: trimis | deja_activ | limita_adresa | limita_ip
+     * @return array{stare: string, email: string} stare: trimis | deja_activ | limita_adresa | limita_ip | limita_globala | ocupat
      */
     public static function cerereAbonare(PDO $db, int $listId, string $email, string $name, string $ip, array $settings): array
     {
@@ -434,16 +512,7 @@ final class NewsletterService
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new RuntimeException('Adresa de email este invalidă.');
         }
-        $amprenta = self::amprentaAdresa($email);
         $ip = substr(trim($ip), 0, 64);
-
-        if ($ip !== '') {
-            $peIp = $db->prepare('SELECT COUNT(*) FROM newsletter_cereri_confirmare WHERE ip = :ip AND created_at > NOW() - INTERVAL 1 HOUR');
-            $peIp->execute(['ip' => $ip]);
-            if ((int) $peIp->fetchColumn() >= 20) {
-                return ['stare' => 'limita_ip', 'email' => $email];
-            }
-        }
 
         $rand = $db->prepare('SELECT id, status FROM newsletter_subscribers WHERE email = :email LIMIT 1');
         $rand->execute(['email' => $email]);
@@ -462,30 +531,38 @@ final class NewsletterService
             return ['stare' => 'deja_activ', 'email' => $email];
         }
 
-        $peAdresa = $db->prepare(
-            'SELECT COUNT(*) AS pe_zi, SUM(created_at > NOW() - INTERVAL 5 MINUTE) AS recent
-             FROM newsletter_cereri_confirmare WHERE email_hash = :h AND created_at > NOW() - INTERVAL 1 DAY'
-        );
-        $peAdresa->execute(['h' => $amprenta]);
-        $limite = $peAdresa->fetch() ?: [];
-        if ((int) ($limite['recent'] ?? 0) > 0 || (int) ($limite['pe_zi'] ?? 0) >= 3) {
-            return ['stare' => 'limita_adresa', 'email' => $email];
+        $rezervare = self::rezervaTrimitere($db, 'abonare', self::amprentaAdresa($email), $ip);
+        if ($rezervare !== 'ok') {
+            return ['stare' => $rezervare, 'email' => $email];
         }
 
         $acum = date('Y-m-d H:i:s');
+        $rand->execute(['email' => $email]);
+        $existent = $rand->fetch();
         if (!is_array($existent)) {
-            $db->prepare('INSERT INTO newsletter_subscribers (email, name, status, pending_at) VALUES (:e, :n, "pending", :p)')
-                ->execute(['e' => $email, 'n' => $name, 'p' => $acum]);
-            $id = (int) $db->lastInsertId();
+            try {
+                $db->prepare('INSERT INTO newsletter_subscribers (email, name, status, pending_at) VALUES (:e, :n, "pending", :p)')
+                    ->execute(['e' => $email, 'n' => $name, 'p' => $acum]);
+                $id = (int) $db->lastInsertId();
+            } catch (Throwable) {
+                // Rândul a apărut între timp (altă cerere pentru aceeași adresă).
+                $rand->execute(['email' => $email]);
+                $id = (int) (($rand->fetch() ?: [])['id'] ?? 0);
+            }
         } else {
             $id = (int) $existent['id'];
+            if ((string) $existent['status'] === 'active') {
+                $leaga($id);
+                return ['stare' => 'deja_activ', 'email' => $email];
+            }
             // „pending” rămâne „pending”; „unsubscribed” rămâne dezabonat până la clic.
             $db->prepare('UPDATE newsletter_subscribers SET pending_at = :p, name = CASE WHEN :gol = 1 THEN name ELSE :n END WHERE id = :id')
                 ->execute(['p' => $acum, 'gol' => $name === '' ? 1 : 0, 'n' => $name, 'id' => $id]);
         }
+        if ($id <= 0) {
+            throw new RuntimeException('Nu am putut înregistra cererea de abonare.');
+        }
         $leaga($id);
-        $db->prepare('INSERT INTO newsletter_cereri_confirmare (email_hash, ip, created_at) VALUES (:h, :ip, NOW())')
-            ->execute(['h' => $amprenta, 'ip' => $ip !== '' ? $ip : null]);
 
         $url = self::urlConfirmare($id, $email, (int) strtotime($acum));
         $numeMagazin = trim((string) ($settings['order_email_from_name'] ?? '')) ?: 'Bioscem';
@@ -497,6 +574,49 @@ final class NewsletterService
             'meta' => ['subscriber_id' => $id],
         ]);
         return ['stare' => 'trimis', 'email' => $email];
+    }
+
+    /**
+     * Linkurile vechi de dezabonare (semnate doar cu cheia veche, ghicibilă):
+     * butonul de pe pagină cere serverului să trimită, pe adresa abonatului,
+     * un link nou (cheia secretă). Doar cine are acces la inbox se poate apoi
+     * dezabona. Răspunsul e mereu același (abonatul există sau nu, limită sau
+     * nu), ca pagina să nu spună nimic despre cine e abonat.
+     *
+     * Limite: un email pe abonat la 24 de ore, plus limitele pe IP și globale.
+     */
+    public static function trimiteLinkDezabonare(PDO $db, string $token, string $ip, array $settings): void
+    {
+        $parsed = self::parseUnsubscribeToken($token);
+        if (!is_array($parsed) || empty($parsed['vechi'])) {
+            return;
+        }
+        self::ensureSchema($db);
+        $rand = $db->prepare('SELECT id, email, status FROM newsletter_subscribers WHERE id = :id AND email = :email LIMIT 1');
+        $rand->execute(['id' => (int) $parsed['id'], 'email' => (string) $parsed['email']]);
+        $abonat = $rand->fetch();
+        if (!is_array($abonat) || (string) $abonat['status'] === 'unsubscribed') {
+            return;
+        }
+        if (self::rezervaTrimitere($db, 'dezabonare', hash('sha256', 'dez|' . (int) $abonat['id']), substr(trim($ip), 0, 64)) !== 'ok') {
+            return;
+        }
+        $numeMagazin = trim((string) ($settings['order_email_from_name'] ?? '')) ?: 'Bioscem';
+        $subiect = 'Linkul tău de dezabonare de la newsletterul ' . $numeMagazin;
+        $html = self::renderHtmlFromBlocks(
+            NewsletterSabloane::emailLinkDezabonare(self::unsubscribeUrlForSubscriber($abonat), $numeMagazin),
+            $subiect,
+            false
+        );
+        try {
+            OrderMailer::sendCustom((string) $abonat['email'], $subiect, $html, $settings, $db, [
+                'email_type' => 'newsletter_link_dezabonare',
+                'source' => 'newsletter_unsubscribe',
+                'meta' => ['subscriber_id' => (int) $abonat['id']],
+            ]);
+        } catch (Throwable) {
+            // Eroarea rămâne în istoricul trimiterilor; pagina răspunde la fel.
+        }
     }
 
     /** Linkul de confirmare, semnat cu cheia nouă (niciodată cu cea veche). */
@@ -693,6 +813,11 @@ final class NewsletterService
         if (!is_array($parsed)) {
             return ['ok' => false, 'email' => ''];
         }
+        // Cheia veche: niciodată dezabonare directă, și același răspuns fie că
+        // abonatul există, fie că nu (verificarea existenței vine abia după).
+        if (!empty($parsed['vechi'])) {
+            return ['ok' => false, 'confirmare' => true, 'email' => ''];
+        }
 
         $subscriberId = (int) ($parsed['id'] ?? 0);
         $email = strtolower(trim((string) ($parsed['email'] ?? '')));
@@ -714,14 +839,6 @@ final class NewsletterService
         $exists = (int) ($find->fetchColumn() ?: 0);
         if ($exists <= 0) {
             return ['ok' => false, 'email' => ''];
-        }
-        if (!empty($parsed['vechi'])) {
-            return [
-                'ok' => false,
-                'confirmare' => true,
-                'email' => $email,
-                'token_nou' => self::buildUnsubscribeToken($subscriberId, $email),
-            ];
         }
 
         $update = $db->prepare(
@@ -749,20 +866,26 @@ final class NewsletterService
     {
         $parsed = self::parseUnsubscribeToken($token);
         if (!is_array($parsed)) {
-            return ['ok' => false, 'email' => '', 'token_nou' => '', 'deja' => false];
+            return ['ok' => false, 'email' => '', 'token_nou' => '', 'deja' => false, 'vechi' => false];
+        }
+        if (!empty($parsed['vechi'])) {
+            // Cheia veche se poate falsifica: pagina NU dă un token nou și nu
+            // spune dacă abonatul există; butonul ei trimite linkul pe email.
+            return ['ok' => true, 'email' => '', 'token_nou' => '', 'deja' => false, 'vechi' => true];
         }
         self::ensureSchema($db);
         $stmt = $db->prepare('SELECT status FROM newsletter_subscribers WHERE id = :id AND email = :email LIMIT 1');
         $stmt->execute(['id' => (int) $parsed['id'], 'email' => (string) $parsed['email']]);
         $stare = $stmt->fetchColumn();
         if ($stare === false) {
-            return ['ok' => false, 'email' => '', 'token_nou' => '', 'deja' => false];
+            return ['ok' => false, 'email' => '', 'token_nou' => '', 'deja' => false, 'vechi' => false];
         }
         return [
             'ok' => true,
             'email' => (string) $parsed['email'],
-            'token_nou' => self::buildUnsubscribeToken((int) $parsed['id'], (string) $parsed['email']),
+            'token_nou' => $token,
             'deja' => (string) $stare === 'unsubscribed',
+            'vechi' => false,
         ];
     }
 

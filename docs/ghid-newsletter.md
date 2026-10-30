@@ -156,7 +156,10 @@ altfel). În lista de newslettere apeși ⧉ (**Duplică**), modifici copia și 
 la toată lista, deci și la cei care l-au primit deja. Gândește-te dacă merită.
 
 **Cineva vrea să nu mai primească.** Linkul „Dezabonează-mă” din email deschide o pagină cu
-butonul **Confirm dezabonarea**; după ce îl apasă, gata. Dacă îți scrie direct, îl cauți în
+butonul **Confirm dezabonarea**; după ce îl apasă, gata. Excepție: linkurile din
+newsletterele trimise **înainte de actualizarea din noiembrie 2026** deschid o pagină cu
+butonul **Trimite-mi linkul de dezabonare pe email**; omul primește pe email un link nou și
+se dezabonează de acolo (așa nu poate dezabona altcineva în locul lui). Dacă îți scrie direct, îl cauți în
 **Liste abonați** și apeși ⟲. Dacă cere să-i ștergi datele, apeși 🗑 (vezi mai jos, „Lista
 «nu trimite»”).
 
@@ -175,9 +178,11 @@ care se deschide). Așa nimeni nu poate abona adresa altcuiva.
 - Până confirmă, în **Liste abonați** apare ca **neconfirmat** și nu primește newslettere.
   Nu-l poți confirma tu în locul lui.
 - Linkul e valabil **30 de zile**. Cererile neconfirmate se șterg singure după 30 de zile.
-- Aceeași adresă primește cel mult un email de confirmare la 5 minute (3 pe zi), iar de pe
-  aceeași conexiune se pot face cel mult 20 de cereri pe oră: formularul nu poate fi folosit
-  ca să umple inboxul cuiva.
+- Aceeași adresă primește cel mult un email de confirmare la 5 minute (3 pe zi), de pe
+  aceeași conexiune se pot face cel mult 20 de cereri pe oră, iar pe tot site-ul pleacă cel
+  mult 100 de astfel de emailuri pe oră: formularul nu poate fi folosit ca să umple inboxul
+  cuiva. Dacă se atinge limita de 100, în **Liste abonați** și în **Statistici** apare o notă
+  galbenă: dacă nu ai o campanie mare de înscrieri, spune-i programatorului (poate fi un atac).
 - Cine se dezabonase și se reabonează din formular rămâne dezabonat până apasă linkul.
 - Adresele adăugate de tine în **Liste abonați** sau din import sunt active imediat, ca
   înainte: adaugă-le doar dacă omul și-a dat acordul (în magazin, pe hârtie, la telefon).

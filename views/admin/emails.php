@@ -58,6 +58,16 @@ if (!in_array($emailSendHistoryFilterStatus, ['all', 'sent', 'failed'], true)) {
 $emailSendHistoryFilterType = trim((string) ($emailSendHistoryFilters['type'] ?? ''));
 $galleryImages = is_array($galleryImages ?? null) ? $galleryImages : [];
 $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyOpens : [];
+// Limita globală a emailurilor de confirmare / dezabonare atinsă în ultimele
+// 24 de ore: o arătăm în Liste abonați și în Statistici (poate fi un atac).
+$limitaOptinAtinsa = trim((string) ($settings['newsletter_limita_globala_atinsa'] ?? ''));
+$limitaOptinTs = $limitaOptinAtinsa !== '' ? strtotime($limitaOptinAtinsa) : false;
+$notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
+    ? '<div role="status" style="margin:0 0 12px;padding:10px 14px;border:1px solid #fde68a;border-left:4px solid #ca8a04;border-radius:10px;background:#fefce8;color:#713f12;font-size:13px;line-height:1.55;">'
+        . '<strong>Formularul de abonare a atins limita de ' . \App\Support\NewsletterService::LIMITA_GLOBALA_ORA . ' de emailuri pe oră</strong> (ultima dată: '
+        . htmlspecialchars(date('d.m.Y, H:i', (int) $limitaOptinTs), ENT_QUOTES) . '). Unele cereri de abonare sau de dezabonare n-au primit email. '
+        . 'Dacă nu ai o campanie mare de înscrieri, poate fi un atac: spune-i programatorului.</div>'
+    : '';
 ?>
 
 <?php if ($currentSection === 'sender'): ?>
@@ -795,6 +805,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
         <?php endif; ?>
 
         <?php if ($newsletterTab === 'subscribers'): ?>
+            <?= $notaLimitaOptin ?>
             <div class="newsletter-subscribers-grid">
                 <aside class="newsletter-lists-col">
                     <div class="newsletter-lists-head">
@@ -1346,6 +1357,7 @@ $campaignHourlyOpens = is_array($campaignHourlyOpens ?? null) ? $campaignHourlyO
 
         <?php if ($statsCampaignId === 0 || !$statsCampaignDetail): ?>
             <!-- OVERVIEW MODE -->
+            <?= $notaLimitaOptin ?>
             <div class="nl-stats-kpi-row">
                 <div class="nl-stats-kpi">
                     <div class="nl-kpi-icon">📋</div>

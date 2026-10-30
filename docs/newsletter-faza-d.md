@@ -70,6 +70,9 @@ Adrese, nume de câmpuri și atribute noi, de declarat în `$contractAdminPortur
   fluxurilor publice (`SiteController::paginaNewsletter`), tabelele `newsletter_suprimate` și
   `newsletter_cereri_confirmare`, coloanele `pending_at` / `confirmed_at` și starea `pending` a
   abonatului (în admin: „neconfirmat”, fără butonul ⟲); clasa `AdresaSuprimata`;
+- câmpul `trimite_link=1` pe `POST /newsletter/unsubscribe/{token}` (linkurile vechi: emailul
+  cu linkul nou), coloana `tip` din `newsletter_cereri_confirmare`, setarea
+  `newsletter_limita_globala_atinsa` și nota galbenă din Liste abonați / Statistici;
 - cheia de semnare `newsletter_cheie_semnare` și pragul cheii vechi `newsletter_cheie_limita` în
   `settings` (excluse din `Settings::all`), pagina „Confirm dezabonarea” (`confirmare=1` pe
   `POST /newsletter/unsubscribe/{token}`) și
