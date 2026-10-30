@@ -3916,20 +3916,55 @@ final class SiteController
 
         NewsletterService::ensureSchema($db);
         $result = NewsletterService::unsubscribeByToken($db, $token);
+        if (!empty($result['confirmare'])) {
+            // Link dintr-un email vechi (semnătură cu cheia de dinainte): nu
+            // dezabonăm la simpla deschidere, ci după un clic pe buton. Butonul
+            // trimite un token nou, semnat cu cheia secretă.
+            $this->paginaConfirmareDezabonare((string) $result['email'], (string) $result['token_nou']);
+            return;
+        }
         if (!$result['ok']) {
             http_response_code(404);
             echo 'Linkul de dezabonare nu este valid sau a expirat.';
             return;
         }
 
+        $this->paginaDezabonat((string) ($result['email'] ?? ''));
+    }
+
+    private function paginaDezabonat(string $email): void
+    {
+        $result = ['email' => $email];
         header('Content-Type: text/html; charset=utf-8');
+        header('X-Robots-Tag: noindex');
         echo '<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dezabonare</title></head><body style="margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#1f2937;"><div style="max-width:560px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;text-align:center;"><h1 style="margin:0 0 10px;font-size:28px;color:#0f172a;">Te-ai dezabonat cu succes.</h1><p style="margin:0;color:#475569;line-height:1.6;">Nu vei mai primi newslettere de la noi pe adresa <strong style="color:#0f172a;">' . htmlspecialchars((string) ($result['email'] ?? ''), ENT_QUOTES) . '</strong>.</p></div></body></html>';
+    }
+
+    /** „Confirm dezabonarea”, pentru linkurile din emailurile vechi. */
+    private function paginaConfirmareDezabonare(string $email, string $tokenNou): void
+    {
+        header('Content-Type: text/html; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        $actiune = '/newsletter/unsubscribe/' . rawurlencode($tokenNou);
+        echo '<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Dezabonare</title></head>'
+            . '<body style="margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#1f2937;">'
+            . '<div style="max-width:560px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;text-align:center;">'
+            . '<h1 style="margin:0 0 10px;font-size:26px;color:#0f172a;">Te dezabonezi de la newsletter?</h1>'
+            . '<p style="margin:0 0 18px;color:#475569;line-height:1.6;">Nu vei mai primi newslettere pe adresa <strong style="color:#0f172a;">'
+            . htmlspecialchars($email, ENT_QUOTES) . '</strong>.</p>'
+            . '<form method="post" action="' . htmlspecialchars($actiune, ENT_QUOTES) . '" style="margin:0;">'
+            . '<input type="hidden" name="confirmare" value="1">'
+            . '<button type="submit" style="padding:12px 22px;border:0;border-radius:8px;background:#075d61;color:#fff;font-size:16px;font-weight:700;cursor:pointer;">Confirm dezabonarea</button>'
+            . '</form></div></body></html>';
     }
 
     /**
      * Dezabonarea „cu un clic” din clientul de email (RFC 8058): Gmail, Yahoo
      * și Apple Mail trimit singure un POST la linkul din antetul
      * List-Unsubscribe, fără să deschidă pagina. Răspunsul e doar un cod.
+     * Tot aici ajunge butonul „Confirm dezabonarea” (cu `confirmare=1`), care
+     * primește o pagină. Un token semnat doar cu cheia veche e refuzat: emailurile
+     * vechi n-aveau antetul List-Unsubscribe, deci nu există POST-uri vechi legitime.
      */
     public function newsletterUnsubscribeOneClick(array $params): void
     {
@@ -3944,9 +3979,18 @@ final class SiteController
         }
         NewsletterService::ensureSchema($db);
         $result = NewsletterService::unsubscribeByToken($db, $token);
+        if (!empty($result['confirmare'])) {
+            http_response_code(403);
+            echo 'Link vechi: deschide linkul din email și confirmă dezabonarea.';
+            return;
+        }
         if (!$result['ok']) {
             http_response_code(404);
             echo 'Link invalid';
+            return;
+        }
+        if ((string) ($_POST['confirmare'] ?? '') === '1') {
+            $this->paginaDezabonat((string) ($result['email'] ?? ''));
             return;
         }
         echo 'Dezabonat';

@@ -232,6 +232,9 @@ final class NewsletterService
             );
         } catch (Throwable) {
         }
+        // Pragul pentru linkurile semnate cu cheia veche se fixează la prima
+        // rulare după actualizare, înainte să plece ceva semnat cu cheia nouă.
+        self::limitaCheieVeche($db);
     }
 
     public static function defaultListId(PDO $db): int
@@ -419,6 +422,13 @@ final class NewsletterService
         return $html . $footer;
     }
 
+    /**
+     * Dezabonează după linkul semnat. Un link semnat DOAR cu cheia veche
+     * (ghicibilă) nu dezabonează direct: întoarce `confirmare` = true, iar
+     * pagina îi cere omului să apese „Confirm dezabonarea” (formular cu un
+     * token nou, semnat cu cheia nouă). Altfel oricine ar fi putut dezabona
+     * toată lista cu id-uri la rând.
+     */
     public static function unsubscribeByToken(PDO $db, string $token): array
     {
         $parsed = self::parseUnsubscribeToken($token);
@@ -446,6 +456,14 @@ final class NewsletterService
         $exists = (int) ($find->fetchColumn() ?: 0);
         if ($exists <= 0) {
             return ['ok' => false, 'email' => ''];
+        }
+        if (!empty($parsed['vechi'])) {
+            return [
+                'ok' => false,
+                'confirmare' => true,
+                'email' => $email,
+                'token_nou' => self::buildUnsubscribeToken($subscriberId, $email),
+            ];
         }
 
         $update = $db->prepare(
@@ -1317,7 +1335,9 @@ final class NewsletterService
 
     public static function handleOpenTrack(PDO $db, int $campaignId, int $subscriberId, string $token): string
     {
-        if (!self::semnaturaBuna("open|{$campaignId}|{$subscriberId}", $token)) {
+        // Și cu cheia veche se numără deschiderea: pixelul nu pune cookie și nu
+        // redirecționează nicăieri.
+        if (self::semnaturaBuna("open|{$campaignId}|{$subscriberId}", $token) === null) {
             return base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
         }
 
@@ -1359,10 +1379,19 @@ final class NewsletterService
      */
     public static function handleClickTrack(PDO $db, int $campaignId, int $subscriberId, string $token, string $destUrl): ?string
     {
-        // Semnătura acoperă adresa întreagă, deci și un link semnat cu cheia
-        // veche duce doar exact unde a fost trimis (fără redirecționare deschisă).
-        if (!self::semnaturaBuna("click|{$campaignId}|{$subscriberId}|{$destUrl}", $token)) {
+        $semnatura = self::semnaturaBuna("click|{$campaignId}|{$subscriberId}|{$destUrl}", $token);
+        if ($semnatura === null) {
             return null;
+        }
+        // Cheia veche se poate ghici, deci un token doar cu ea e crezut numai
+        // pentru o campanie trimisă înainte de cheia nouă și numai dacă adresa
+        // chiar apare în acea campanie. Altfel: prima pagină, fără cookie.
+        if ($semnatura === 'vechi') {
+            $limita = self::limitaCheieVeche();
+            if ($campaignId > $limita['campanie'] || $subscriberId > $limita['abonat']
+                || !self::adresaEInCampanie($db, $campaignId, $destUrl)) {
+                return null;
+            }
         }
         // Emailurile trimise înainte de reparația de mai sus au semnat adresa
         // cu „&amp;” în ea; semnătura lor rămâne bună, iar adresa se curăță aici.
@@ -1430,14 +1459,17 @@ final class NewsletterService
         if ($providedSignature === null) {
             return null;
         }
-        $potrivire = false;
-        foreach (self::cheiDeVerificare() as $cheie) {
+        $potrivire = null;
+        foreach (self::cheiNoi() as $cheie) {
             if (hash_equals(hash_hmac('sha256', $payloadEncoded, $cheie, true), $providedSignature)) {
-                $potrivire = true;
+                $potrivire = 'nou';
                 break;
             }
         }
-        if (!$potrivire) {
+        if ($potrivire === null && hash_equals(hash_hmac('sha256', $payloadEncoded, self::cheieVeche(), true), $providedSignature)) {
+            $potrivire = 'vechi';
+        }
+        if ($potrivire === null) {
             return null;
         }
 
@@ -1452,10 +1484,16 @@ final class NewsletterService
         if ($id <= 0 || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return null;
         }
+        // Cheia veche contează doar pentru abonații care existau când a apărut
+        // cheia nouă (doar ei pot avea un email vechi).
+        if ($potrivire === 'vechi' && $id > self::limitaCheieVeche()['abonat']) {
+            return null;
+        }
 
         return [
             'id' => $id,
             'email' => $email,
+            'vechi' => $potrivire === 'vechi',
         ];
     }
 
@@ -1495,6 +1533,7 @@ final class NewsletterService
         if (self::$cheieSemnare !== null) {
             return self::$cheieSemnare;
         }
+        self::limitaCheieVeche();
         $dinEnv = trim((string) Env::get('NEWSLETTER_SECRET', ''));
         if ($dinEnv !== '') {
             return self::$cheieSemnare = $dinEnv;
@@ -1532,11 +1571,10 @@ final class NewsletterService
     }
 
     /**
-     * Cheile acceptate la verificare: cea nouă, cea din bază (dacă între timp s-a
-     * pus NEWSLETTER_SECRET în .env) și cheia veche, ca linkurile din emailurile
-     * trimise deja (dezabonare, clic) să meargă în continuare.
+     * Cheile noi (secrete) acceptate la verificare: cea curentă și cea din bază
+     * (dacă între timp s-a pus NEWSLETTER_SECRET în .env).
      */
-    private static function cheiDeVerificare(): array
+    private static function cheiNoi(): array
     {
         $chei = [];
         try {
@@ -1547,15 +1585,112 @@ final class NewsletterService
         if ($dinBaza !== '') {
             $chei[] = $dinBaza;
         }
-        $chei[] = self::cheieVeche();
         return array_values(array_unique($chei));
     }
 
-    private static function semnaturaBuna(string $mesaj, string $token): bool
+    /**
+     * Ce cheie a semnat tokenul: „nou” (secretă), „vechi” (cea ghicibilă, doar
+     * pentru emailurile trimise înainte, cu restricțiile de la fiecare folosire)
+     * sau null.
+     */
+    private static function semnaturaBuna(string $mesaj, string $token): ?string
     {
-        foreach (self::cheiDeVerificare() as $cheie) {
+        foreach (self::cheiNoi() as $cheie) {
             if (hash_equals(self::base64UrlEncode(hash_hmac('sha256', $mesaj, $cheie, true)), $token)) {
-                return true;
+                return 'nou';
+            }
+        }
+        if (hash_equals(self::base64UrlEncode(hash_hmac('sha256', $mesaj, self::cheieVeche(), true)), $token)) {
+            return 'vechi';
+        }
+        return null;
+    }
+
+    /** Pragul pentru cheia veche, lângă cheie în settings (ascuns la fel). */
+    public const LIMITA_SETARE = 'newsletter_cheie_limita';
+
+    private static ?array $limitaVeche = null;
+
+    /**
+     * Cea mai mare campanie și cel mai mare abonat de când a apărut cheia nouă:
+     * doar ei pot avea linkuri semnate cu cheia veche. Se scrie o singură dată
+     * (INSERT IGNORE), la prima folosire după actualizare (ensureSchema, cron,
+     * prima semnare).
+     *
+     * @return array{campanie:int, abonat:int}
+     */
+    public static function limitaCheieVeche(?PDO $db = null): array
+    {
+        if (self::$limitaVeche !== null) {
+            return self::$limitaVeche;
+        }
+        $nimic = ['campanie' => 0, 'abonat' => 0];
+        try {
+            if (!$db instanceof PDO) {
+                $config = require __DIR__ . '/../../config/app.php';
+                $db = Database::connection($config['db']);
+            }
+            if (!$db instanceof PDO) {
+                return $nimic;
+            }
+            $citeste = $db->prepare('SELECT `value` FROM settings WHERE `key` = :k LIMIT 1');
+            $citeste->execute(['k' => self::LIMITA_SETARE]);
+            $brut = (string) ($citeste->fetchColumn() ?: '');
+            if ($brut === '') {
+                $campanie = (int) ($db->query('SELECT COALESCE(MAX(id), 0) FROM newsletter_campaigns')->fetchColumn() ?: 0);
+                $abonat = (int) ($db->query('SELECT COALESCE(MAX(id), 0) FROM newsletter_subscribers')->fetchColumn() ?: 0);
+                $db->prepare('INSERT IGNORE INTO settings (`key`, `value`) VALUES (:k, :v)')->execute([
+                    'k' => self::LIMITA_SETARE,
+                    'v' => json_encode(['campanie' => $campanie, 'abonat' => $abonat]),
+                ]);
+                $citeste->execute(['k' => self::LIMITA_SETARE]);
+                $brut = (string) ($citeste->fetchColumn() ?: '');
+            }
+            $date = json_decode($brut, true);
+            if (!is_array($date)) {
+                return $nimic;
+            }
+            return self::$limitaVeche = [
+                'campanie' => max(0, (int) ($date['campanie'] ?? 0)),
+                'abonat' => max(0, (int) ($date['abonat'] ?? 0)),
+            ];
+        } catch (Throwable) {
+            return $nimic;
+        }
+    }
+
+    /**
+     * Adresa apare în campanie (în HTML-ul salvat sau în blocurile ei),
+     * normalizată ca la semnare: „&amp;” decodat și spațiile de la capete scoase.
+     */
+    private static function adresaEInCampanie(PDO $db, int $campaignId, string $destUrl): bool
+    {
+        $stmt = $db->prepare('SELECT subject, html_content, blocks_json FROM newsletter_campaigns WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $campaignId]);
+        $rand = $stmt->fetch();
+        if (!is_array($rand)) {
+            return false;
+        }
+        $surse = [(string) ($rand['html_content'] ?? '')];
+        $blocuri = json_decode((string) ($rand['blocks_json'] ?? ''), true);
+        if (is_array($blocuri) && $blocuri !== []) {
+            try {
+                $surse[] = self::renderHtmlFromBlocks($blocuri, (string) ($rand['subject'] ?? ''));
+            } catch (Throwable) {
+            }
+        }
+        $norm = static fn(string $u): string => trim(html_entity_decode($u, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $cautat = $norm($destUrl);
+        if ($cautat === '') {
+            return false;
+        }
+        foreach ($surse as $html) {
+            if (preg_match_all('/<a\s[^>]*?href=["\']([^"\']+)["\']/si', $html, $m)) {
+                foreach ($m[1] as $href) {
+                    if ($norm($href) === $cautat) {
+                        return true;
+                    }
+                }
             }
         }
         return false;

@@ -66,7 +66,9 @@ Adrese, nume de câmpuri și atribute noi, de declarat în `$contractAdminPortur
 - coloanele `newsletter_campaign_sends.attempts`, `newsletter_campaigns.last_error` și starea
   nouă `paused` (Oprit) a unei campanii; stările `pending` și `unknown` (neconfirmat) ale unui
   rând din evidența trimiterilor;
-- cheia de semnare `newsletter_cheie_semnare` în `settings` (exclusă din `Settings::all`) și
+- cheia de semnare `newsletter_cheie_semnare` și pragul cheii vechi `newsletter_cheie_limita` în
+  `settings` (excluse din `Settings::all`), pagina „Confirm dezabonarea” (`confirmare=1` pe
+  `POST /newsletter/unsubscribe/{token}`) și
   variabila opțională `NEWSLETTER_SECRET`; clasa `TrimitereNeconfirmata`.
 
 Plimbarea cu tastatura (WP-31): pașii sunt butoane, fiecare element are inel de focus

@@ -655,7 +655,13 @@ confirma primirea dupa ce a primit tot mesajul (conexiune cazuta), adresa ramane
 Linkurile din newsletter (dezabonare, pixel, clic) sunt semnate cu o cheie aleatoare:
 `NEWSLETTER_SECRET` din `.env` daca exista (optional), altfel 32 de octeti generati o
 singura data in tabelul `settings` (`newsletter_cheie_semnare`, care nu iese prin
-`Settings::all`). Linkurile din emailurile trimise inainte (cheia veche) merg in continuare.
+`Settings::all`). Cheia veche (ghicibila) mai e crezuta doar pentru emailurile trimise
+inainte, cu limite: la prima rulare dupa actualizare se scrie pragul
+`newsletter_cheie_limita` (cea mai mare campanie si cel mai mare abonat de atunci, ascuns
+la fel). Un clic semnat doar cu cheia veche duce mai departe numai pentru o campanie
+de sub prag si numai la o adresa care chiar apare in acea campanie (altfel: prima pagina,
+fara cookie). Un link de dezabonare vechi nu dezaboneaza direct: arata o pagina cu
+„Confirm dezabonarea" (formular cu token nou); un POST direct cu token vechi e refuzat.
 
 Cronul scrie ora ultimei rulari in setarea `newsletter_cron_ultima_rulare`; lista de
 verificare din builder avertizeaza daca a trecut prea mult de atunci.
