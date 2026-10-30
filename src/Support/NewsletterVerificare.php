@@ -127,6 +127,15 @@ final class NewsletterVerificare
             $puncte[] = self::punct('cron', 'ok', 'Trimiterea automată merge', 'Ultima rulare: ' . date('H:i', $ts) . '.');
         }
 
+        // Doar informativ (verificarea de după actualizare): IP-ul văzut de site
+        // trebuie să fie al vizitatorului, nu al CDN-ului Hostinger, altfel
+        // limitele formularului de abonare s-ar aplica tuturor deodată.
+        $ipVazut = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+        if ($ipVazut !== '') {
+            $puncte[] = self::punct('ip', 'info', 'IP-ul tău, așa cum îl vede site-ul: ' . $ipVazut . ' (REMOTE_ADDR)',
+                'Compară-l cu IP-ul tău real (caută pe Google „what is my ip”). Dacă diferă, limitele formularului de abonare nu merg cum trebuie: spune-i programatorului.');
+        }
+
         // 6. Linkurile și pozele
         [$punctLinkuri, $punctPoze] = self::verificaLinkuriSiPoze($db, $html, $normalizate, $baseUrl, $verificaPeInternet);
         $puncte[] = $punctLinkuri;

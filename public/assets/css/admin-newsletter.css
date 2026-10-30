@@ -19,6 +19,8 @@
 .nlp-verificare--ok .nlp-verificare__semn { background: var(--adm-ok, #15803d); }
 .nlp-verificare--avertisment .nlp-verificare__semn { background: #ca8a04; }
 .nlp-verificare--eroare .nlp-verificare__semn { background: var(--adm-eroare, #b91c1c); }
+.nlp-verificare--info .nlp-verificare__semn { background: var(--adm-info, #1d4ed8); }
+.nlp-verificare--info { border-color: #bfdbfe; background: var(--adm-info-fundal, #eff6ff); }
 .nlp-verificare--eroare { border-color: #fecaca; background: var(--adm-eroare-fundal, #fef2f2); }
 .nlp-verificare--avertisment { border-color: #fde68a; background: var(--adm-avertisment-fundal, #fefce8); }
 .nlp-verificare__titlu { font-weight: 600; display: block; }

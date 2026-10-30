@@ -3906,8 +3906,7 @@ final class SiteController
             return;
         }
         if (in_array($rezultat['stare'], ['limita_ip', 'limita_globala', 'ocupat'], true)) {
-            http_response_code(429);
-            $this->respondOptInError('Prea multe cereri de abonare acum. Încearcă din nou peste o oră.');
+            $this->respondOptInError('Prea multe cereri de abonare acum. Încearcă din nou peste o oră.', 429);
             return;
         }
 
@@ -4053,11 +4052,24 @@ final class SiteController
         if ((string) ($_POST['trimite_link'] ?? '') === '1') {
             // Butonul de pe pagina unui link vechi: linkul nou pleacă doar pe
             // adresa abonatului. Răspunsul e mereu același.
-            NewsletterService::trimiteLinkDezabonare($db, $token, (string) ($_SERVER['REMOTE_ADDR'] ?? ''), Settings::all($db));
-            $this->paginaNewsletter(
-                'Verifică-ți emailul',
-                'Dacă adresa e abonată la newsletter, i-am trimis un email cu linkul de dezabonare. Apasă butonul din el. (Cel mult un email pe zi.)'
-            );
+            $stare = NewsletterService::trimiteLinkDezabonare($db, $token, (string) ($_SERVER['REMOTE_ADDR'] ?? ''), Settings::all($db));
+            if ($stare === 'gata') {
+                $this->paginaNewsletter(
+                    'Verifică-ți emailul',
+                    'Dacă adresa e abonată la newsletter, i-am trimis un email cu linkul de dezabonare. Apasă butonul din el. (Cel mult un email pe zi.)'
+                );
+            } elseif ($stare === 'limita_ip') {
+                $this->paginaNewsletter('Prea multe cereri', 'Au fost prea multe cereri de pe această conexiune. Încearcă din nou peste o oră.', '', '', 429);
+            } else {
+                // Emailul chiar n-a plecat: o spunem, ca omul să nu aștepte degeaba.
+                $this->paginaNewsletter(
+                    'Nu am putut trimite emailul',
+                    'Emailul cu linkul de dezabonare nu a putut fi trimis acum. Încearcă din nou peste câteva minute sau scrie-ne și te dezabonăm noi.',
+                    '',
+                    '',
+                    503
+                );
+            }
             return;
         }
         $result = NewsletterService::unsubscribeByToken($db, $token);
@@ -9263,10 +9275,10 @@ CSS;
         header('Location: ' . ($redirect !== '' ? $redirect : '/'));
     }
 
-    private function respondOptInError(string $message): void
+    private function respondOptInError(string $message, int $cod = 422): void
     {
         if ($this->respondsWithJson()) {
-            http_response_code(422);
+            http_response_code($cod);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => false, 'message' => $message], JSON_UNESCAPED_UNICODE);
             return;

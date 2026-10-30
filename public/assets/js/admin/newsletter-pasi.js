@@ -127,8 +127,8 @@
   }
 
   /* ── Lista de verificare ── */
-  const SEMNE = { ok: '✓', avertisment: '!', eroare: '✕' };
-  const ETICHETE = { ok: 'În regulă', avertisment: 'De verificat', eroare: 'De reparat' };
+  const SEMNE = { ok: '✓', avertisment: '!', eroare: '✕', info: 'i' };
+  const ETICHETE = { ok: 'În regulă', avertisment: 'De verificat', eroare: 'De reparat', info: 'Informație' };
 
   function deseneazaVerificari(rezultat) {
     const lista = $('#nlp-verificari');

@@ -65,7 +65,7 @@ $limitaOptinTs = $limitaOptinAtinsa !== '' ? strtotime($limitaOptinAtinsa) : fal
 $notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
     ? '<div role="status" style="margin:0 0 12px;padding:10px 14px;border:1px solid #fde68a;border-left:4px solid #ca8a04;border-radius:10px;background:#fefce8;color:#713f12;font-size:13px;line-height:1.55;">'
         . '<strong>Formularul de abonare a atins limita de ' . \App\Support\NewsletterService::LIMITA_GLOBALA_ORA . ' de emailuri pe oră</strong> (ultima dată: '
-        . htmlspecialchars(date('d.m.Y, H:i', (int) $limitaOptinTs), ENT_QUOTES) . '). Unele cereri de abonare sau de dezabonare n-au primit email. '
+        . htmlspecialchars(date('d.m.Y, H:i', (int) $limitaOptinTs), ENT_QUOTES) . '). Unele cereri de abonare n-au primit email (linkurile de dezabonare nu sunt afectate). '
         . 'Dacă nu ai o campanie mare de înscrieri, poate fi un atac: spune-i programatorului.</div>'
     : '';
 ?>

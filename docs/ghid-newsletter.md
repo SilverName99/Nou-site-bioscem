@@ -180,8 +180,8 @@ care se deschide). Așa nimeni nu poate abona adresa altcuiva.
 - Linkul e valabil **30 de zile**. Cererile neconfirmate se șterg singure după 30 de zile.
 - Aceeași adresă primește cel mult un email de confirmare la 5 minute (3 pe zi), de pe
   aceeași conexiune se pot face cel mult 20 de cereri pe oră, iar pe tot site-ul pleacă cel
-  mult 100 de astfel de emailuri pe oră: formularul nu poate fi folosit ca să umple inboxul
-  cuiva. Dacă se atinge limita de 100, în **Liste abonați** și în **Statistici** apare o notă
+  mult 300 de emailuri de confirmare pe oră: formularul nu poate fi folosit ca să umple
+  inboxul cuiva. Dacă se atinge limita de 300, în **Liste abonați** și în **Statistici** apare o notă
   galbenă: dacă nu ai o campanie mare de înscrieri, spune-i programatorului (poate fi un atac).
 - Cine se dezabonase și se reabonează din formular rămâne dezabonat până apasă linkul.
 - Adresele adăugate de tine în **Liste abonați** sau din import sunt active imediat, ca

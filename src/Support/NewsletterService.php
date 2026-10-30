@@ -423,11 +423,35 @@ final class NewsletterService
             ->execute(['h' => self::amprentaAdresa($email), 'm' => substr($motiv, 0, 40)]);
     }
 
-    /** Câte emailuri de confirmare / „link de dezabonare” pleacă pe oră, cel mult, pe tot site-ul. */
-    public const LIMITA_GLOBALA_ORA = 100;
+    /**
+     * Câte emailuri de confirmare a abonării pleacă pe oră, cel mult, pe tot
+     * site-ul. Emailurile „linkul tău de dezabonare” NU intră aici: altfel
+     * cineva cu câteva IP-uri ar umple plafonul și un abonat real n-ar mai
+     * putea primi linkul de dezabonare (problemă GDPR). Pe ele le limitează
+     * „unul pe abonat la 24 de ore”.
+     */
+    public const LIMITA_GLOBALA_ORA = 300;
 
-    /** Câte cereri pe oră se primesc de la aceeași adresă IP (REMOTE_ADDR). */
+    /** Câte cereri pe oră se primesc de la aceeași adresă IP (IPv4) sau rețea /64 (IPv6). */
     public const LIMITA_IP_ORA = 20;
+
+    /**
+     * Cheia după care se numără limita pe IP: adresa IPv4 ca atare, iar la IPv6
+     * prefixul /64 (un singur client primește de obicei o rețea /64 întreagă,
+     * deci altfel ar avea miliarde de „IP-uri”).
+     */
+    public static function cheieIp(string $ip): string
+    {
+        $ip = trim($ip);
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $binar = inet_pton($ip);
+            if ($binar !== false) {
+                $prefix = inet_ntop(substr($binar, 0, 8) . str_repeat("\0", 8));
+                return $prefix !== false ? $prefix . '/64' : $ip;
+            }
+        }
+        return substr($ip, 0, 64);
+    }
 
     /**
      * Rezervă dreptul de a trimite un email declanșat din pagina publică
@@ -437,14 +461,26 @@ final class NewsletterService
      * numărau întâi și cererea se scria abia la final: 40 de cereri simultane
      * pentru aceeași adresă au trimis 17 emailuri.
      *
-     * Limite: pe IP (REMOTE_ADDR) LIMITA_IP_ORA pe oră; pe tot site-ul
-     * LIMITA_GLOBALA_ORA pe oră; pe adresă: la abonare un email la 5 minute și
-     * 3 pe zi, la linkul de dezabonare unul pe zi.
+     * Limite: pe IP (REMOTE_ADDR; IPv6 pe /64) LIMITA_IP_ORA pe oră; pe adresă:
+     * la abonare un email la 5 minute și 3 pe zi, la linkul de dezabonare unul
+     * pe zi; doar la abonare, și LIMITA_GLOBALA_ORA pe oră pe tot site-ul.
      *
      * @return string ok | limita_adresa | limita_ip | limita_globala | ocupat
      */
+    private static int $ultimaRezervare = 0;
+
+    /** Emailul n-a plecat: rezervarea nu consumă limita, omul poate reîncerca. */
+    private static function anuleazaRezervarea(PDO $db): void
+    {
+        if (self::$ultimaRezervare > 0) {
+            $db->prepare('DELETE FROM newsletter_cereri_confirmare WHERE id = :id')->execute(['id' => self::$ultimaRezervare]);
+            self::$ultimaRezervare = 0;
+        }
+    }
+
     private static function rezervaTrimitere(PDO $db, string $tip, string $amprenta, string $ip): string
     {
+        $ip = $ip !== '' ? self::cheieIp($ip) : '';
         $lacat = 'nl_optin_' . substr(sha1((string) ($db->query('SELECT DATABASE()')->fetchColumn() ?: '')), 0, 16);
         try {
             $ia = $db->prepare('SELECT GET_LOCK(:n, 5)');
@@ -474,7 +510,9 @@ final class NewsletterService
             if ((int) ($limite['recent'] ?? 0) > 0 || (int) ($limite['pe_zi'] ?? 0) >= $maxPeZi) {
                 return 'limita_adresa';
             }
-            $global = (int) $db->query('SELECT COUNT(*) FROM newsletter_cereri_confirmare WHERE created_at > NOW() - INTERVAL 1 HOUR')->fetchColumn();
+            $global = $tip === 'abonare'
+                ? (int) $db->query('SELECT COUNT(*) FROM newsletter_cereri_confirmare WHERE tip = "abonare" AND created_at > NOW() - INTERVAL 1 HOUR')->fetchColumn()
+                : 0;
             if ($global >= self::LIMITA_GLOBALA_ORA) {
                 // Se vede în admin (Liste abonați, Statistici): poate fi un atac.
                 Settings::save($db, ['newsletter_limita_globala_atinsa' => date('Y-m-d H:i:s')]);
@@ -482,6 +520,7 @@ final class NewsletterService
             }
             $db->prepare('INSERT INTO newsletter_cereri_confirmare (email_hash, ip, tip, created_at) VALUES (:h, :ip, :tip, NOW())')
                 ->execute(['h' => $amprenta, 'ip' => $ip !== '' ? $ip : null, 'tip' => $tip]);
+            self::$ultimaRezervare = (int) $db->lastInsertId();
             return 'ok';
         } finally {
             try {
@@ -568,11 +607,16 @@ final class NewsletterService
         $numeMagazin = trim((string) ($settings['order_email_from_name'] ?? '')) ?: 'Bioscem';
         $subiect = 'Confirmă abonarea la newsletterul ' . $numeMagazin;
         $html = self::renderHtmlFromBlocks(NewsletterSabloane::emailConfirmare($url, $numeMagazin), $subiect, false);
-        OrderMailer::sendCustom($email, $subiect, $html, $settings, $db, [
-            'email_type' => 'newsletter_confirmare',
-            'source' => 'newsletter_optin',
-            'meta' => ['subscriber_id' => $id],
-        ]);
+        try {
+            OrderMailer::sendCustom($email, $subiect, $html, $settings, $db, [
+                'email_type' => 'newsletter_confirmare',
+                'source' => 'newsletter_optin',
+                'meta' => ['subscriber_id' => $id],
+            ]);
+        } catch (Throwable $exception) {
+            self::anuleazaRezervarea($db);
+            throw $exception instanceof RuntimeException ? $exception : new RuntimeException($exception->getMessage());
+        }
         return ['stare' => 'trimis', 'email' => $email];
     }
 
@@ -580,26 +624,34 @@ final class NewsletterService
      * Linkurile vechi de dezabonare (semnate doar cu cheia veche, ghicibilă):
      * butonul de pe pagină cere serverului să trimită, pe adresa abonatului,
      * un link nou (cheia secretă). Doar cine are acces la inbox se poate apoi
-     * dezabona. Răspunsul e mereu același (abonatul există sau nu, limită sau
-     * nu), ca pagina să nu spună nimic despre cine e abonat.
+     * dezabona.
      *
-     * Limite: un email pe abonat la 24 de ore, plus limitele pe IP și globale.
+     * Rezultat: „gata” (trimis, sau nimic de trimis: abonat inexistent, deja
+     * dezabonat ori link primit deja azi; răspuns identic, ca pagina să nu spună
+     * cine e abonat), „limita_ip”, „ocupat” sau „eroare” (emailul chiar n-a
+     * plecat; pagina o spune, ca nimeni să nu aștepte degeaba un email).
+     * Limite: un email pe abonat la 24 de ore și limita pe IP; plafonul global
+     * nu se aplică (n-are voie să blocheze o dezabonare).
      */
-    public static function trimiteLinkDezabonare(PDO $db, string $token, string $ip, array $settings): void
+    public static function trimiteLinkDezabonare(PDO $db, string $token, string $ip, array $settings): string
     {
         $parsed = self::parseUnsubscribeToken($token);
         if (!is_array($parsed) || empty($parsed['vechi'])) {
-            return;
+            return 'gata';
         }
         self::ensureSchema($db);
         $rand = $db->prepare('SELECT id, email, status FROM newsletter_subscribers WHERE id = :id AND email = :email LIMIT 1');
         $rand->execute(['id' => (int) $parsed['id'], 'email' => (string) $parsed['email']]);
         $abonat = $rand->fetch();
         if (!is_array($abonat) || (string) $abonat['status'] === 'unsubscribed') {
-            return;
+            return 'gata';
         }
-        if (self::rezervaTrimitere($db, 'dezabonare', hash('sha256', 'dez|' . (int) $abonat['id']), substr(trim($ip), 0, 64)) !== 'ok') {
-            return;
+        $rezervare = self::rezervaTrimitere($db, 'dezabonare', hash('sha256', 'dez|' . (int) $abonat['id']), trim($ip));
+        if ($rezervare === 'limita_adresa') {
+            return 'gata';
+        }
+        if ($rezervare !== 'ok') {
+            return $rezervare;
         }
         $numeMagazin = trim((string) ($settings['order_email_from_name'] ?? '')) ?: 'Bioscem';
         $subiect = 'Linkul tău de dezabonare de la newsletterul ' . $numeMagazin;
@@ -615,8 +667,11 @@ final class NewsletterService
                 'meta' => ['subscriber_id' => (int) $abonat['id']],
             ]);
         } catch (Throwable) {
-            // Eroarea rămâne în istoricul trimiterilor; pagina răspunde la fel.
+            // Eroarea rămâne și în istoricul trimiterilor. Omul poate reîncerca.
+            self::anuleazaRezervarea($db);
+            return 'eroare';
         }
+        return 'gata';
     }
 
     /** Linkul de confirmare, semnat cu cheia nouă (niciodată cu cea veche). */

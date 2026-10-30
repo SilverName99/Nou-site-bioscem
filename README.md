@@ -686,8 +686,11 @@ cu „Confirm abonarea"; doar POST-ul butonului il face `active` si scrie `confi
 Limite (numarate si rezervate sub acelasi lacat `GET_LOCK`, deci si cererile trimise in
 paralel le respecta): pe adresa un email la 5 minute si 3 pe zi; pe IP 20 de cereri pe ora,
 dupa `REMOTE_ADDR` (pe Hostinger/LiteSpeed e IP-ul real; `X-Forwarded-For` nu conteaza);
-pe tot site-ul 100 de emailuri de confirmare / dezabonare pe ora. Cand plafonul global e
-atins, adminul vede o nota in Liste abonati si in Statistici (setarea
+IPv6 se numara pe retea /64; pe tot site-ul 300 de emailuri de confirmare a abonarii pe
+ora. Emailurile „linkul tau de dezabonare" nu intra in plafonul global (le limiteaza
+„unul pe abonat la 24 de ore"), ca nimeni sa nu poata bloca o dezabonare; daca unul nu
+pleaca, pagina o spune. Cand plafonul global e atins, adminul vede o nota in Liste
+abonati si in Statistici (setarea
 `newsletter_limita_globala_atinsa`). Jurnalul `newsletter_cereri_confirmare` se curata
 dupa 2 zile. Cronul de newsletter sterge
 cererile neconfirmate mai vechi de 30 de zile. Abonatii `pending` nu primesc campanii si
