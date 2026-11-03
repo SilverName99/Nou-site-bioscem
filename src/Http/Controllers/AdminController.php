@@ -8218,6 +8218,20 @@ final class AdminController
                 return $rezultat;
             }
 
+            // Unele servicii FAN (FANbox, „Express Loco”…) primesc un singur
+            // colet pe AWB: „Maximum one shipment is allowed for this service
+            // type”. Comanda grea are din greutate mai multe colete, deci
+            // AWB-ul nu ieșea deloc. Se reîncearcă o dată cu un colet, cu
+            // aceeași greutate totală, iar omul află de ce.
+            $colete = (int) ($payload['shipments'][0]['info']['packages']['parcel'] ?? 0);
+            if ($colete > 1 && stripos($mesaj, 'Maximum one shipment is allowed') !== false) {
+                $payload['shipments'][0]['info']['packages']['parcel'] = 1;
+                $rezultat = FanCourierGateway::createInternalAwb($credentials, $payload);
+                $nota .= ' Serviciul FAN "' . trim((string) ($payload['shipments'][0]['info']['service'] ?? ''))
+                    . '" primește un singur colet pe AWB, așa că AWB-ul s-a emis cu 1 colet în loc de ' . $colete . '.';
+                return $rezultat;
+            }
+
             throw $exception;
         }
     }
