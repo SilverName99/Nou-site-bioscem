@@ -502,7 +502,10 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
                     <tr><th>Plată</th><th>Pornită</th><th>Stare</th><th>Sume</th><th>Acțiuni</th></tr>
                     <?php foreach ($teste as $test): ?>
                         <tr>
-                            <td><code><?= $e($test['numar_bt'] ?? '') ?></code><br><small style="color:#94a3b8;"><?= $e(($test['mod'] ?? '') === 'live' ? 'producție' : 'test') ?></small></td>
+                            <td><code><?= $e($test['numar_bt'] ?? '') ?></code>
+                                <?php if (($test['id_bt'] ?? '') !== ''): ?><br><small title="mdOrder (codul plății la bancă)">mdOrder: <code style="user-select:all;"><?= $e($test['id_bt']) ?></code></small><?php endif; ?>
+                                <?php if (($test['id_loy'] ?? '') !== ''): ?><br><small title="mdOrder partea cu puncte STAR">mdOrder STAR: <code style="user-select:all;"><?= $e($test['id_loy']) ?></code></small><?php endif; ?>
+                                <br><small style="color:#94a3b8;"><?= $e(($test['mod'] ?? '') === 'live' ? 'producție' : 'test') ?></small></td>
                             <td><?= $e(date('d.m.Y H:i', strtotime((string) ($test['creat_la'] ?? 'now')) ?: time())) ?></td>
                             <td>
                                 <span class="pay-badge pay-badge--<?= $e(in_array($test['clasa'] ?? '', ['ok', 'warn', 'off'], true) ? $test['clasa'] : 'off') ?>"><?= $e($test['eticheta'] ?? '') ?></span>
