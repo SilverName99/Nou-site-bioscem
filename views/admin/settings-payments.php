@@ -512,6 +512,9 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
                                 <?php if (($test['eroare'] ?? '') !== ''): ?>
                                     <br><small style="color:#b91c1c;"><?= $e($test['eroare']) ?></small>
                                 <?php endif; ?>
+                                <?php if (($test['cod_banca'] ?? '') !== '' && ($test['cod_banca'] ?? '') !== '0'): ?>
+                                    <br><small style="color:#b91c1c;">Cod bancă <?= $e($test['cod_banca']) ?><?= ($test['descriere_banca'] ?? '') !== '' ? ': ' . $e($test['descriere_banca']) : '' ?></small>
+                                <?php endif; ?>
                             </td>
                             <td><small>încasat <?= $e(number_format((float) ($test['incasat'] ?? 0), 2, ',', '.')) ?> · rambursat <?= $e(number_format((float) ($test['rambursat'] ?? 0), 2, ',', '.')) ?></small></td>
                             <td>

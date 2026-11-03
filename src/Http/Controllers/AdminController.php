@@ -11340,7 +11340,11 @@ final class AdminController
             Flash::set('success', 'Plata de test ' . $tx['bt_order_number'] . ' a fost autorizată: 1 leu e blocat pe card. '
                 . 'Acum alege „Anulează (reverse)" sau „Încasează, apoi rambursează". Dacă nu faci nimic, cronul o anulează în 30 de minute.');
         } elseif ($stare === \App\Support\BtIpayPayments::STARE_REFUZATA) {
-            Flash::set('error', 'Plata de test a fost refuzată: ' . \App\Support\BtIpayGateway::mesajRefuz((int) ($tx['action_code'] ?? 0)));
+            // La test arătăm și codul brut al băncii: el spune de ce a refuzat.
+            $codBanca = ($tx['action_code'] ?? null) === null ? '—' : (string) $tx['action_code'];
+            $descBanca = trim((string) ($tx['action_desc'] ?? ''));
+            Flash::set('error', 'Plata de test a fost refuzată: ' . \App\Support\BtIpayGateway::mesajRefuz((int) ($tx['action_code'] ?? 0))
+                . ' (cod bancă ' . $codBanca . ($descBanca !== '' ? ': ' . $descBanca : '') . ', status ' . (string) ($tx['bt_status'] ?? '—') . ')');
         } else {
             Flash::set('error', 'Plata de test nu a fost finalizată (' . \App\Support\BtIpayPayments::etichetaStare($stare) . ').');
         }

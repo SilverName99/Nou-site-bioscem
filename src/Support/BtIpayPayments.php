@@ -2563,6 +2563,8 @@ final class BtIpayPayments
             'cod_aprobare' => (string) ($tx['approval_code'] ?? ''),
             'referinta_rambursare' => (string) ($tx['refund_reference'] ?? ''),
             'eroare' => trim((string) ($tx['last_error'] ?? '')),
+            'cod_banca' => ($tx['action_code'] ?? null) === null ? '' : (string) $tx['action_code'],
+            'descriere_banca' => trim((string) ($tx['action_desc'] ?? '')),
             'in_comanda' => $inComanda,
             'comanda_activa' => !$inchisa,
             'poate_incasa' => $poateIncasa,
