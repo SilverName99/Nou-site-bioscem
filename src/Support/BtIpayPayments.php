@@ -625,14 +625,25 @@ final class BtIpayPayments
      *
      * @return array{ok: bool, url: string, eroare: string, tx_id: int, numar: string}
      */
-    public static function pornesteTest(PDO $db, string $returnUrlBaza, string $emailAdmin, string $userAgent = ''): array
+    public static function pornesteTest(PDO $db, string $returnUrlBaza, string $emailAdmin, string $userAgent = '', array $client = [], int $sumaBani = 100): array
     {
         self::ensureSchema($db);
         $numar = 'TEST-' . date('ymd-His') . '-' . bin2hex(random_bytes(2));
+        $sumaBani = max(100, min(9900, $sumaBani));
+        // Banca cere în orderBundle datele clientului plătitor, ca la o comandă
+        // reală (email, telefon, persoana de contact, livrare, facturare).
+        $oras = trim((string) ($client['oras'] ?? ''));
+        $adresa = trim((string) ($client['adresa'] ?? ''));
         return self::inregistreaza($db, self::TIP_TEST, 0, $numar, [
-            'suma' => 100,
-            'descriere' => 'Plata de test 1 leu bioscem.ro',
-            'email' => $emailAdmin,
+            'suma' => $sumaBani,
+            'descriere' => 'Plata de test bioscem.ro',
+            'email' => trim((string) ($client['email'] ?? '')) ?: $emailAdmin,
+            'telefon' => (string) ($client['telefon'] ?? ''),
+            'nume' => (string) ($client['nume'] ?? ''),
+            'oras_facturare' => $oras,
+            'adresa_facturare' => $adresa,
+            'oras_livrare' => $oras,
+            'adresa_livrare' => $adresa,
             'user_agent' => $userAgent,
         ], $returnUrlBaza);
     }

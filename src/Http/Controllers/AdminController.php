@@ -11487,11 +11487,47 @@ final class AdminController
         } catch (Throwable) {
         }
 
+        $client = [
+            'nume' => trim((string) ($_POST['test_nume'] ?? '')),
+            'email' => trim((string) ($_POST['test_email'] ?? '')),
+            'telefon' => trim((string) ($_POST['test_telefon'] ?? '')),
+            'oras' => trim((string) ($_POST['test_oras'] ?? '')),
+            'adresa' => trim((string) ($_POST['test_adresa'] ?? '')),
+        ];
+        if ($client['email'] === '') {
+            $client['email'] = $email;
+        }
+        $lipsa = [];
+        foreach (['nume' => 'nume', 'email' => 'email', 'telefon' => 'telefon', 'oras' => 'oraș', 'adresa' => 'adresă'] as $cheie => $eticheta) {
+            if ($client[$cheie] === '') {
+                $lipsa[] = $eticheta;
+            }
+        }
+        if ($client['email'] !== '' && filter_var($client['email'], FILTER_VALIDATE_EMAIL) === false) {
+            $lipsa[] = 'email valid';
+        }
+        if (\App\Support\BtIpayGateway::telefon($client['telefon']) === '') {
+            $lipsa[] = 'telefon valid';
+        }
+        $sumaText = str_replace(',', '.', trim((string) ($_POST['test_suma'] ?? '1')));
+        $sumaBani = is_numeric($sumaText) ? (int) round((float) $sumaText * 100) : 0;
+        if ($sumaBani < 100 || $sumaBani > 9900) {
+            $lipsa[] = 'suma între 1 și 99 lei';
+        }
+        if ($lipsa !== []) {
+            Flash::set('error', 'Completează datele clientului de test: ' . implode(', ', array_unique($lipsa)) . '.');
+            header('Location: ' . $inapoi);
+            return;
+        }
+        $_SESSION['bt_test_client'] = $client + ['suma' => number_format($sumaBani / 100, 2, '.', '')];
+
         $rez = \App\Support\BtIpayPayments::pornesteTest(
             $db,
             $this->appUrl() . '/admin/settings/payments/bt/test-return',
             $email,
-            (string) ($_SERVER['HTTP_USER_AGENT'] ?? '')
+            (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''),
+            $client,
+            $sumaBani
         );
         AdminActivityLog::log($db, 'bt_ipay_test_plata', [
             'mod' => \App\Support\BtIpayGateway::mod(),

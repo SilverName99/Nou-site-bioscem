@@ -488,14 +488,24 @@ BT_IPAY_LIVE_CALLBACK_KEY=cheia-callback-de-productie</code></li>
         </article>
 
         <article class="bt-box" id="bt-test">
-            <h3>Plată de test de 1 leu</h3>
-            <p>Pornește o plată de 1 leu care nu ține de nicio comandă: nu trimite emailuri și nu ajunge în ERP. Ești dus pe pagina băncii,
+            <h3>Plată de test</h3>
+            <p>Pornește o plată de test (implicit 1 leu) care nu ține de nicio comandă: nu trimite emailuri și nu ajunge în ERP. Ești dus pe pagina băncii,
                 plătești cu un card, iar la întoarcere o poți <strong>anula (reverse)</strong> sau <strong>încasa, apoi rambursa</strong> — așa
                 se verifică toate operațiile. Dacă o lași autorizată, cronul o anulează singur după 30 de minute.
                 <?= $btModLive ? '<strong>Modul e PRODUCȚIE: cardul e debitat real cu 1 leu până la anulare sau rambursare.</strong>' : '' ?></p>
+            <?php $clientTest = is_array($_SESSION['bt_test_client'] ?? null) ? $_SESSION['bt_test_client'] : []; ?>
             <form method="post" action="/admin/settings/payments/bt/test-payment" style="margin:0 0 10px;">
                 <?= $campCsrf ?>
-                <button class="btn" type="submit" <?= $btConfigurat ? '' : 'disabled' ?>>Plată de test 1 leu (mod <?= $btModLive ? 'producție' : 'test' ?>)</button>
+                <p style="margin:0 0 6px;"><small>Datele clientului plătitor, ca la o comandă reală (banca le cere în orderBundle). Suma: 1–99 lei; pentru plata cu puncte STAR alege pe pagina băncii plata parțială cu puncte.</small></p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:0 0 8px;">
+                    <label>Nume și prenume<input class="form-control" name="test_nume" required value="<?= $e($clientTest['nume'] ?? '') ?>"></label>
+                    <label>Email<input class="form-control" type="email" name="test_email" required value="<?= $e($clientTest['email'] ?? '') ?>"></label>
+                    <label>Telefon<input class="form-control" name="test_telefon" required value="<?= $e($clientTest['telefon'] ?? '') ?>"></label>
+                    <label>Oraș<input class="form-control" name="test_oras" required value="<?= $e($clientTest['oras'] ?? '') ?>"></label>
+                    <label>Adresă<input class="form-control" name="test_adresa" required value="<?= $e($clientTest['adresa'] ?? '') ?>"></label>
+                    <label>Sumă (lei)<input class="form-control" name="test_suma" required inputmode="decimal" value="<?= $e($clientTest['suma'] ?? '1.00') ?>"></label>
+                </div>
+                <button class="btn" type="submit" <?= $btConfigurat ? '' : 'disabled' ?>>Plată de test (mod <?= $btModLive ? 'producție' : 'test' ?>)</button>
             </form>
             <?php if ($teste !== []): ?>
                 <table class="bt-table">
