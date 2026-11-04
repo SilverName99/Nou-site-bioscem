@@ -5832,8 +5832,8 @@ final class AdminController
         $subtotal = round((float) ($order['subtotal'] ?? 0), 2);
         $discountRef = round((float) ($order['discount_total'] ?? 0), 2)
             + round((float) ($order['loyalty_points_discount'] ?? 0), 2);
-        // Reducerea comercială intră în total ca peste tot (vezi
-        // seteazaTransportComanda); pragul de gratuitate rămâne socotit ca până acum.
+        // Reducerea comercială intră în total și în pragul de transport gratuit,
+        // ca la editarea produselor și a reducerii (orderItemsSave, orderDiscountSave).
         $reducereComerciala = round((float) ($order['manual_discount'] ?? 0), 2);
 
         // Transportul se ia de la zero: prețul vechi era pentru cealaltă
@@ -5850,14 +5850,14 @@ final class AdminController
                 $settings,
                 (string) ($order['billing_county'] ?? ''),
                 $subtotal,
-                $discountRef,
+                $discountRef + $reducereComerciala,
                 0.0
             );
         } elseif (\App\Support\CheckoutCalculator::adminRecalcShipping(
             $settings,
             (string) ($order['billing_county'] ?? ''),
             $subtotal,
-            $discountRef,
+            $discountRef + $reducereComerciala,
             0.0
         ) === 0.0) {
             // Pragul de transport gratuit rămâne valabil și la FANbox.

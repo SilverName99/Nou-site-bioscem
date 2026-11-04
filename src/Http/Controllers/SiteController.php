@@ -8288,7 +8288,7 @@ CSS;
                 $settings,
                 trim((string) ($billing['billing_county'] ?? '')),
                 trim((string) ($billing['billing_city'] ?? '')),
-                \App\Support\CheckoutCalculator::livrareAleasaLaFanbox()
+                \App\Support\CheckoutCalculator::livrareAleasaLaFanbox($settings)
             );
         }
 

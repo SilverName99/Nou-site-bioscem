@@ -32,11 +32,13 @@ final class CheckoutCalculator
      * sumarul și prețul transportului să se potrivească cu ce vede clientul
      * pe ecran înainte de a trimite comanda.
      */
-    public static function livrareAleasaLaFanbox(): bool
+    public static function livrareAleasaLaFanbox(?array $settings = null): bool
     {
-        // Ridicarea de la sediu și FANbox se exclud: cu ridicarea bifată,
-        // nicio bifă FANbox rămasă în sesiune nu mai schimbă prețul.
-        if (RidicarePersonala::bifataInSesiune()) {
+        // Ridicarea de la sediu și FANbox se exclud: cu ridicarea bifată (și
+        // opțiunea pornită), nicio bifă FANbox rămasă în sesiune nu mai schimbă
+        // prețul. Cu opțiunea oprită, o bifă de ridicare rămasă nu contează.
+        $settings ??= Settings::all(null);
+        if (RidicarePersonala::aleasa($settings)) {
             return false;
         }
         // Prețul îl dă alegerea modului de livrare, nu punctul concret: clientul
@@ -1107,7 +1109,7 @@ final class CheckoutCalculator
         // Prețul fix are prioritate. Include și taxa de km suplimentari, dacă
         // localitatea completată în formular e în lista importată de la FAN:
         // sumarul trebuie să arate exact cât se va plăti, nu prețul de bază.
-        $laFanbox = self::livrareAleasaLaFanbox();
+        $laFanbox = self::livrareAleasaLaFanbox($settings);
         $pretFix = ShippingPricing::pret($db, $settings, $county, self::localitate(), $laFanbox);
         if ($pretFix !== null) {
             return self::transportGratuit($settings, $isBucharest, $subtotal, $discount)
@@ -1199,7 +1201,7 @@ final class CheckoutCalculator
             return round($currentShipping, 2);
         }
         // Fără un transport deja stabilit, prețul fix (dacă e activ) e referința.
-        $pretFix = ShippingPricing::pretDeBaza($settings, self::livrareAleasaLaFanbox());
+        $pretFix = ShippingPricing::pretDeBaza($settings, self::livrareAleasaLaFanbox($settings));
         if ($pretFix !== null) {
             return $pretFix;
         }

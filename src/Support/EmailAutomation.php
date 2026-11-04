@@ -440,6 +440,7 @@ final class EmailAutomation
         );
 
         $trimise = 0;
+        $laClient = false;
         $subiect = '';
         $eroare = '';
         foreach ($recipients as $recipient) {
@@ -459,9 +460,21 @@ final class EmailAutomation
                 ]);
                 $subiect = $subiect !== '' ? $subiect : trim((string) ($mail['subject'] ?? ''));
                 $trimise++;
+                if ($customerEmail !== '' && strcasecmp(trim($recipient), $customerEmail) === 0) {
+                    $laClient = true;
+                }
             } catch (RuntimeException $exception) {
                 $eroare = $exception->getMessage();
             }
+        }
+
+        // Doar emailul ajuns la client contează ca anunț: copia către magazin
+        // singură nu-l face pe client să știe.
+        if ($trimise > 0 && !$laClient) {
+            self::writeOrderEmailLog($db, $orderId, $tip, implode(', ', $recipients), $subiect, 'sent', null);
+            return ['ok' => false, 'message' => 'Emailul nu a ajuns la client'
+                . ($eroare !== '' ? ': ' . $eroare : ' (șablonul trimite doar către magazin sau adresa clientului lipsește).')
+                . ' Anunță clientul altfel.'];
         }
 
         if ($trimise === 0) {
