@@ -9148,11 +9148,13 @@ final class AdminController
         // Ridicare personală de la sediu: aprobarea din ERP trece comanda în
         // procesare (mai sus), dar nu cere AWB — marfa nu pleacă la curier, iar
         // rambursul (plata la ridicare) se încasează la sediu, nu de FAN.
-        // Clientul e anunțat din butonul „Gata de ridicare”.
+        // Clientul primește singur emailul „Gata de ridicare” (dacă bifa din
+        // Setări livrare e pusă); butonul din Comenzi rămâne pentru retrimitere.
         if (\App\Support\RidicarePersonala::esteComandaId($db, $orderId)) {
+            $anunt = $this->anuntaRidicareLaAprobare($db, $orderId);
             return [
                 'ok' => true,
-                'message' => 'Comandă aprobată. ' . \App\Support\RidicarePersonala::ETICHETA_FARA_AWB . '.' . $btMesaj,
+                'message' => 'Comandă aprobată. ' . \App\Support\RidicarePersonala::ETICHETA_FARA_AWB . '.' . $btMesaj . $anunt,
                 'awb' => '',
                 'trackingUrl' => '',
             ];
@@ -9315,6 +9317,49 @@ final class AdminController
             'ok' => (bool) ($rezultat['ok'] ?? false),
             'message' => (string) ($rezultat['message'] ?? ''),
         ];
+    }
+
+    /**
+     * La aprobarea din ERP a unei comenzi cu ridicare de la sediu: trimite o
+     * singură dată emailul „Gata de ridicare”. Comanda se „rezervă” cu un
+     * UPDATE … IS NULL, ca o aprobare repetată (cron, retrimitere) sau o
+     * apăsare de buton în același timp să nu trimită două emailuri; dacă
+     * emailul nu ajunge la client, rezervarea se ridică și butonul rămâne.
+     */
+    private function anuntaRidicareLaAprobare(PDO $db, int $orderId): string
+    {
+        try {
+            $settings = Settings::all($db);
+            if (!\App\Support\RidicarePersonala::anuntAutomat($settings)) {
+                return '';
+            }
+            \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
+            $rezerva = $db->prepare(
+                'UPDATE orders SET pickup_ready_notified_at = NOW()
+                 WHERE id = :id AND pickup_ready_notified_at IS NULL AND deleted_at IS NULL'
+            );
+            $rezerva->execute(['id' => $orderId]);
+            if ($rezerva->rowCount() === 0) {
+                return '';
+            }
+            $rezultat = EmailAutomation::sendPickupReady($db, $settings, $orderId);
+            if (!$rezultat['ok']) {
+                $db->prepare('UPDATE orders SET pickup_ready_notified_at = NULL WHERE id = :id')->execute(['id' => $orderId]);
+                return ' Emailul „Gata de ridicare” nu a plecat: ' . $rezultat['message'];
+            }
+            AdminActivityLog::log($db, 'comanda_gata_de_ridicare', [
+                'comanda' => (string) $orderId,
+                'retrimis' => 'nu',
+                'automat' => 'aprobare ERP',
+            ]);
+            return ' Clientul a primit emailul „Gata de ridicare”.';
+        } catch (Throwable $e) {
+            try {
+                $db->prepare('UPDATE orders SET pickup_ready_notified_at = NULL WHERE id = :id')->execute(['id' => $orderId]);
+            } catch (Throwable) {
+            }
+            return ' Emailul „Gata de ridicare” nu a plecat.';
+        }
     }
 
     public function createFanAwb(array $params): void
@@ -10659,6 +10704,7 @@ final class AdminController
             'shipping_pickup_address' => mb_substr(trim((string) ($_POST['shipping_pickup_address'] ?? '')), 0, 255) !== ''
                 ? mb_substr(trim((string) ($_POST['shipping_pickup_address'] ?? '')), 0, 255)
                 : \App\Support\RidicarePersonala::ADRESA_IMPLICITA,
+            'shipping_pickup_auto_ready' => isset($_POST['shipping_pickup_auto_ready']) ? '1' : '0',
             'shipping_pickup_program' => mb_substr(
                 trim(str_replace(["\r\n", "\r"], "\n", (string) ($_POST['shipping_pickup_program'] ?? ''))),
                 0,

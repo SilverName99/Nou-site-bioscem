@@ -426,14 +426,19 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                 Comanda ridicată de client nu are cost de transport (nici taxă de km
                 suplimentari) și nu primește niciodată AWB. Se cer doar datele de
                 facturare; FANbox și adresa de livrare separată dispar, iar rambursul
-                apare ca „Plată la ridicare (numerar sau card)". Când comanda e
-                pregătită, butonul „Gata de ridicare" din Comenzi îi trimite clientului
-                emailul cu adresa și programul de mai jos.
+                apare ca „Plată la ridicare (numerar sau card)". La aprobarea din
+                ERP clientul primește singur emailul „Gata de ridicare” cu adresa și
+                programul de mai jos (bifa de mai jos); butonul din Comenzi îl retrimite.
             </p>
             <label style="display:flex;align-items:center;gap:8px;">
                 <input type="checkbox" name="shipping_pickup_enabled" value="1"
                        <?= ((string) ($settings['shipping_pickup_enabled'] ?? '0')) === '1' ? 'checked' : '' ?>>
                 Oferă ridicare personală de la sediu (clientul alege la finalizarea comenzii)
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                <input type="checkbox" name="shipping_pickup_auto_ready" value="1"
+                       <?= \App\Support\RidicarePersonala::anuntAutomat($settings) ? 'checked' : '' ?>>
+                Trimite automat emailul „Gata de ridicare” când comanda e aprobată în ERP (o singură dată; butonul din Comenzi rămâne pentru retrimitere)
             </label>
         </div>
         <div class="field">

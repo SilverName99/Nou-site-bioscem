@@ -26,6 +26,8 @@ final class Settings
         'shipping_pickup_enabled' => '0',
         'shipping_pickup_address' => 'Str. Constantin Georgian nr. 24, Sector 2, București',
         'shipping_pickup_program' => '',
+        // „Gata de ridicare” pleacă singur când comanda e aprobată în ERP.
+        'shipping_pickup_auto_ready' => '1',
         'fan_live_tariff_enabled' => '0',
         'fan_awb_auto' => '0',
         // Un singur AWB per comandă, chiar dacă marfa vine din mai multe

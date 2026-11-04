@@ -56,6 +56,12 @@ final class RidicarePersonala
         return (string) ($settings['shipping_pickup_enabled'] ?? '0') === '1';
     }
 
+    /** „Gata de ridicare” pleacă singur la aprobarea din ERP? (implicit da) */
+    public static function anuntAutomat(array $settings): bool
+    {
+        return (string) ($settings['shipping_pickup_auto_ready'] ?? '1') === '1';
+    }
+
     public static function adresa(array $settings): string
     {
         $adresa = trim((string) ($settings['shipping_pickup_address'] ?? ''));
