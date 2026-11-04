@@ -1338,9 +1338,29 @@ final class SiteController
         // completat, nu gol (altfel ar retasta toată adresa la fiecare eroare).
         $this->rememberCheckoutInput();
 
+        // Ridicarea personală de la sediu: transport 0 și fără AWB. Se
+        // primește doar cât e pornită din Setări livrare — o bifă trimisă de
+        // mână cu opțiunea oprită e refuzată, nu ignorată în tăcere (clientul
+        // ar plăti transportul crezând că ridică el comanda). Cu FANbox nu se
+        // poate amândouă: una e la sediu, cealaltă la un locker.
+        $setariLivrare = Settings::all($db);
+        $ridicarePersonala = isset($_POST['ridicare_personala']);
+        if ($ridicarePersonala && !\App\Support\RidicarePersonala::activa($setariLivrare)) {
+            \App\Support\RidicarePersonala::alege(false);
+            Flash::set('error', 'Ridicarea personală de la sediu nu mai este disponibilă. Alege livrarea prin curier.');
+            header('Location: /checkout');
+            return;
+        }
+        if ($ridicarePersonala && isset($_POST['livrare_fanbox'])) {
+            Flash::set('error', 'Alege fie ridicarea personală de la sediu, fie livrarea la FANbox — nu amândouă.');
+            header('Location: /checkout');
+            return;
+        }
+        \App\Support\RidicarePersonala::alege($ridicarePersonala);
+
         // Alegerea FANbox vine din formular; fără punct ales, comanda n-are
         // unde fi livrată, deci o oprim aici, nu la generarea AWB-ului.
-        $laFanbox = isset($_POST['livrare_fanbox']);
+        $laFanbox = !$ridicarePersonala && isset($_POST['livrare_fanbox']);
         $lockerId = $laFanbox ? (int) ($_POST['fan_locker_id'] ?? 0) : 0;
         \App\Support\CheckoutCalculator::alegeFanbox($lockerId, $laFanbox);
         $locker = null;
@@ -1351,7 +1371,7 @@ final class SiteController
                 header('Location: /checkout');
                 return;
             }
-        } elseif (isset($_POST['livrare_fanbox'])) {
+        } elseif ($laFanbox) {
             Flash::set('error', 'Alege punctul FANbox la care vrei livrarea.');
             header('Location: /checkout');
             return;
@@ -1364,7 +1384,7 @@ final class SiteController
             return;
         }
 
-        $billing = $this->validateCheckout();
+        $billing = $this->validateCheckout($ridicarePersonala);
         if ($billing === null) {
             header('Location: /checkout');
             return;
@@ -1395,6 +1415,20 @@ final class SiteController
             Flash::set('error', $message);
             header('Location: /checkout');
             return;
+        }
+
+        // Ridicarea de la sediu: transportul e 0 orice ar fi spus calculele de
+        // mai sus, iar totalul se reface din aceleași piese. Suma trimisă la
+        // procesatorul de card (BT, EuPlătesc, Stripe) vine din acest total.
+        if ($ridicarePersonala) {
+            $summary['shipping'] = 0.0;
+            $summary['total'] = max(
+                0,
+                (float) $summary['subtotal']
+                    - (float) $summary['discount']
+                    - (float) ($summary['points_discount'] ?? 0.0)
+                    + (float) ($summary['vat_additional'] ?? 0.0)
+            );
         }
 
         if ($summary['lines'] === []) {
@@ -1481,7 +1515,7 @@ final class SiteController
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                     shipping_address_line1, shipping_address_line2, shipping_city, shipping_county, shipping_postcode,
                     fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
-                    fan_locker_county, fan_locker_postcode,
+                    fan_locker_county, fan_locker_postcode, pickup_in_person, pickup_address,
                     notes, terms_accepted_at, created_at
                 ) VALUES (
                     :order_number, :user_id, :status, :payment_method, :payment_status, :shipping_method, :shipping_cost,
@@ -1492,7 +1526,7 @@ final class SiteController
                     :shipping_same_as_billing, :shipping_first_name, :shipping_last_name, :shipping_phone,
                     :shipping_address_line1, :shipping_address_line2, :shipping_city, :shipping_county, :shipping_postcode,
                     :fan_locker_id, :fan_locker_name, :fan_locker_address, :fan_locker_city,
-                    :fan_locker_county, :fan_locker_postcode,
+                    :fan_locker_county, :fan_locker_postcode, :pickup_in_person, :pickup_address,
                     :notes, :terms_accepted_at, :created_at
                 )'
             );
@@ -1509,8 +1543,12 @@ final class SiteController
                 'fan_locker_city' => $locker !== null ? $locker['locality'] : null,
                 'fan_locker_county' => $locker !== null ? $locker['county'] : null,
                 'fan_locker_postcode' => $locker !== null ? ($locker['postcode'] ?? null) : null,
-                'shipping_method' => $locker !== null ? 'fan_box' : 'fan_courier',
-                'shipping_cost' => $summary['shipping'],
+                'pickup_in_person' => $ridicarePersonala ? 1 : 0,
+                'pickup_address' => $ridicarePersonala ? \App\Support\RidicarePersonala::adresa($settings) : null,
+                'shipping_method' => $ridicarePersonala
+                    ? \App\Support\RidicarePersonala::SHIPPING_METHOD
+                    : ($locker !== null ? 'fan_box' : 'fan_courier'),
+                'shipping_cost' => $ridicarePersonala ? 0.0 : $summary['shipping'],
                 'discount_total' => $summary['discount'],
                 'loyalty_points_used' => $pointsApplied,
                 'loyalty_points_discount' => $pointsDiscount,
@@ -1826,6 +1864,31 @@ final class SiteController
             }
         }
 
+        // Ridicarea de la sediu: clientul trebuie să afle aici unde și când
+        // vine după comandă, nu doar din email.
+        $notaRidicare = '';
+        if ($db instanceof PDO && $orderNumber !== '') {
+            try {
+                CheckoutCalculator::ensureOrderShippingSchema($db);
+                $stmtRid = $db->prepare(
+                    'SELECT pickup_in_person, pickup_address FROM orders WHERE order_number = :nr AND deleted_at IS NULL LIMIT 1'
+                );
+                $stmtRid->execute(['nr' => $orderNumber]);
+                $rowRid = $stmtRid->fetch() ?: null;
+                if (is_array($rowRid) && \App\Support\RidicarePersonala::esteComanda($rowRid)) {
+                    $setariRid = $this->cachedSettings($db);
+                    $notaRidicare = \App\Support\RidicarePersonala::htmlCaseta(
+                        \App\Support\RidicarePersonala::adresaComenzii($rowRid, $setariRid),
+                        \App\Support\RidicarePersonala::program($setariRid),
+                        \App\Support\RidicarePersonala::ETICHETA,
+                        'Comanda nu se livrează prin curier și nu are cost de transport. Te anunțăm pe email când e gata de ridicare.'
+                    );
+                }
+            } catch (Throwable) {
+                $notaRidicare = '';
+            }
+        }
+
         if ($db instanceof PDO) {
             $successPage = $this->findPublishedPageBySlug('checkout/succes');
             if (is_array($successPage)) {
@@ -1839,7 +1902,7 @@ final class SiteController
                         $orderCurrency,
                         $orderEmail,
                         $estePrecomanda
-                    );
+                    ) . $notaRidicare;
                 }
 
                 View::render('site/custom-page', array_merge([
@@ -1869,6 +1932,7 @@ final class SiteController
             'opInstructiuni' => $opInstructiuni,
             'orderNumber' => $orderNumber,
             'notaPrecomanda' => $estePrecomanda ? self::notaPrecomandaHtml() : '',
+            'notaRidicare' => $notaRidicare,
             'paymentStatus' => $paymentStatus,
             'orderStatus' => $orderStatus,
             'orderTotal' => $orderTotal,
@@ -4471,9 +4535,14 @@ final class SiteController
         // Alegerea FANbox schimbă prețul, deci o reținem înainte de a calcula:
         // sumarul afișat trebuie să fie cel pe care îl va plăti clientul.
         $fanboxBifat = $payload['livrare_fanbox'] ?? $_GET['livrare_fanbox'] ?? null;
+        // Ridicarea de la sediu scoate transportul cu totul, deci se reține
+        // înaintea calculului, ca FANbox. Doar cât e pornită din setări.
+        $ridicareBifata = (bool) (int) ($payload['ridicare_personala'] ?? $_GET['ridicare_personala'] ?? 0)
+            && \App\Support\RidicarePersonala::activa($this->cachedSettings($this->db()));
+        \App\Support\RidicarePersonala::alege($ridicareBifata);
         \App\Support\CheckoutCalculator::alegeFanbox(
-            (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0),
-            $fanboxBifat === null ? null : (bool) (int) $fanboxBifat
+            $ridicareBifata ? 0 : (int) ($payload['fan_locker_id'] ?? $_GET['fan_locker_id'] ?? 0),
+            $ridicareBifata ? false : ($fanboxBifat === null ? null : (bool) (int) $fanboxBifat)
         );
         // Taxa de km suplimentari depinde de localitate: fără ea, sumarul ar
         // arăta prețul de bază, iar la finalizare s-ar adăuga taxa.
@@ -4506,6 +4575,30 @@ final class SiteController
             'billing_street_no' => $streetNo,
             'billing_postcode' => $postcode,
         ];
+
+        // Ridicarea de la sediu n-are transport de calculat: răspunsul vine
+        // pe loc, chiar și cu adresa de facturare încă necompletată.
+        $settingsRidicare = Settings::all($db);
+        if (\App\Support\RidicarePersonala::aleasa($settingsRidicare)) {
+            $summary = CheckoutCalculator::buildSummary($db, $settingsRidicare);
+            $summary['county'] = $county;
+            return [
+                'ok' => true,
+                'fan_live' => false,
+                'shipping' => 0.0,
+                'total' => max(
+                    0.0,
+                    (float) ($summary['subtotal'] ?? 0.0)
+                        - (float) ($summary['discount'] ?? 0.0)
+                        - (float) ($summary['points_discount'] ?? 0.0)
+                        + (float) ($summary['vat_additional'] ?? 0.0)
+                ),
+                // Pentru eticheta FANbox (dacă clientul revine la ea): pragul de gratuitate.
+                'requires_shipping_charge' => $this->requiresFanLiveShippingCharge($settingsRidicare, $summary),
+                'ridicare_personala' => true,
+            ];
+        }
+
         if (!$this->isFanShippingAddressComplete($billing)) {
             return [
                 'ok' => false,
@@ -4513,7 +4606,7 @@ final class SiteController
             ];
         }
 
-        $settings = Settings::all($db);
+        $settings = $settingsRidicare;
         $summary = CheckoutCalculator::buildSummary($db, $settings);
         $summary['county'] = $county;
         // Prețul fix e deja în sumar și nu depinde de interogarea FAN, deci
@@ -5610,6 +5703,11 @@ HTML;
             'fanboxAles' => \App\Support\CheckoutCalculator::fanboxAles(),
             'fanboxPret' => $this->fanboxPret(),
             'fanboxGratuit' => $this->fanboxGratuit($summary),
+            // Ridicarea personală de la sediu (Setări livrare): bifa, adresa și programul.
+            'ridicareDisponibila' => \App\Support\RidicarePersonala::activa($this->cachedSettings($this->db())),
+            'ridicareAleasa' => \App\Support\RidicarePersonala::aleasa($this->cachedSettings($this->db())),
+            'ridicareAdresa' => \App\Support\RidicarePersonala::adresa($this->cachedSettings($this->db())),
+            'ridicareProgram' => \App\Support\RidicarePersonala::program($this->cachedSettings($this->db())),
             'previewMode' => false,
             'checkoutInstanceId' => 'checkout-live',
             // Caseta + bifa obligatorie pentru produsele cu avertisment; gol = nimic în pagină.
@@ -5664,6 +5762,11 @@ HTML;
             $this->ensureCustomerSchema($db);
         }
         $settings = Settings::all($db);
+        // Opțiunea oprită din setări între timp: bifa rămasă în sesiune nu
+        // mai are ce face (și nu mai e arătată), deci se uită.
+        if (!\App\Support\RidicarePersonala::activa($settings)) {
+            \App\Support\RidicarePersonala::alege(false);
+        }
         $summary = CheckoutCalculator::buildSummary($db, $settings);
         if ($summary['coupon_error'] !== null && Cart::coupon() !== null) {
             Cart::clearCoupon();
@@ -8167,6 +8270,11 @@ CSS;
     {
         $errorMessage = null;
 
+        // Ridicarea de la sediu nu are transport: nici preț fix, nici FAN.
+        if (\App\Support\RidicarePersonala::aleasa($settings)) {
+            return 0.0;
+        }
+
         // Prețul fix configurat în Setări livrare bate tariful curierului: îl
         // aplicăm aici, unde știm deja județul și localitatea comenzii, ca să
         // putem adăuga și taxa pentru localitățile cu km suplimentari.
@@ -9295,7 +9403,7 @@ CSS;
         header('Location: ' . ($redirect !== '' ? $redirect : '/'));
     }
 
-    private function validateCheckout(): ?array
+    private function validateCheckout(bool $ridicarePersonala = false): ?array
     {
         $required = [
             'billing_first_name' => 'Numele este obligatoriu.',
@@ -9356,6 +9464,12 @@ CSS;
         // completează câmpurile de livrare.
         $hasShippingToggle = (string) ($_POST['has_shipping_toggle'] ?? '') === '1';
         $shippingSame = $hasShippingToggle ? isset($_POST['shipping_same_as_billing']) : true;
+        // La ridicarea de la sediu nu există adresă de livrare: se cer doar
+        // datele de facturare, iar câmpurile de livrare (ascunse în pagină)
+        // nu se mai validează — oricât ar fi rămas completate.
+        if ($ridicarePersonala) {
+            $shippingSame = true;
+        }
         $data['shipping_same_as_billing'] = $shippingSame ? 1 : 0;
         if ($shippingSame) {
             $data['shipping_first_name'] = $data['billing_first_name'];
@@ -11518,6 +11632,10 @@ CSS;
         // acasă a clientului, pe serviciul de livrare la adresă. Comenzile la
         // FANbox rămân pe butonul din administrare, care le duce unde trebuie.
         if ((int) ($order['fan_locker_id'] ?? 0) > 0) {
+            return;
+        }
+        // Ridicarea de la sediu nu pleacă la curier, pe niciun drum.
+        if (\App\Support\RidicarePersonala::esteComandaId($db, (int) ($order['id'] ?? 0))) {
             return;
         }
 

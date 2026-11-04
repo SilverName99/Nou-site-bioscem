@@ -118,6 +118,19 @@ final class OrderMailer
                 'default_subject' => 'Comandă anulată {{order_number}}',
                 'default_body' => $cancelledDefaultBody,
             ],
+            // Ridicare personală de la sediu: îl trimite butonul „Gata de
+            // ridicare” din Comenzi, cu adresa și programul din Setări livrare.
+            RidicarePersonala::EMAIL_GATA => [
+                'label' => 'Comandă gata de ridicare',
+                'subject_key' => 'email_template_pickup_ready_subject',
+                'body_key' => 'email_template_pickup_ready_body',
+                'active_key' => 'email_template_pickup_ready_active',
+                'recipient_mode_key' => 'email_template_pickup_ready_recipient_mode',
+                'admin_recipients_key' => 'email_template_pickup_ready_admin_recipients',
+                'default_recipient_mode' => 'client',
+                'default_subject' => 'Comanda {{order_number}} te așteaptă la sediu',
+                'default_body' => self::pickupReadyAdvancedDefaultBody(),
+            ],
             'account_created' => [
                 'label' => 'Bun venit (cont nou)',
                 'subject_key' => 'email_template_account_created_subject',
@@ -429,11 +442,34 @@ final class OrderMailer
             }
         }
 
+        // Ridicarea personală de la sediu: confirmarea comenzii spune unde și
+        // când vine clientul după ea. Stă unde o pune șablonul
+        // ({{ridicare_personala}}); altfel sub totaluri ori sub produse, iar
+        // dacă șablonul n-are niciuna, la final. Fără ridicare, nimic în plus.
+        $blocRidicare = trim((string) ($context['ridicare_personala_html'] ?? ''));
+        $ridicareLaFinal = '';
+        if ($blocRidicare !== '') {
+            $vars['{{ridicare_personala}}'] = $blocRidicare;
+            if (!str_contains($sablonCorp, '{{ridicare_personala}}')) {
+                $ridicareLaFinal = $blocRidicare;
+                foreach (['{{order_totals_html}}', '{{order_total}}', '{{order_items_html}}', '{{order_summary_rows}}'] as $ancora) {
+                    $pozitie = strrpos($sablonCorp, $ancora);
+                    if ($pozitie !== false) {
+                        // După rândul (tabelul) în care apare ancora, nu în mijlocul lui.
+                        $dupa = self::sfarsitBloc($sablonCorp, $pozitie + strlen($ancora));
+                        $sablonCorp = substr($sablonCorp, 0, $dupa) . '{{ridicare_personala}}' . substr($sablonCorp, $dupa);
+                        $ridicareLaFinal = '';
+                        break;
+                    }
+                }
+            }
+        }
+
         $bodyHtml = self::applyTemplate($sablonCorp, $vars);
         if (!str_contains($bodyHtml, '<')) {
             $bodyHtml = nl2br(htmlspecialchars($bodyHtml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
         }
-        $bodyHtml .= $avertismenteLaFinal;
+        $bodyHtml .= $avertismenteLaFinal . $ridicareLaFinal;
 
         // Datele de plată prin OP trebuie să ajungă la client chiar dacă
         // șablonul de email n-a fost editat să conțină {{payment_instructions}}:
@@ -1046,6 +1082,39 @@ HTML;
         return trim($value);
     }
 
+    /**
+     * Unde se poate lipi un bloc după o ancoră din șablon fără să rupă HTML-ul:
+     * după închiderea tabelului sau a div-ului care o conține. Șablonul fără
+     * tabel sau div după ancoră primește blocul chiar după ea.
+     */
+    private static function sfarsitBloc(string $sablon, int $dupaAncora): int
+    {
+        $rest = substr($sablon, $dupaAncora);
+        $candidati = [];
+        foreach (['</table>', '</div>'] as $inchidere) {
+            $p = stripos($rest, $inchidere);
+            if ($p !== false) {
+                $candidati[] = $p + strlen($inchidere);
+            }
+        }
+        if ($candidati === []) {
+            return $dupaAncora;
+        }
+        $primul = min($candidati);
+        // Dacă înainte de închidere se deschide alt bloc, ancora nu stă în el.
+        $deschidere = null;
+        foreach (['<table', '<div'] as $tag) {
+            $p = stripos($rest, $tag);
+            if ($p !== false && ($deschidere === null || $p < $deschidere)) {
+                $deschidere = $p;
+            }
+        }
+        if ($deschidere !== null && $deschidere < $primul) {
+            return $dupaAncora;
+        }
+        return $dupaAncora + $primul;
+    }
+
     private static function applyTemplate(string $template, array $vars): string
     {
         return strtr($template, $vars);
@@ -1216,6 +1285,10 @@ HTML;
             )),
             // Avertismentele confirmate la plasare (vezi sendTemplate); gol la restul comenzilor.
             '{{avertismente_produse}}' => '',
+            // Ridicare personală de la sediu: caseta (vezi sendTemplate), adresa și programul.
+            '{{ridicare_personala}}' => '',
+            '{{pickup_address}}' => htmlspecialchars(trim((string) ($context['pickup_address'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            '{{pickup_program}}' => nl2br(htmlspecialchars(trim((string) ($context['pickup_program'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
         ];
     }
 
@@ -1763,6 +1836,49 @@ HTML;
 <p style="margin:0 0 24px;text-align:center;">
   <a href="{{tracking_url}}" style="display:inline-block;min-width:260px;padding:14px 22px;border-radius:14px;background:#2f80ed;color:#ffffff;text-decoration:none;font-weight:700;font-size:18px;line-height:1.2;">Urmărește coletul →</a>
 </p>
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0 16px;">
+<p style="margin:0 0 6px;text-align:center;color:#5b6f69;font-size:14px;line-height:1.5;">© {{year}} {{store_name}}. Toate drepturile rezervate.</p>
+<p style="margin:0;text-align:center;color:#7b8b86;font-size:14px;line-height:1.5;">Acest email a fost trimis la {{customer_email}}</p>
+HTML;
+    }
+
+    /**
+     * „Comanda e gata de ridicare”: adresa și programul vin din Setări livrare
+     * ({{pickup_address}}, {{pickup_program}}). Programul gol nu lasă rând gol:
+     * caseta {{ridicare_personala}} îl pune doar când e completat.
+     */
+    private static function pickupReadyAdvancedDefaultBody(): string
+    {
+        return <<<'HTML'
+<div style="text-align:center;padding-top:8px;">
+  <div style="margin:0 auto 12px;color:#2f8d5b;font-size:56px;line-height:1;font-weight:700;">🏬</div>
+  <h2 style="margin:0;font-family:'Playfair Display',Georgia,serif;font-size:42px;line-height:1.05;color:#0f172a;font-weight:700;">{{store_name}}</h2>
+</div>
+
+<p style="margin:28px 0 10px;font-size:34px;line-height:1.1;color:#0f172a;font-weight:700;">Bună, {{customer_name}}! 🌿</p>
+<p style="margin:0 0 20px;color:#4f6b66;font-size:16px;line-height:1.55;">Comanda ta <strong>#{{order_number}}</strong> este pregătită și te așteaptă la sediul nostru. Te rugăm să ai la tine numărul comenzii când vii după ea.</p>
+
+{{ridicare_personala}}
+
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;background:#f4f7f4;border-radius:14px;padding:18px 18px 14px;margin:0 0 22px;">
+  <tr>
+    <td style="padding:7px 8px;color:#536f69;font-size:17px;line-height:1.35;">Nr. comandă</td>
+    <td style="padding:7px 8px;color:#0f172a;font-size:24px;line-height:1.15;font-weight:700;text-align:right;">#{{order_number}}</td>
+  </tr>
+  <tr>
+    <td style="padding:7px 8px;color:#536f69;font-size:17px;line-height:1.35;">Total</td>
+    <td style="padding:7px 8px;color:#0f172a;font-size:18px;line-height:1.35;font-weight:700;text-align:right;">{{order_total}}</td>
+  </tr>
+</table>
+
+<p style="margin:0 0 8px;color:#0f172a;font-size:28px;line-height:1.1;font-weight:700;">Rezumat comandă</p>
+<div style="margin:0 0 18px;">
+  {{order_items_html}}
+</div>
+
+<p style="margin:0 0 4px;color:#4f6b66;font-size:16px;line-height:1.55;">Vă mulțumim și vă dorim VITALITATE ȘI PROTECȚIE!</p>
+<p style="margin:0 0 18px;color:#4f6b66;font-size:16px;line-height:1.55;">Echipa {{store_name}}</p>
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0 16px;">
 <p style="margin:0 0 6px;text-align:center;color:#5b6f69;font-size:14px;line-height:1.5;">© {{year}} {{store_name}}. Toate drepturile rezervate.</p>

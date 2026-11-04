@@ -419,6 +419,40 @@ $renderCampLocalitate = static function (string $name, string $value, string $nu
                 „Opțiuni FAN" nu schimbă prețul.
             </p>
         </div>
+        <div style="grid-column:1/-1;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:4px;">
+            <h3 style="margin:0 0 4px;">Ridicare personală de la sediu</h3>
+            <p style="margin:0 0 8px;color:#64748b;font-size:13px;">
+                Cu bifa pusă, în checkout apare opțiunea „Ridicare personală de la sediu".
+                Comanda ridicată de client nu are cost de transport (nici taxă de km
+                suplimentari) și nu primește niciodată AWB. Se cer doar datele de
+                facturare; FANbox și adresa de livrare separată dispar, iar rambursul
+                apare ca „Plată la ridicare (numerar sau card)". Când comanda e
+                pregătită, butonul „Gata de ridicare" din Comenzi îi trimite clientului
+                emailul cu adresa și programul de mai jos.
+            </p>
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" name="shipping_pickup_enabled" value="1"
+                       <?= ((string) ($settings['shipping_pickup_enabled'] ?? '0')) === '1' ? 'checked' : '' ?>>
+                Oferă ridicare personală de la sediu (clientul alege la finalizarea comenzii)
+            </label>
+        </div>
+        <div class="field">
+            <label>Adresa sediului pentru ridicare</label>
+            <input type="text" name="shipping_pickup_address" maxlength="255"
+                   value="<?= htmlspecialchars(\App\Support\RidicarePersonala::adresa($settings), ENT_QUOTES) ?>">
+            <p style="margin:4px 0 0;color:#64748b;font-size:12px;">
+                Apare în checkout, în confirmarea comenzii și în emailul „Gata de ridicare".
+                Gol = <?= htmlspecialchars(\App\Support\RidicarePersonala::ADRESA_IMPLICITA, ENT_QUOTES) ?>.
+            </p>
+        </div>
+        <div class="field">
+            <label>Program de ridicare</label>
+            <textarea name="shipping_pickup_program" rows="3" maxlength="1000"
+                      placeholder="ex. Luni–Vineri 09:00–17:00"><?= htmlspecialchars(\App\Support\RidicarePersonala::program($settings), ENT_QUOTES) ?></textarea>
+            <p style="margin:4px 0 0;color:#64748b;font-size:12px;">
+                Text liber, apare la fel ca adresa. Gol = nu se afișează niciun program.
+            </p>
+        </div>
         <div class="field">
             <label>Tip serviciu FAN</label>
             <?php

@@ -586,7 +586,14 @@ final class ErpSync
             (string) ($order['billing_email'] ?? ''),
         );
 
-        return [
+        // Ridicare personală de la sediu: marfa nu pleacă nicăieri, deci
+        // „livrarea" e chiar sediul (ERP-ul alege după ea depozitul — cel din
+        // București). Factura rămâne pe adresa de facturare, ca la orice comandă.
+        $ridicare = RidicarePersonala::esteComanda($order);
+        $setariRidicare = $ridicare ? Settings::all($db) : [];
+        $adresaRidicare = $ridicare ? RidicarePersonala::adresaComenzii($order, $setariRidicare) : '';
+
+        $payload = [
             'numarSite' => (string) $order['order_number'],
             'dataComanda' => self::iso((string) ($order['created_at'] ?? '')),
 
@@ -646,6 +653,22 @@ final class ErpSync
             // ușoare au plecat în două cutii.
             'coleteCalcul' => self::coleteCalcul(Settings::all($db)),
         ];
+
+        if ($ridicare) {
+            // Cheile pleacă doar pe comenzile cu ridicare: o comandă obișnuită,
+            // retrimisă după actualizare, ajunge în ERP octet cu octet ca înainte
+            // (acolo o retrimitere identică nu rescrie nimic).
+            $payload['ridicarePersonala'] = true;
+            $payload['ridicareAdresa'] = mb_substr($adresaRidicare, 0, 255);
+            $payload['livrareAdresa'] = mb_substr($adresaRidicare, 0, 255);
+            $payload['livrareOras'] = RidicarePersonala::LOCALITATE;
+            $payload['livrareJudet'] = RidicarePersonala::JUDET;
+            $payload['livrareCodPostal'] = '';
+            // Nicio comandă ridicată de la sediu n-are transport, orice ar scrie pe rând.
+            $payload['transport'] = 0.0;
+        }
+
+        return $payload;
     }
 
     /**

@@ -210,6 +210,11 @@ if ($returCard && $platit) {
 
         <?= (string) ($notaPrecomanda ?? '') ?>
 
+        <?php /* Ridicare personală de la sediu: adresa și programul (HTML gata escapat). */ ?>
+        <?php if (trim((string) ($notaRidicare ?? '')) !== ''): ?>
+            <div style="text-align:left;"><?= (string) $notaRidicare ?></div>
+        <?php endif; ?>
+
         <?php if ($instructiuni !== ''): ?>
             <div class="bs-succes__plata">
                 <h2>Cum plătiți prin ordin de plată</h2>

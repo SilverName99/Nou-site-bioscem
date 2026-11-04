@@ -266,6 +266,7 @@ $notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
         'shipped' => 'Comandă expediată',
         'delivered' => 'Comandă livrată/finalizată',
         'cancelled' => 'Comandă anulată',
+        'pickup_ready' => 'Comandă gata de ridicare',
         'abandoned_cart' => 'Abandon coș',
     ];
     $ecommerceEmailCodes = [
@@ -292,6 +293,9 @@ $notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
         ['code' => '{{order_totals_html}}', 'description' => 'Totalurile comenzii: produse, reduceri, transport, total și TVA inclus'],
         ['code' => '{{payment_details}}', 'description' => 'Datele bancare din Setări plăți (doar la „Comandă nouă — plată prin OP")'],
         ['code' => '{{avertismente_produse}}', 'description' => 'Avertismentele confirmate la comandă (ex. produs refrigerat); fără cod, apar singure sub produse'],
+        ['code' => '{{ridicare_personala}}', 'description' => 'Caseta cu adresa și programul de ridicare (doar la comenzile cu ridicare personală de la sediu); fără cod, apare singură sub totaluri'],
+        ['code' => '{{pickup_address}}', 'description' => 'Adresa sediului de la care se ridică comanda (Setări livrare)'],
+        ['code' => '{{pickup_program}}', 'description' => 'Programul de ridicare (Setări livrare)'],
     ];
     $orderedEcommerceRows = [];
     foreach ($ecommerceOrder as $etype => $label) {

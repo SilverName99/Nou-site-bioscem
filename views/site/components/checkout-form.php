@@ -72,6 +72,16 @@ $fanboxPret = $fanboxPret ?? null;
 // Pragul de transport gratuit se aplică și la FANbox. Când coșul l-a
 // atins, eticheta trebuie să spună „gratuit", nu tariful fix.
 $fanboxGratuit = (bool) ($fanboxGratuit ?? false);
+// Ridicare personală de la sediu (Setări livrare): fără transport, fără AWB.
+// Cu ea bifată se cer doar datele de facturare; FANbox și adresa de livrare
+// separată dispar, iar rambursul devine „Plată la ridicare".
+$ridicareDisponibila = (bool) ($ridicareDisponibila ?? false);
+$ridicareAleasa = $ridicareDisponibila && (bool) ($ridicareAleasa ?? false);
+$ridicareAdresa = trim((string) ($ridicareAdresa ?? ''));
+$ridicareProgram = trim((string) ($ridicareProgram ?? ''));
+if ($ridicareAleasa) {
+    $fanboxAles = 0;
+}
 $antiBot = is_array($antiBot ?? null) ? $antiBot : [];
 $antiBotToken = trim((string) ($antiBot['token'] ?? ''));
 $antiBotRenderedAt = (int) ($antiBot['rendered_at'] ?? 0);
@@ -108,6 +118,13 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
            autofill și bloca clienți reali. */
         .bv-checkout-v3__hp{display:none;}
         .bv-checkout-v3__fanbox{border:1px solid #d5e5dc;border-radius:12px;padding:12px 14px;background:#f6faf8;}
+        .bv-checkout-v3__ridicare{border:1px solid #d5e5dc;border-radius:12px;padding:12px 14px;background:#f6faf8;}
+        .bv-checkout-v3__ridicare-info{display:none;margin:8px 0 0;font:500 13px/1.45 "DM Sans",Arial,sans-serif;color:#315542;}
+        .bv-checkout-v3__ridicare-info.is-visible{display:block;}
+        .bv-checkout-v3__ridicare-info p{margin:0 0 4px;}
+        .bv-checkout-v3__ridicare-nota{display:none;margin:-3px 0 0;text-align:right;font:500 12px/1.35 "DM Sans",Arial,sans-serif;color:#2b6d49;}
+        .bv-checkout-v3__ridicare-nota.is-visible{display:block;}
+        .bv-checkout-v3__is-hidden{display:none !important;}
         .bv-checkout-v3__fanbox-pick{display:none;margin-top:10px;}
         .bv-checkout-v3__fanbox-pick.is-visible{display:block;}
         .bv-checkout-v3__fanbox-pick select{width:100%;}
@@ -305,8 +322,23 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                             <label for="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-postcode">Cod poștal *</label>
                             <input id="<?= htmlspecialchars($instanceId, ENT_QUOTES) ?>-postcode" type="text" name="billing_postcode" value="<?= htmlspecialchars((string) ($values['billing_postcode'] ?? ''), ENT_QUOTES) ?>" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" title="Codul poștal trebuie să conțină exact 6 cifre">
                         </div>
+                        <?php if ($ridicareDisponibila): ?>
+                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full bv-checkout-v3__ridicare" data-ridicare-block>
+                            <label class="bv-checkout-v3__checkbox">
+                                <input type="checkbox" name="ridicare_personala" value="1" data-ridicare-toggle <?= $ridicareAleasa ? 'checked' : '' ?>>
+                                <span>Ridicare personală de la sediu — fără cost de transport</span>
+                            </label>
+                            <div class="bv-checkout-v3__ridicare-info<?= $ridicareAleasa ? ' is-visible' : '' ?>" data-ridicare-info>
+                                <p><strong>Adresa:</strong> <?= htmlspecialchars($ridicareAdresa, ENT_QUOTES) ?></p>
+                                <?php if ($ridicareProgram !== ''): ?>
+                                    <p><strong>Program:</strong><br><?= nl2br(htmlspecialchars($ridicareProgram, ENT_QUOTES)) ?></p>
+                                <?php endif; ?>
+                                <p style="color:#64748b;">Comanda nu se trimite prin curier. Te anunțăm pe email când e gata de ridicare. Datele de mai sus se folosesc doar pentru factură.</p>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                         <?php if (!empty($fanboxDisponibil)): ?>
-                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full bv-checkout-v3__fanbox" data-fanbox-block>
+                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full bv-checkout-v3__fanbox<?= $ridicareAleasa ? ' bv-checkout-v3__is-hidden' : '' ?>" data-fanbox-block>
                             <label class="bv-checkout-v3__checkbox">
                                 <input type="checkbox" name="livrare_fanbox" value="1" data-fanbox-toggle <?= !empty($fanboxAles) ? 'checked' : '' ?>>
                                 <span data-fanbox-eticheta data-fanbox-pret="<?= $fanboxPret !== null ? htmlspecialchars(number_format((float) $fanboxPret, 2), ENT_QUOTES) : '' ?>">Livrare la FANbox<?php if (($fanboxPret ?? null) !== null): ?> — <?= $fanboxGratuit ? 'gratuit' : number_format((float) $fanboxPret, 2) . ' lei' ?><?php endif; ?></span>
@@ -324,13 +356,13 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                         <?php endif; ?>
                         <?php $shippingSame = ((int) ($values['shipping_same_as_billing'] ?? 1)) === 1; ?>
                         <input type="hidden" name="has_shipping_toggle" value="1">
-                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
+                        <div class="bv-checkout-v3__field bv-checkout-v3__field--full<?= $ridicareAleasa ? ' bv-checkout-v3__is-hidden' : '' ?>" data-shipping-same-field>
                             <label class="bv-checkout-v3__checkbox">
-                                <input type="checkbox" name="shipping_same_as_billing" value="1" data-shipping-same <?= $shippingSame ? 'checked' : '' ?>>
+                                <input type="checkbox" name="shipping_same_as_billing" value="1" data-shipping-same <?= ($shippingSame || $ridicareAleasa) ? 'checked' : '' ?>>
                                 <span>Adresa de livrare este aceeași cu adresa de facturare</span>
                             </label>
                         </div>
-                        <div class="bv-checkout-v3__company-fields<?= $shippingSame ? '' : ' is-visible' ?>" data-shipping-fields>
+                        <div class="bv-checkout-v3__company-fields<?= ($shippingSame || $ridicareAleasa) ? '' : ' is-visible' ?>" data-shipping-fields>
                             <div class="bv-checkout-v3__field bv-checkout-v3__field--full">
                                 <strong style="font-size:14px;color:#0f172a;">Adresă de livrare</strong>
                             </div>
@@ -422,7 +454,7 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                                     <input type="radio" name="payment_method" value="cod" <?= $paymentMethod === 'cod' ? 'checked' : '' ?>>
                                     <span class="bv-checkout-v3__method-label">
                                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 7.5h18M3 12h18M3 16.5h18" stroke="currentColor" stroke-width="1.7"/><rect x="2.5" y="5" width="19" height="14" rx="2.3" stroke="currentColor" stroke-width="1.7"/></svg>
-                                        <span><strong>Ramburs</strong><br><span data-ramburs-sub><?= !empty($fanboxAles) ? 'Plata la ridicarea din FANbox' : 'Plata la livrare' ?></span></span>
+                                        <span><strong data-ramburs-titlu><?= $ridicareAleasa ? 'Plată la ridicare' : 'Ramburs' ?></strong><br><span data-ramburs-sub><?= $ridicareAleasa ? '(numerar sau card)' : (!empty($fanboxAles) ? 'Plata la ridicarea din FANbox' : 'Plata la livrare') ?></span></span>
                                     </span>
                                 </label>
                                 <?php if (($opActiv ?? false) === true): ?>
@@ -531,6 +563,9 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                     <div class="bv-checkout-v3__row"><span>Subtotal</span><strong><?= number_format($subtotalWithoutVat, 2) ?> lei</strong></div>
                     <div class="bv-checkout-v3__row"><span>TVA</span><strong data-checkout-vat data-vat-initial="<?= htmlspecialchars(number_format($vat, 2, '.', ''), ENT_QUOTES) ?>"><?= number_format($vat, 2) ?> lei</strong></div>
                     <div class="bv-checkout-v3__row"><span>Transport</span><strong data-checkout-shipping><?= number_format($shipping, 2) ?> lei</strong></div>
+                    <?php if ($ridicareDisponibila): ?>
+                        <p class="bv-checkout-v3__ridicare-nota<?= $ridicareAleasa ? ' is-visible' : '' ?>" data-ridicare-nota>Ridicare personală de la sediu — fără transport</p>
+                    <?php endif; ?>
                     <?php if ($discount > 0): ?>
                         <div class="bv-checkout-v3__row bv-checkout-v3__row--danger"><span>Reducere</span><strong>-<?= number_format($discount, 2) ?> lei</strong></div>
                     <?php endif; ?>
@@ -808,8 +843,11 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
         const shippingToggle = form.querySelector('[data-shipping-same]');
         const shippingFieldsWrap = form.querySelector('[data-shipping-fields]');
         const shippingRequiredFields = Array.from(form.querySelectorAll('[data-shipping-required]'));
+        const ridicareToggle = form.querySelector('[data-ridicare-toggle]');
+        const ridicareActiva = () => ridicareToggle instanceof HTMLInputElement && ridicareToggle.checked;
         const syncShippingFields = () => {
-            const different = shippingToggle instanceof HTMLInputElement && !shippingToggle.checked;
+            // La ridicarea de la sediu nu există adresă de livrare.
+            const different = !ridicareActiva() && shippingToggle instanceof HTMLInputElement && !shippingToggle.checked;
             if (shippingFieldsWrap instanceof HTMLElement) {
                 shippingFieldsWrap.classList.toggle('is-visible', different);
             }
@@ -977,16 +1015,20 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
         // La FANbox coletul nu vine acasă, se ridică — „Plata la livrare" ar
         // spune altceva decât se întâmplă.
         const rambursSub = form.querySelector('[data-ramburs-sub]');
+        const rambursTitlu = form.querySelector('[data-ramburs-titlu]');
 
         const sincronizeazaFanbox = () => {
             const activ = fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked;
             if (fanboxPick instanceof HTMLElement) {
                 fanboxPick.classList.toggle('is-visible', activ);
             }
+            if (rambursTitlu instanceof HTMLElement) {
+                rambursTitlu.textContent = ridicareActiva() ? 'Plată la ridicare' : 'Ramburs';
+            }
             if (rambursSub instanceof HTMLElement) {
-                rambursSub.textContent = activ
-                    ? 'Plata la ridicarea din FANbox'
-                    : 'Plata la livrare';
+                rambursSub.textContent = ridicareActiva()
+                    ? '(numerar sau card)'
+                    : (activ ? 'Plata la ridicarea din FANbox' : 'Plata la livrare');
             }
             if (fanboxSelect instanceof HTMLSelectElement) {
                 // Punctul e obligatoriu doar când clientul a ales FANbox.
@@ -1007,8 +1049,41 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
         }
         if (fanboxToggle instanceof HTMLInputElement) {
             fanboxToggle.addEventListener('change', () => {
+                // FANbox și ridicarea de la sediu se exclud.
+                if (fanboxToggle.checked && ridicareToggle instanceof HTMLInputElement && ridicareToggle.checked) {
+                    ridicareToggle.checked = false;
+                    sincronizeazaRidicare();
+                }
                 sincronizeazaFanbox();
                 // Prețul transportului depinde de alegere, deci recalculăm.
+                void requestShippingQuote();
+            });
+        }
+
+        // ── Ridicare personală de la sediu: fără transport, fără FANbox și
+        // fără adresă de livrare separată (se cer doar datele de facturare). ──
+        const ridicareInfo = form.querySelector('[data-ridicare-info]');
+        const ridicareNota = container.querySelector('[data-ridicare-nota]');
+        const fanboxBlock = form.querySelector('[data-fanbox-block]');
+        const shippingSameField = form.querySelector('[data-shipping-same-field]');
+        function sincronizeazaRidicare() {
+            const activ = ridicareActiva();
+            if (ridicareInfo instanceof HTMLElement) ridicareInfo.classList.toggle('is-visible', activ);
+            if (ridicareNota instanceof HTMLElement) ridicareNota.classList.toggle('is-visible', activ);
+            if (fanboxBlock instanceof HTMLElement) fanboxBlock.classList.toggle('bv-checkout-v3__is-hidden', activ);
+            if (shippingSameField instanceof HTMLElement) shippingSameField.classList.toggle('bv-checkout-v3__is-hidden', activ);
+            if (activ) {
+                if (fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked) {
+                    fanboxToggle.checked = false;
+                }
+                if (shippingToggle instanceof HTMLInputElement) shippingToggle.checked = true;
+            }
+            syncShippingFields();
+            sincronizeazaFanbox();
+        }
+        if (ridicareToggle instanceof HTMLInputElement) {
+            ridicareToggle.addEventListener('change', () => {
+                sincronizeazaRidicare();
                 void requestShippingQuote();
             });
         }
@@ -1113,7 +1188,9 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
         const requestShippingQuote = async () => {
             if (!(localityInput instanceof HTMLInputElement)) return;
             if (typeof shippingQuoteEndpoint !== 'string' || shippingQuoteEndpoint.trim() === '') return;
-            if (!hasCompleteShippingAddress()) {
+            // La ridicarea de la sediu transportul e 0 și fără adresă completă:
+            // serverul răspunde pe loc (și ține minte alegerea).
+            if (!ridicareActiva() && !hasCompleteShippingAddress()) {
                 setShippingPendingUi();
                 setShippingError('');
                 return;
@@ -1138,8 +1215,9 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                         // Bifa se trimite separat de punctul ales: tariful de
                         // FANbox se aplică din clipa în care e aleasă livrarea
                         // acolo, nu abia după ce se alege lockerul.
-                        livrare_fanbox: fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked ? 1 : 0,
-                        fan_locker_id: fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked
+                        ridicare_personala: ridicareActiva() ? 1 : 0,
+                        livrare_fanbox: !ridicareActiva() && fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked ? 1 : 0,
+                        fan_locker_id: !ridicareActiva() && fanboxToggle instanceof HTMLInputElement && fanboxToggle.checked
                             && fanboxSelect instanceof HTMLSelectElement
                             ? fanboxSelect.value
                             : '',
@@ -1242,7 +1320,7 @@ $avertismente = is_array($avertismente ?? null) ? $avertismente : [];
                 void requestShippingQuote();
             });
         }
-        sincronizeazaFanbox();
+        sincronizeazaRidicare();
         if (countyInput instanceof HTMLInputElement || countyInput instanceof HTMLSelectElement) {
             countyInput.addEventListener('change', () => {
                 if (localityInput instanceof HTMLInputElement) {

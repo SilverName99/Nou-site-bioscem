@@ -21,6 +21,11 @@ final class Settings
         'shipping_fixed_extra_km' => '0',
         'shipping_fixed_fanbox' => '0',
         'shipping_fixed_fanbox_enabled' => '0',
+        // Ridicare personală de la sediu (fără transport, fără AWB). Oprită
+        // implicit: checkout-ul nu se schimbă până nu e pornită din Setări livrare.
+        'shipping_pickup_enabled' => '0',
+        'shipping_pickup_address' => 'Str. Constantin Georgian nr. 24, Sector 2, București',
+        'shipping_pickup_program' => '',
         'fan_live_tariff_enabled' => '0',
         'fan_awb_auto' => '0',
         // Un singur AWB per comandă, chiar dacă marfa vine din mai multe

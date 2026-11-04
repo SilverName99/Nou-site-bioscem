@@ -643,11 +643,14 @@ final class BtIpayPayments
         if ($orderId <= 0) {
             return null;
         }
+        // Coloanele de locker și de ridicare vin din migrarea de livrare.
+        CheckoutCalculator::ensureOrderShippingSchema($db);
         $stmt = $db->prepare(
             'SELECT id, order_number, total, billing_first_name, billing_last_name, billing_email, billing_phone,
                     billing_address_line1, billing_address_line2, billing_city,
                     shipping_same_as_billing, shipping_address_line1, shipping_address_line2, shipping_city,
-                    fan_locker_id, fan_locker_address, fan_locker_city
+                    fan_locker_id, fan_locker_address, fan_locker_city,
+                    pickup_in_person, pickup_address
              FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
         );
         $stmt->execute(['id' => $orderId]);
@@ -667,7 +670,11 @@ final class BtIpayPayments
             trim((string) ($comanda['billing_address_line1'] ?? '')),
             trim((string) ($comanda['billing_address_line2'] ?? '')),
         ])));
-        if (!empty($comanda['fan_locker_id'])) {
+        if (RidicarePersonala::esteComanda($comanda)) {
+            // Ridicare de la sediu: marfa nu se livrează, se ridică de acolo.
+            $orasLivrare = RidicarePersonala::LOCALITATE;
+            $adresaLivrare = trim((string) ($comanda['pickup_address'] ?? '')) ?: RidicarePersonala::ADRESA_IMPLICITA;
+        } elseif (!empty($comanda['fan_locker_id'])) {
             $orasLivrare = (string) ($comanda['fan_locker_city'] ?? '');
             $adresaLivrare = (string) ($comanda['fan_locker_address'] ?? '');
         } elseif ((int) ($comanda['shipping_same_as_billing'] ?? 1) === 1) {

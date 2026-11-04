@@ -34,6 +34,11 @@ final class CheckoutCalculator
      */
     public static function livrareAleasaLaFanbox(): bool
     {
+        // Ridicarea de la sediu și FANbox se exclud: cu ridicarea bifată,
+        // nicio bifă FANbox rămasă în sesiune nu mai schimbă prețul.
+        if (RidicarePersonala::bifataInSesiune()) {
+            return false;
+        }
         // Prețul îl dă alegerea modului de livrare, nu punctul concret: clientul
         // bifează „Livrare la FANbox" înainte să apuce să aleagă lockerul, iar
         // până atunci sumarul arăta tariful de livrare la adresă.
@@ -263,6 +268,7 @@ final class CheckoutCalculator
         $county = Cart::county();
         $shippingDiscountReference = $discount + $pointsDiscount;
         $shipping = self::calculateShipping($db, $settings, $county, $subtotal, $shippingDiscountReference);
+        $ridicarePersonala = RidicarePersonala::aleasa($settings);
         $isBucharest = mb_strtolower(trim($county)) === 'bucuresti';
         $includeCoupons = ((string) ($settings['shipping_include_coupons'] ?? '1')) === '1';
         $shippingFreeThreshold = $isBucharest
@@ -290,6 +296,8 @@ final class CheckoutCalculator
             'shipping_reference' => $shippingReference,
             'shipping_free_threshold' => max(0.0, $shippingFreeThreshold),
             'total_weight_kg' => $totalWeightGrams > 0 ? ($totalWeightGrams / 1000) : 0.0,
+            // Ridicare personală de la sediu: transportul de mai sus e deja 0.
+            'ridicare_personala' => $ridicarePersonala,
         ];
     }
 
@@ -392,6 +400,13 @@ final class CheckoutCalculator
             // confidențialitate. Consimțământul se dovedește cu o dată, nu cu
             // amintirea că era o bifă pe ecran.
             "ALTER TABLE orders ADD COLUMN terms_accepted_at DATETIME DEFAULT NULL",
+            // Ridicarea personală de la sediu (vezi RidicarePersonala): fără
+            // transport și fără AWB. Adresa se îngheață pe comandă, ca la
+            // FANbox, iar momentul anunțului „gata de ridicare” rămâne scris,
+            // ca butonul să nu trimită emailul de două ori din greșeală.
+            "ALTER TABLE orders ADD COLUMN pickup_in_person TINYINT(1) NOT NULL DEFAULT 0 AFTER fan_locker_postcode",
+            "ALTER TABLE orders ADD COLUMN pickup_address VARCHAR(255) DEFAULT NULL AFTER pickup_in_person",
+            "ALTER TABLE orders ADD COLUMN pickup_ready_notified_at DATETIME DEFAULT NULL AFTER pickup_address",
         ];
         foreach ($cols as $sql) {
             try {
@@ -1081,6 +1096,12 @@ final class CheckoutCalculator
 
     private static function calculateShipping(?PDO $db, array $settings, string $county, float $subtotal, float $discount): float
     {
+        // Ridicarea de la sediu nu are transport: nici preț fix, nici taxă de
+        // km suplimentari, nici tarif FAN. Înaintea oricărui alt calcul.
+        if (RidicarePersonala::aleasa($settings)) {
+            return 0.0;
+        }
+
         $isBucharest = strtolower(trim($county)) === 'bucuresti';
 
         // Prețul fix are prioritate. Include și taxa de km suplimentari, dacă
@@ -1149,8 +1170,15 @@ final class CheckoutCalculator
         float $subtotal,
         float $discount,
         float $currentShipping,
-        bool $shippingManual = false
+        bool $shippingManual = false,
+        bool $ridicarePersonala = false
     ): float {
+        // Comanda ridicată de la sediu nu are transport, orice s-ar schimba pe
+        // ea (produse, reduceri): fără ramura asta, un transport 0 era
+        // „estimat din setări” și reapărea la prima editare.
+        if ($ridicarePersonala) {
+            return 0.0;
+        }
         // Transportul pus de mână e o decizie, nu o valoare de recalculat:
         // pragul de gratuitate îl ștergea la fiecare „Recalculează și salvează",
         // deși operatorul tocmai îl scrisese (comandă peste prag, dar cu

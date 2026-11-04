@@ -297,6 +297,7 @@ $router->post('/admin/orders/{id}/items', [AdminController::class, 'orderItemsSa
 $router->post('/admin/orders/{id}/deblocheaza', [AdminController::class, 'orderUnlockEdit']);
 $router->post('/admin/orders/{id}/blocheaza', [AdminController::class, 'orderLockEdit']);
 $router->post('/admin/orders/{id}/fanbox', [AdminController::class, 'orderFanboxSave']);
+$router->post('/admin/orders/{id}/gata-de-ridicare', [AdminController::class, 'orderPickupReady']);
 $router->post('/admin/orders/{id}/discount', [AdminController::class, 'orderDiscountSave']);
 $router->post('/admin/orders/{id}/note-interne', [AdminController::class, 'orderNotesSave']);
 $router->post('/admin/orders/{id}/shipping', [AdminController::class, 'orderShippingSave']);

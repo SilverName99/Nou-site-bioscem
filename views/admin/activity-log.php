@@ -16,6 +16,7 @@ $actionLabels = [
     'comanda_reducere_comerciala' => 'Reducere comercială aplicată',
     'comanda_reducere_anulata' => 'Reducere comercială anulată',
     'order_delivery_change' => 'Destinație livrare schimbată',
+    'comanda_gata_de_ridicare' => 'Client anunțat: comandă gata de ridicare',
     'fan_lockers_sync' => 'Puncte FANbox sincronizate',
     'fan_nomenclator_sync' => 'Localități / străzi FAN sincronizate',
     'order_incasare_manuala' => 'Încasare înregistrată manual',

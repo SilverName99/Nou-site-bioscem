@@ -4994,6 +4994,10 @@ final class AdminController
             if ($this->tableHasColumn($db, 'orders', 'erp_client_agresiv')) {
                 $selectPlata .= ', erp_client_agresiv';
             }
+            // Ridicare personală de la sediu: „fără AWB” în listă și în detalii.
+            if ($this->tableHasColumn($db, 'orders', 'pickup_in_person')) {
+                $selectPlata .= ', pickup_in_person, pickup_address, pickup_ready_notified_at';
+            }
             $stmt = $db->prepare(
                 'SELECT id, order_number, status, payment_method, payment_status, total, shipping_cost, subtotal, discount_total,
                         coupon_code,
@@ -5754,9 +5758,12 @@ final class AdminController
         }
         \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
 
+        $this->ensureOptionalSchema($db);
+        \App\Support\ErpSync::ensureSchema($db);
         $stmt = $db->prepare(
             'SELECT id, status, payment_status, subtotal, discount_total, loyalty_points_discount,
-                    shipping_cost, billing_county, billing_city, fan_awb
+                    manual_discount, shipping_cost, billing_county, billing_city, fan_awb,
+                    pickup_in_person, edit_unlocked_at
              FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
         );
         $stmt->execute(['id' => $orderId]);
@@ -5775,9 +5782,46 @@ final class AdminController
             return;
         }
 
+        // Destinația: „adresa" (curier la adresa clientului), „fanbox" (un
+        // punct ales) sau „ridicare" (personal, de la sediu — fără transport,
+        // fără AWB). Cererile vechi trimit doar `fan_locker_id`.
         $lockerId = max(0, (int) ($_POST['fan_locker_id'] ?? 0));
+        $destinatie = trim((string) ($_POST['destinatie'] ?? ''));
+        if (!in_array($destinatie, ['adresa', 'fanbox', 'ridicare'], true)) {
+            $destinatie = $lockerId > 0 ? 'fanbox' : 'adresa';
+        }
+        if ($destinatie !== 'fanbox') {
+            $lockerId = 0;
+        }
+        $ridicare = $destinatie === 'ridicare';
+        $eraRidicare = \App\Support\RidicarePersonala::esteComanda($order);
+
+        $settings = Settings::all($db);
+        if ($ridicare && !$eraRidicare && !\App\Support\RidicarePersonala::activa($settings)) {
+            echo json_encode(['ok' => false, 'error' => 'Ridicarea personală de la sediu e oprită din Setări livrare.']);
+            return;
+        }
+        // Comanda facturată în ERP: o schimbare din sau spre ridicare ar muta
+        // transportul (deci totalul), iar factura de acolo ar rămâne cu cel vechi.
+        $statusComanda = strtolower(trim((string) ($order['status'] ?? '')));
+        if (
+            $ridicare !== $eraRidicare
+            && in_array($statusComanda, ['processing', 'completed', 'cancelled', 'refunded', 'returned'], true)
+            && !self::comandaDeblocata($order)
+        ) {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Comanda e procesată — factura există deja în ERP. Ridicarea de la sediu se schimbă doar înainte de aprobare, sau după „Deblochează pentru corecție".',
+            ]);
+            return;
+        }
+
         $locker = null;
-        if ($lockerId > 0) {
+        if ($destinatie === 'fanbox') {
+            if ($lockerId <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Alege punctul FANbox.']);
+                return;
+            }
             $locker = \App\Support\FanLockers::dupaId($db, $lockerId);
             if ($locker === null) {
                 echo json_encode(['ok' => false, 'error' => 'Punctul FANbox ales nu este disponibil.']);
@@ -5785,10 +5829,12 @@ final class AdminController
             }
         }
 
-        $settings = Settings::all($db);
         $subtotal = round((float) ($order['subtotal'] ?? 0), 2);
         $discountRef = round((float) ($order['discount_total'] ?? 0), 2)
             + round((float) ($order['loyalty_points_discount'] ?? 0), 2);
+        // Reducerea comercială intră în total ca peste tot (vezi
+        // seteazaTransportComanda); pragul de gratuitate rămâne socotit ca până acum.
+        $reducereComerciala = round((float) ($order['manual_discount'] ?? 0), 2);
 
         // Transportul se ia de la zero: prețul vechi era pentru cealaltă
         // destinație, deci nu are ce să conteze aici.
@@ -5817,8 +5863,12 @@ final class AdminController
             // Pragul de transport gratuit rămâne valabil și la FANbox.
             $transport = 0.0;
         }
+        if ($ridicare) {
+            // Ridicarea de la sediu nu are transport, de niciun fel.
+            $transport = 0.0;
+        }
 
-        $effDiscount = min($discountRef, $subtotal);
+        $effDiscount = min($discountRef + $reducereComerciala, $subtotal);
         $total = round(max(0.0, $subtotal - $effDiscount + $transport), 2);
 
         try {
@@ -5826,16 +5876,23 @@ final class AdminController
                 'UPDATE orders SET
                     fan_locker_id = :lid, fan_locker_name = :lname, fan_locker_address = :laddr,
                     fan_locker_city = :lcity, fan_locker_county = :lcounty, fan_locker_postcode = :lzip,
-                    shipping_method = :method, shipping_cost = :ship, total = :tot
+                    pickup_in_person = :pickup, pickup_address = :paddr,
+                    shipping_method = :method, shipping_cost = :ship, total = :tot,
+                    shipping_manual = CASE WHEN :pickup2 = 1 THEN 0 ELSE shipping_manual END
                  WHERE id = :id'
             )->execute([
+                'pickup' => $ridicare ? 1 : 0,
+                'pickup2' => $ridicare ? 1 : 0,
+                'paddr' => $ridicare ? \App\Support\RidicarePersonala::adresa($settings) : null,
                 'lid' => $locker !== null ? $locker['id'] : null,
                 'lname' => $locker !== null ? $locker['name'] : null,
                 'laddr' => $locker !== null ? $locker['address'] : null,
                 'lcity' => $locker !== null ? $locker['locality'] : null,
                 'lcounty' => $locker !== null ? $locker['county'] : null,
                 'lzip' => $locker !== null ? ($locker['postcode'] ?? null) : null,
-                'method' => $locker !== null ? 'fan_box' : 'fan_courier',
+                'method' => $ridicare
+                    ? \App\Support\RidicarePersonala::SHIPPING_METHOD
+                    : ($locker !== null ? 'fan_box' : 'fan_courier'),
                 'ship' => $transport,
                 'tot' => $total,
                 'id' => $orderId,
@@ -5847,7 +5904,9 @@ final class AdminController
 
         AdminActivityLog::log($db, 'order_delivery_change', [
             'order_id' => $orderId,
-            'destinatie' => $locker !== null ? ('FANbox: ' . $locker['name']) : 'adresa clientului',
+            'destinatie' => $ridicare
+                ? \App\Support\RidicarePersonala::ETICHETA
+                : ($locker !== null ? ('FANbox: ' . $locker['name']) : 'adresa clientului'),
             'transport' => $transport,
         ]);
 
@@ -5865,9 +5924,88 @@ final class AdminController
             'shipping_cost' => $transport,
             'total' => $total,
             'locker' => $locker,
+            'ridicare_personala' => $ridicare,
             'plata_diferenta' => (string) ($order['payment_status'] ?? '') === 'paid',
             'erp' => $erpSync,
         ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * „Gata de ridicare": anunță clientul unei comenzi cu ridicare personală
+     * de la sediu că o poate ridica (email cu adresa și programul).
+     *
+     * Momentul trimiterii rămâne pe comandă. A doua apăsare e refuzată dacă
+     * nu vine cu `retrimite=1` — pagina o cere doar după o confirmare
+     * explicită, ca un dublu-clic să nu-i trimită clientului două emailuri.
+     */
+    public function orderPickupReady(array $params): void
+    {
+        if (!$this->guard()) {
+            return;
+        }
+        $orderId = max(0, (int) ($params['id'] ?? 0));
+        $backUrl = $this->safeOrdersBackUrl((string) ($_POST['back_url'] ?? ''), array_merge($_GET, $_POST));
+        $db = $this->db();
+        if (!$db instanceof PDO || $orderId <= 0) {
+            Flash::set('error', 'Comanda nu a fost găsită.');
+            header('Location: ' . $backUrl);
+            return;
+        }
+        \App\Support\CheckoutCalculator::ensureOrderShippingSchema($db);
+
+        $stmt = $db->prepare(
+            'SELECT id, order_number, status, pickup_in_person, pickup_ready_notified_at
+             FROM orders WHERE id = :id AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch() ?: null;
+        if (!is_array($order) || !\App\Support\RidicarePersonala::esteComanda($order)) {
+            Flash::set('error', 'Comanda nu e cu ridicare personală de la sediu.');
+            header('Location: ' . $backUrl);
+            return;
+        }
+        $status = strtolower(trim((string) ($order['status'] ?? '')));
+        if (in_array($status, ['cancelled', 'refunded', 'failed', 'returned'], true)) {
+            Flash::set('error', 'Comanda e închisă (' . $status . '); nu se mai anunță clientul.');
+            header('Location: ' . $backUrl);
+            return;
+        }
+        $trimisLa = trim((string) ($order['pickup_ready_notified_at'] ?? ''));
+        $retrimite = (string) ($_POST['retrimite'] ?? '') === '1';
+        if ($trimisLa !== '' && !$retrimite) {
+            Flash::set('error', 'Clientul a fost deja anunțat la ' . $trimisLa . '. Pentru încă un email, confirmă retrimiterea.');
+            header('Location: ' . $backUrl);
+            return;
+        }
+
+        // Prima trimitere își „rezervă" comanda într-o singură instrucțiune: două
+        // apăsări aproape deodată (dublu-clic, două taburi) nu trimit două emailuri.
+        if ($trimisLa === '') {
+            $rezerva = $db->prepare(
+                'UPDATE orders SET pickup_ready_notified_at = NOW()
+                 WHERE id = :id AND pickup_ready_notified_at IS NULL'
+            );
+            $rezerva->execute(['id' => $orderId]);
+            if ($rezerva->rowCount() === 0) {
+                Flash::set('error', 'Clientul tocmai a fost anunțat (altă apăsare a ajuns prima). Pentru încă un email, confirmă retrimiterea.');
+                header('Location: ' . $backUrl);
+                return;
+            }
+        }
+
+        $rezultat = EmailAutomation::sendPickupReady($db, Settings::all($db), $orderId);
+        if (!$rezultat['ok'] && $trimisLa === '') {
+            // Emailul n-a plecat: comanda rămâne neanunțată, ca butonul să se poată reapăsa.
+            $db->prepare('UPDATE orders SET pickup_ready_notified_at = NULL WHERE id = :id')->execute(['id' => $orderId]);
+        }
+        if ($rezultat['ok']) {
+            AdminActivityLog::log($db, 'comanda_gata_de_ridicare', [
+                'comanda' => (string) ($order['order_number'] ?? $orderId),
+                'retrimis' => $trimisLa !== '' ? 'da' : 'nu',
+            ]);
+        }
+        Flash::set($rezultat['ok'] ? 'success' : 'error', $rezultat['message']);
+        header('Location: ' . $backUrl);
     }
 
     /**
@@ -6013,7 +6151,8 @@ final class AdminController
             $subtotal,
             $discountRef,
             (float) ($order['shipping_cost'] ?? 0),
-            (int) ($order['shipping_manual'] ?? 0) === 1
+            (int) ($order['shipping_manual'] ?? 0) === 1,
+            \App\Support\RidicarePersonala::esteComandaId($db, $orderId)
         );
         $total = round(max(0.0, $subtotal - min($discountRef, $subtotal) + $shipping), 2);
 
@@ -6099,6 +6238,11 @@ final class AdminController
         $status = strtolower(trim((string) ($order['status'] ?? '')));
         if (in_array($status, ['cancelled', 'refunded'], true)) {
             return ['ok' => false, 'error' => 'Comanda e anulată/returnată — nu se mai atinge.'];
+        }
+        // Ridicarea de la sediu nu are transport. Dacă trebuie totuși taxat,
+        // comanda se trece întâi pe livrare (Destinație livrare).
+        if ($transport > 0.004 && \App\Support\RidicarePersonala::esteComandaId($db, $orderId)) {
+            return ['ok' => false, 'error' => 'Comanda e cu ridicare personală de la sediu: nu are transport. Schimbă întâi destinația (livrare la adresă sau FANbox).'];
         }
 
         $transport = round(max(0.0, $transport), 2);
@@ -6482,7 +6626,8 @@ final class AdminController
             $subtotal,
             $discountRef,
             (float) ($order['shipping_cost'] ?? 0),
-            (int) ($order['shipping_manual'] ?? 0) === 1
+            (int) ($order['shipping_manual'] ?? 0) === 1,
+            \App\Support\RidicarePersonala::esteComandaId($db, $orderId)
         );
         $effDiscount = min($discountRef, $subtotal);
         $total = round(max(0.0, $subtotal - $effDiscount + $shipping), 2);
@@ -7811,6 +7956,11 @@ final class AdminController
         if ($order === null) {
             return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
         }
+        // Ridicare personală de la sediu: fără AWB, pe orice drum (buton,
+        // emitere în masă, aprobarea din ERP).
+        if (\App\Support\RidicarePersonala::esteComanda($order)) {
+            return ['ok' => false, 'message' => \App\Support\RidicarePersonala::REFUZ_AWB];
+        }
         // Un AWB emis greșit (serviciu nepotrivit, adresă corectată după) nu se
         // poate repara la FAN: singura cale e altul nou. Refuzul de aici lăsa
         // comanda blocată, așa că reemiterea e permisă — dar AWB-ul vechi se
@@ -7941,6 +8091,9 @@ final class AdminController
         $order = $this->loadOrderForFan($db, $orderId);
         if ($order === null) {
             return ['ok' => false, 'message' => 'Comanda nu a fost gasita.'];
+        }
+        if (\App\Support\RidicarePersonala::esteComanda($order)) {
+            return ['ok' => false, 'message' => \App\Support\RidicarePersonala::REFUZ_AWB];
         }
         if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
             return ['ok' => false, 'message' => 'Comanda are deja un AWB FAN generat.'];
@@ -8166,6 +8319,11 @@ final class AdminController
         array $order,
         string &$nota
     ): array {
+        // Ultima poartă înainte de FAN: comanda ridicată de la sediu nu pleacă
+        // la curier, oricare ar fi drumul pe care s-a ajuns aici.
+        if (\App\Support\RidicarePersonala::esteComanda($order)) {
+            throw new RuntimeException(\App\Support\RidicarePersonala::REFUZ_AWB);
+        }
         try {
             return FanCourierGateway::createInternalAwb($credentials, $payload);
         } catch (RuntimeException $exception) {
@@ -8987,6 +9145,19 @@ final class AdminController
             }
         }
 
+        // Ridicare personală de la sediu: aprobarea din ERP trece comanda în
+        // procesare (mai sus), dar nu cere AWB — marfa nu pleacă la curier, iar
+        // rambursul (plata la ridicare) se încasează la sediu, nu de FAN.
+        // Clientul e anunțat din butonul „Gata de ridicare”.
+        if (\App\Support\RidicarePersonala::esteComandaId($db, $orderId)) {
+            return [
+                'ok' => true,
+                'message' => 'Comandă aprobată. ' . \App\Support\RidicarePersonala::ETICHETA_FARA_AWB . '.' . $btMesaj,
+                'awb' => '',
+                'trackingUrl' => '',
+            ];
+        }
+
         $awb = trim((string) ($order['fan_awb'] ?? ''));
         $awbMessage = '';
         if ($awb === '') {
@@ -9161,6 +9332,14 @@ final class AdminController
             return;
         }
         $this->ensureOptionalSchema($db);
+
+        // Ridicarea de la sediu nu primește AWB. Butonul nici nu apare, dar o
+        // cerere trimisă direct trebuie oprită tot aici.
+        if (\App\Support\RidicarePersonala::esteComandaId($db, $id)) {
+            Flash::set('error', \App\Support\RidicarePersonala::REFUZ_AWB);
+            header('Location: ' . $backUrl);
+            return;
+        }
 
         // Un buton dezactivat în pagină nu oprește o cerere trimisă direct, iar
         // aici se emit AWB-uri reale, cu costuri la curier.
@@ -10475,6 +10654,16 @@ final class AdminController
             'shipping_fixed_extra_km' => $this->sumaPozitiva($_POST['shipping_fixed_extra_km'] ?? null),
             'shipping_fixed_fanbox' => $this->sumaPozitiva($_POST['shipping_fixed_fanbox'] ?? null),
             'shipping_fixed_fanbox_enabled' => isset($_POST['shipping_fixed_fanbox_enabled']) ? '1' : '0',
+            // Ridicare personală de la sediu: bifa, adresa (gol = cea implicită) și programul.
+            'shipping_pickup_enabled' => isset($_POST['shipping_pickup_enabled']) ? '1' : '0',
+            'shipping_pickup_address' => mb_substr(trim((string) ($_POST['shipping_pickup_address'] ?? '')), 0, 255) !== ''
+                ? mb_substr(trim((string) ($_POST['shipping_pickup_address'] ?? '')), 0, 255)
+                : \App\Support\RidicarePersonala::ADRESA_IMPLICITA,
+            'shipping_pickup_program' => mb_substr(
+                trim(str_replace(["\r\n", "\r"], "\n", (string) ($_POST['shipping_pickup_program'] ?? ''))),
+                0,
+                1000
+            ),
             'fan_live_tariff_enabled' => isset($_POST['fan_live_tariff_enabled']) ? '1' : '0',
             'fan_awb_auto' => isset($_POST['fan_awb_auto']) ? '1' : '0',
             'fan_awb_single' => isset($_POST['fan_awb_single']) ? '1' : '0',
@@ -17391,6 +17580,10 @@ HTML;
             echo json_encode(["ok" => false, "message" => "Comanda nu a fost găsită."], JSON_UNESCAPED_UNICODE);
             return;
         }
+        if (\App\Support\RidicarePersonala::esteComanda($order)) {
+            echo json_encode(["ok" => false, "message" => \App\Support\RidicarePersonala::REFUZ_AWB], JSON_UNESCAPED_UNICODE);
+            return;
+        }
         $settings = Settings::all($db);
         $credentials = $this->fanCredentialsFromSettings($settings);
         try {
@@ -17466,7 +17659,7 @@ HTML;
                     shipping_same_as_billing, shipping_first_name, shipping_last_name, shipping_phone,
                     shipping_address_line1, shipping_address_line2, shipping_city, shipping_county, shipping_postcode,
                     fan_locker_id, fan_locker_name, fan_locker_address, fan_locker_city,
-                    fan_locker_county, fan_locker_postcode,
+                    fan_locker_county, fan_locker_postcode, pickup_in_person,
                     fan_awb, fan_awb_inlocuite
              FROM orders
              WHERE id = :id AND deleted_at IS NULL
@@ -21642,6 +21835,9 @@ HTML;
         }
 
         if (trim((string) ($order['fan_awb'] ?? '')) !== '') {
+            return;
+        }
+        if (\App\Support\RidicarePersonala::esteComanda($order)) {
             return;
         }
 
