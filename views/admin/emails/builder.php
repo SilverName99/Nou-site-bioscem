@@ -885,7 +885,7 @@ function subBlockMiniInner(sb) {
   const ff  = ebFontStack(sb.font_family);
   const fontStyle = ff ? `font-family:${ff};` : '';
   switch(sb.type) {
-    case 'header': return `<div style="background:${esc(bg)};color:${esc(tc)};${fontStyle}font-size:${+(sb.font_size||24)}px;font-weight:700;padding:4px 6px;line-height:1.2;">${safeRich((sb.content||'Header').substring(0,50))}</div>`;
+    case 'header': return `<div style="background:${esc(bg)};color:${esc(tc)};${fontStyle}font-size:${+(sb.font_size||24)}px;font-weight:700;padding:4px 6px;line-height:1.2;white-space:pre-wrap;">${safeRich((sb.content||'Header').substring(0,50))}</div>`;
     case 'text':   return `<div style="background:${esc(bg)};color:${esc(tc)};${fontStyle}font-size:${+(sb.font_size||14)}px;padding:4px 6px;line-height:1.4;white-space:pre-wrap;">${safeRich((sb.content||'Text').substring(0,120))}</div>`;
     case 'image':  return sb.image_url ? `<div style="background:${esc(bg)};padding:3px;text-align:${sb.align||'center'};"><img src="${attr(sb.image_url)}" alt="" style="width:${+(sb.width||100)}%;max-width:100%;height:auto;border-radius:${+(sb.border_radius||0)}px;display:inline-block;vertical-align:top;"></div>` : `<div style="background:${esc(bg)};padding:4px 6px;color:#9ca3af;font-size:10px;border:1px dashed #d1d5db;border-radius:3px;">🖼 Imagine</div>`;
     case 'button': { const bc=sb.button_color||'#2d7d5f'; return `<div style="background:${esc(bg)};padding:4px 6px;text-align:${sb.align||'left'};"><span style="display:inline-block;background:${esc(bc)};color:${esc(tc)};padding:${Math.min(+(sb.btn_pad_v??8),10)}px ${Math.min(+(sb.btn_pad_h??18),16)}px;border-radius:${+(sb.border_radius||6)}px;font-size:${Math.min(+(sb.font_size||14),16)}px;font-weight:600;">${esc(sb.label||'Buton')}</span></div>`; }
@@ -929,7 +929,7 @@ function blockPreview(b, blockIdx) {
   const bgImg = b.bg_image ? `;background-image:url('${attr(b.bg_image)}');background-size:${esc(b.bg_size||'cover')};background-repeat:no-repeat;background-position:center` : '';
   switch(b.type) {
     case 'header':
-      return `<div style="background:${esc(bg)}${bgImg};${vPad}padding-left:${pl}px;padding-right:${pr}px;${fontStyle}color:${esc(tc)};text-align:${ali};font-size:${Math.min(+(b.font_size||32),40)}px;font-weight:700;line-height:1.2;">${safeRich(b.content||'Header')}</div>`;
+      return `<div style="background:${esc(bg)}${bgImg};${vPad}padding-left:${pl}px;padding-right:${pr}px;${fontStyle}color:${esc(tc)};text-align:${ali};font-size:${Math.min(+(b.font_size||32),40)}px;font-weight:700;line-height:1.2;white-space:pre-wrap;">${safeRich(b.content||'Header')}</div>`;
     case 'text':
       return `<div style="background:${esc(bg)}${bgImg};${vPad}padding-left:${pl}px;padding-right:${pr}px;${fontStyle}color:${esc(tc)};text-align:${ali};font-size:${+(b.font_size||16)}px;line-height:1.6;white-space:pre-wrap;">${safeRich(b.content||'Text...')}</div>`;
     case 'image':
