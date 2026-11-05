@@ -15,6 +15,18 @@ $templateOldPriceDisplay = (
 )
     ? number_format((float) ($product['base_price'] ?? 0), 2) . ' lei'
     : '';
+// Bulina de reducere, la fel ca pe cardul din listă (procent sau lei).
+$pdpBaza = (float) ($product['base_price'] ?? 0);
+$pdpPret = (float) ($product['price'] ?? 0);
+$pdpBulina = '';
+if ((bool) ($product['has_sale_price'] ?? false) && $pdpBaza > 0 && $pdpPret < $pdpBaza) {
+    if ((string) ($product['discount_badge_mode'] ?? 'percent') === 'value') {
+        $pdpBulina = '-' . rtrim(rtrim(number_format($pdpBaza - $pdpPret, 2, '.', ''), '0'), '.') . ' lei';
+    } else {
+        $pdpProcent = (int) round((($pdpBaza - $pdpPret) / $pdpBaza) * 100);
+        $pdpBulina = $pdpProcent > 0 ? '-' . $pdpProcent . '%' : '';
+    }
+}
 $bbdEntries = is_array($product['bbd_entries'] ?? null) ? $product['bbd_entries'] : [];
 $requiresBbdSelection = (bool) ($product['requires_bbd_selection'] ?? false) && $bbdEntries !== [];
 $postCartNoteEnabled = (int) ($product['post_cart_note_enabled'] ?? 0) === 1;
@@ -98,6 +110,9 @@ $galleryUrls = array_map(static fn ($url): string => \App\Support\PozeOptimizate
                 <span class="price-old"><?= number_format((float) ($product['base_price'] ?? 0), 2) ?> lei</span>
             <?php endif; ?>
             <span class="price-current"><?= number_format((float) ($product['price'] ?? 0), 2) ?> lei</span>
+            <?php if ($pdpBulina !== ''): ?>
+                <span class="pdp-discount-bubble"><?= htmlspecialchars($pdpBulina, ENT_QUOTES) ?></span>
+            <?php endif; ?>
         </p>
         <?php
             // Precomanda arată altfel decât un produs epuizat: acolo clientul
@@ -1050,6 +1065,28 @@ $galleryUrls = array_map(static fn ($url): string => \App\Support\PozeOptimizate
         });
     };
 
+    // Bulina de reducere lângă prețul din template (pagina cu template-ul
+    // produsului își desenează singură prețul, deci o punem din JS).
+    const injectTemplateDiscountBubble = (scope = document) => {
+        const text = <?= json_encode($pdpBulina, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        if (text === '') {
+            return;
+        }
+        scope.querySelectorAll('.product-template-render').forEach((root) => {
+            if (!(root instanceof HTMLElement) || root.querySelector('.pdp-discount-bubble')) {
+                return;
+            }
+            const pret = root.querySelector('.pdp-price, .product-price, [data-product-price], .price');
+            if (!(pret instanceof HTMLElement)) {
+                return;
+            }
+            const bulina = document.createElement('span');
+            bulina.className = 'pdp-discount-bubble';
+            bulina.textContent = text;
+            pret.insertAdjacentElement('afterend', bulina);
+        });
+    };
+
     const injectTemplateOldPrice = (scope = document) => {
         const toAmount = (value) => {
             const raw = String(value || '').replace(',', '.');
@@ -1174,6 +1211,7 @@ $galleryUrls = array_map(static fn ($url): string => \App\Support\PozeOptimizate
     initReviewPagination(document);
     initSimilarProducts(document);
     injectTemplateOldPrice(document);
+    injectTemplateDiscountBubble(document);
     if (typeof window.MutationObserver === 'function') {
         const observer = new MutationObserver(() => {
             initTabs(document);
@@ -1182,6 +1220,7 @@ $galleryUrls = array_map(static fn ($url): string => \App\Support\PozeOptimizate
             initReviewPagination(document);
             initSimilarProducts(document);
             injectTemplateOldPrice(document);
+            injectTemplateDiscountBubble(document);
         });
         observer.observe(document.body, { childList: true, subtree: true });
     }
