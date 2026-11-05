@@ -2405,7 +2405,7 @@ $notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
 
             const blockCanvasHtml = (block) => {
                 if (block.type === 'header') {
-                    return `<div class="nl-block-inner" style="text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${blockFontSize(block, 34)}px;font-weight:700;padding:28px 22px;">${escapeHtml(block.content)}</div>`;
+                    return `<div class="nl-block-inner" style="text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${blockFontSize(block, 34)}px;font-weight:700;padding:28px 22px;">${escapeHtml(block.content).replace(/\r\n|\r|\n/g, '<br>')}</div>`;
                 }
                 if (block.type === 'text') {
                     return `<div class="nl-block-inner" style="text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${blockFontSize(block, 15)}px;line-height:1.6;padding:18px 22px;">${textWithLinksHtml(block.content)}</div>`;
@@ -2452,7 +2452,7 @@ $notaLimitaOptin = ($limitaOptinTs !== false && $limitaOptinTs > time() - 86400)
                     const mobileSize = Number.isFinite(Number(block.font_size_mobile))
                         ? Math.max(10, Math.min(96, Math.round(Number(block.font_size_mobile))))
                         : desktopSize;
-                    return `<div class="nl-text-desktop" style="text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${desktopSize}px;font-weight:700;padding:24px 0;border-radius:10px;">${escapeHtml(block.content)}</div><div class="nl-text-mobile" style="display:none;text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${mobileSize}px;font-weight:700;padding:24px 0;border-radius:10px;">${escapeHtml(block.content)}</div>`;
+                    return `<div class="nl-text-desktop" style="text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${desktopSize}px;font-weight:700;padding:24px 0;border-radius:10px;">${escapeHtml(block.content).replace(/\r\n|\r|\n/g, '<br>')}</div><div class="nl-text-mobile" style="display:none;text-align:${block.align};background:${escapeHtml(block.background)};color:${escapeHtml(block.text_color)};font-size:${mobileSize}px;font-weight:700;padding:24px 0;border-radius:10px;">${escapeHtml(block.content).replace(/\r\n|\r|\n/g, '<br>')}</div>`;
                 }
                 if (block.type === 'text') {
                     const desktopSize = blockFontSize(block, 15);

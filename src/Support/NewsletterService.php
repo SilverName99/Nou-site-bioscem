@@ -2222,7 +2222,8 @@ final class NewsletterService
         if ($type === 'header') {
             $desktopSize = self::normalizeFontSize((int) ($block['font_size'] ?? 0), 34);
             $mobileSize = self::normalizeFontSize((int) ($block['font_size_mobile'] ?? $desktopSize), $desktopSize);
-            $contentHtml = self::allowRichTags(self::esc((string) ($block['content'] ?? '')));
+            // Enter în textul titlului = rând nou în email (ca la blocul Text).
+            $contentHtml = self::allowRichTags(self::newlineToBr(self::esc((string) ($block['content'] ?? ''))));
             $hdrBg = self::esc((string) ($block['background'] ?? '#1a7a5e'));
             return '<div class="nl-text-desktop" style="display:block;text-align:' . self::esc((string) ($block['align'] ?? 'center')) . ';background:' . $hdrBg . ';' . $bgStyle . $hPad . $vPad . $fontStyle . 'color:' . self::esc((string) ($block['text_color'] ?? '#ffffff')) . ';font-size:' . $desktopSize . 'px;font-weight:700;">'
                 . $contentHtml
