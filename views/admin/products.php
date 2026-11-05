@@ -269,6 +269,10 @@ $categoriiExtra = is_array($categoriiExtra ?? null) ? $categoriiExtra : [];
                                 <input type="number" name="stock" id="p_stock">
                                 <small class="muted" id="p_stock_erp" style="display:none;color:#0f766e;">
                                     Stocul vine din ERP (gestiune) și nu se editează aici. Corectează-l în ERP.
+                                    <button type="button" class="btn btn-secondary" id="p_stock_erp_refresh"
+                                            data-csrf="<?= htmlspecialchars(\App\Support\AdminCsrf::token(), ENT_QUOTES) ?>"
+                                            style="margin-left:6px;padding:2px 10px;font-size:12px;">↻ Ia stocul acum din ERP</button>
+                                    <span id="p_stock_erp_msg" style="margin-left:6px;"></span>
                                 </small>
                             </div>
                             <div class="field">
@@ -1216,6 +1220,28 @@ $categoriiExtra = is_array($categoriiExtra ?? null) ? $categoriiExtra : [];
                 camp.style.color = dinErp ? '#475569' : '';
                 camp.title = dinErp ? 'Stoc din ERP — se modifică în ERP, nu aici.' : '';
                 if (nota) { nota.style.display = dinErp ? 'block' : 'none'; }
+                var buton = document.getElementById('p_stock_erp_refresh');
+                var mesaj = document.getElementById('p_stock_erp_msg');
+                if (mesaj) { mesaj.textContent = ''; }
+                if (buton) {
+                    buton.onclick = function () {
+                        buton.disabled = true;
+                        if (mesaj) { mesaj.textContent = 'Întreb ERP-ul…'; }
+                        var date = new FormData();
+                        date.append('_csrf', buton.getAttribute('data-csrf') || '');
+                        fetch('/admin/products/' + encodeURIComponent(String(product.id)) + '/stoc-erp', {
+                            method: 'POST', body: date, credentials: 'same-origin', headers: { 'Accept': 'application/json' }
+                        }).then(function (r) { return r.json(); }).then(function (rez) {
+                            if (rez && rez.ok) {
+                                camp.value = rez.stock;
+                                product.stock = rez.stock;
+                            }
+                            if (mesaj) { mesaj.textContent = (rez && rez.message) ? rez.message : 'Nu am primit răspuns.'; }
+                        }).catch(function () {
+                            if (mesaj) { mesaj.textContent = 'Nu am putut întreba ERP-ul acum.'; }
+                        }).finally(function () { buton.disabled = false; });
+                    };
+                }
             })();
             document.getElementById('p_weight_grams').value = product.weight_grams || '';
             document.getElementById('p_brand').value = product.brand || '';

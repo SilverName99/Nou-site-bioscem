@@ -4452,6 +4452,59 @@ final class AdminController
         );
     }
 
+    /**
+     * „Ia stocul acum din ERP”: golește memoria de stoc (60 s) și paginile
+     * publice din cache, apoi întreabă ERP-ul pe loc de acest produs.
+     * Întoarce JSON cu stocul nou, pentru câmpul din editorul de produs.
+     */
+    public function productErpStockRefresh(array $params): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        if (!$this->guard()) {
+            return;
+        }
+        if (!\App\Support\AdminCsrf::valid()) {
+            http_response_code(419);
+            echo json_encode(['ok' => false, 'message' => 'Pagina a expirat. Reîncarcă și încearcă din nou.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $id = max(0, (int) ($params['id'] ?? 0));
+        $db = $this->db();
+        if (!$db instanceof PDO || $id <= 0) {
+            echo json_encode(['ok' => false, 'message' => 'Produsul nu a fost găsit.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        if (!\App\Support\ErpStock::enabled($db)) {
+            echo json_encode(['ok' => false, 'message' => 'Stocul din ERP nu e pornit în setări.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        $stmt = $db->prepare('SELECT id, sku, stock, out_of_stock FROM products WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $id]);
+        $produs = $stmt->fetch();
+        if (!is_array($produs)) {
+            echo json_encode(['ok' => false, 'message' => 'Produsul nu a fost găsit.'], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        \App\Support\ErpStock::flush();
+        $produs = \App\Support\ErpStock::applyToProduct($db, $produs);
+        if ((int) ($produs['stock_from_erp'] ?? 0) !== 1) {
+            echo json_encode([
+                'ok' => false,
+                'message' => 'ERP-ul nu cunoaște codul „' . (string) ($produs['sku'] ?? '') . '” sau nu răspunde acum. Pe site rămâne stocul de până acum.',
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        try {
+            ResponseCache::purgePageCache();
+        } catch (Throwable) {
+        }
+        echo json_encode([
+            'ok' => true,
+            'stock' => (int) ($produs['stock'] ?? 0),
+            'message' => 'Stoc luat acum din ERP: ' . (int) ($produs['stock'] ?? 0) . ' buc.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
     public function updateProduct(array $params): void
     {
         if (!$this->guard()) {
