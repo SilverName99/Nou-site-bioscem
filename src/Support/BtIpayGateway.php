@@ -470,9 +470,9 @@ final class BtIpayGateway
             $client['contact'] = $nume;
         }
         $orasFacturare = self::taie(self::translitereaza((string) ($date['oras_facturare'] ?? '')), 50);
-        $adresaFacturare = self::taie(self::translitereaza((string) ($date['adresa_facturare'] ?? '')), 255);
+        $adresaFacturare = self::taieLaCuvant(self::translitereaza((string) ($date['adresa_facturare'] ?? '')), self::MAX_ADRESA);
         $orasLivrare = self::taie(self::translitereaza((string) ($date['oras_livrare'] ?? $date['oras_facturare'] ?? '')), 50);
-        $adresaLivrare = self::taie(self::translitereaza((string) ($date['adresa_livrare'] ?? $date['adresa_facturare'] ?? '')), 255);
+        $adresaLivrare = self::taieLaCuvant(self::translitereaza((string) ($date['adresa_livrare'] ?? $date['adresa_facturare'] ?? '')), self::MAX_ADRESA);
         if ($orasLivrare !== '' || $adresaLivrare !== '') {
             $client['deliveryInfo'] = [
                 'deliveryType' => 'courier',
@@ -564,6 +564,24 @@ final class BtIpayGateway
     private static function taie(string $text, int $max): string
     {
         return strlen($text) > $max ? rtrim(substr($text, 0, $max)) : $text;
+    }
+
+    /**
+     * Adresa (postAddress) are cel mult 50 de caractere: banca o trece în 3-D Secure (rândul de adresă, max. 50) și în
+     * producție refuză cererea mai lungă cu „[orderBundle.customerDetails.deliveryInfo.postAddress] wrong” (cod 8);
+     * platforma de test n-o verifică. Se taie la ultimul cuvânt întreg, fără virgula de la coadă.
+     */
+    private const MAX_ADRESA = 50;
+
+    private static function taieLaCuvant(string $text, int $max): string
+    {
+        if (strlen($text) <= $max) {
+            return $text;
+        }
+        $bucata = substr($text, 0, $max + 1);
+        $spatiu = strrpos($bucata, ' ');
+        $bucata = $spatiu !== false && $spatiu > 0 ? substr($bucata, 0, $spatiu) : substr($text, 0, $max);
+        return rtrim($bucata, " ,;.-/");
     }
 
     // ------------------------------------------------------------------
@@ -891,6 +909,7 @@ final class BtIpayGateway
             4 => 'Numărul comenzii sau suma lipsesc.',
             5 => 'Valoare nevalidă pentru unul dintre parametri (sau acces refuzat).',
             7 => 'Eroare de sistem la bancă.',
+            8 => 'Banca a refuzat unul dintre câmpurile comenzii (vezi câmpul în paranteză).',
         ];
         $rambursare = [5 => 'Suma nu este validă.'];
 
